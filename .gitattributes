@@ -1,0 +1,27 @@
+# Normalize line endings - store LF in the repository, check out native.
+* text=auto
+
+# ...except files whose INTERPRETER cares. `text=auto` checks these out CRLF on Windows,
+# so a .sh authored there fails on Linux with "bad interpreter: /bin/sh^M" - a message
+# that names neither the file nor the problem.
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+# And the reverse: cmd.exe needs CRLF in a batch file. A .bat checked out with LF on
+# Linux and copied back to Windows misbehaves in ways that look like a corrupt script.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# The web sources are served as they are stored. Keep them LF so a diff shows the change
+# and not the line endings.
+*.html  text eol=lf
+*.js    text eol=lf
+*.json  text eol=lf
+*.webmanifest text eol=lf
+*.md    text eol=lf
+
+# Binary - never touch these.
+*.png   binary
+*.jpg   binary
+*.zip   binary
+*.woff2 binary

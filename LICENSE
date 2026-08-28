@@ -1,0 +1,51 @@
+TINY ARCADE
+
+Copyright (c) 2026 Effigy Media. All rights reserved.
+
+
+WHAT THIS IS
+
+This repository is public for two reasons: the arcade is served from it, and
+anyone who wants to see how it is built can read it. Public is not the same as
+free to use. No license is granted by this notice.
+
+
+YOU MAY
+
+  - Play the arcade wherever Effigy Media publishes it.
+  - Read this source.
+  - Keep a copy for your own private reference.
+
+
+YOU MAY NOT, WITHOUT WRITTEN PERMISSION FROM EFFIGY MEDIA
+
+  - Copy, redistribute, or republish this software, in whole or in part,
+    modified or unmodified, in source or in compiled form.
+  - Host it under your own name or from your own domain.
+  - Use it, or any part of it, in another product, commercial or not.
+  - Sell it, or charge for access to it.
+
+To ask for permission, open an issue on this repository.
+
+
+THE FONTS ARE NOT COVERED BY THIS NOTICE
+
+The typefaces in fonts/ are third-party works and each carries its own license.
+They are open licenses that permit redistribution, and they govern those files
+instead of this notice. See fonts/LICENSES.md.
+
+
+ON THE GAMES THIS ARCADE DESCENDS FROM
+
+Several machines on the Golden Era and Second Wave shelves are clean-room takes
+on published arcade cabinets. The names, the artwork, the sounds, and the code
+here are original to Effigy Media. No sprite, palette, level layout, character
+design, or trademark of any other party is reproduced. This notice covers only
+what Effigy Media made.
+
+
+NO WARRANTY
+
+This software is provided "as is", without warranty of any kind, express or
+implied. Effigy Media is not liable for any claim, damage, or other liability
+arising from the software or its use.

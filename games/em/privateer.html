@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#04070f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Privateer</title>
+  <meta name="arcade-home" content="../../index.html#em">
+  <meta name="arcade-title" content="Privateer">
+<meta name="arcade-accent" content="#ffb454">
+<script src="../../audio.js"></script>
+<script src="../../arcade.js"></script>
+<style>
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url("../../fonts/bricolagegrotesque-var.woff2") format("woff2")}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:400;font-display:swap;src:url("../../fonts/dmmono-400.woff2") format("woff2")}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:500;font-display:swap;src:url("../../fonts/dmmono-500.woff2") format("woff2")}
+:root{ --ink:#04070f; --steel:#8b97a8; --warn:#e0332f; --gold:#ffb454; --good:#4dd6a0;
+       --disp:"Bricolage Grotesque",system-ui,sans-serif; --mono:"DM Mono",ui-monospace,monospace }
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--mono);
+  color:#cdd6e2;user-select:none;-webkit-user-select:none;touch-action:none}
+#stage{position:fixed;inset:0;display:grid;place-items:center;background:#000}
+#frame{position:relative;width:100%;height:100%;max-width:520px;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+.hidden{display:none!important}
+
+/* ---- HUDs: one per view ---- */
+.hud{position:absolute;inset:0;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
+.row{display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;letter-spacing:.12em}
+.stat b{display:block;font-size:20px;font-weight:800;line-height:1.05}
+.stat span{opacity:.5;font-size:9px}
+.c{text-align:center}.r{text-align:right}
+#heat b{color:var(--good)} #heat.hot b{color:var(--warn)}
+#lock b{color:var(--steel)} #lock.on b{color:var(--good)}
+#fHp b{color:var(--good)} #fHp.low b{color:var(--warn)}
+#fAmmo b{color:var(--gold)} #fAmmo.low b{color:var(--warn)}
+
+.msg{position:absolute;left:0;right:0;top:30%;text-align:center;font-family:var(--disp);
+  font-size:clamp(17px,5.2vw,24px);font-weight:800;letter-spacing:.14em;color:#fff;
+  text-shadow:0 0 18px var(--warn);opacity:0;pointer-events:none}
+.msg.on{animation:mg 1.7s ease-out 1}
+@keyframes mg{0%{opacity:0;transform:scale(1.2)}14%{opacity:1;transform:scale(1)}72%{opacity:1}100%{opacity:0}}
+
+/* ---- flight controls ---- */
+#fLpad{position:absolute;left:0;bottom:0;top:30%;width:56%}
+#fStick,#stick{position:absolute;width:132px;height:132px;border-radius:50%;
+  border:2px solid rgba(139,151,168,.30);opacity:0;transition:opacity .1s;pointer-events:none}
+#fStick.on,#stick.on{opacity:1}
+#nub,#fNub{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+  border-radius:50%;background:rgba(205,214,226,.26);border:2px solid rgba(205,214,226,.42)}
+#thr{position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);
+  width:74px;height:44%;border-radius:12px;
+  background:linear-gradient(180deg,rgba(224,51,47,.16),rgba(11,14,20,.55) 22%,rgba(11,14,20,.55));
+  border:2px solid rgba(139,151,168,.30)}
+#thrFill{position:absolute;left:0;right:0;bottom:0;background:rgba(77,214,160,.16);border-radius:0 0 10px 10px}
+#grip{position:absolute;left:4px;right:4px;height:34px;border-radius:8px;background:#2c3648;
+  border:2px solid rgba(205,214,226,.55);display:grid;place-items:center;font-size:11px;font-weight:800;color:#cdd6e2}
+#thrLbl{position:absolute;left:0;right:0;top:-20px;text-align:center;font-size:10px;letter-spacing:.16em;color:rgba(205,214,226,.5)}
+#detent{position:absolute;left:-3px;right:-3px;height:2px;background:rgba(224,51,47,.65)}
+#btns{position:absolute;right:96px;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);display:flex;flex-direction:column;gap:12px}
+.wbtn{width:62px;height:62px;border-radius:12px;border:2px solid rgba(139,151,168,.45);
+  background:rgba(20,26,35,.6);color:#cdd6e2;font-weight:800;font-size:11px;letter-spacing:.1em;display:grid;place-items:center}
+.wbtn:active{background:rgba(255,180,84,.25)}
+.wbtn[disabled]{opacity:.35}
+
+/* ---- foot controls ---- */
+#fRpad{position:absolute;right:0;bottom:0;top:34%;width:50%}
+#fFire{position:absolute;right:22px;bottom:calc(env(safe-area-inset-bottom,0px) + 26px);
+  width:88px;height:88px;border-radius:50%;border:2px solid rgba(224,51,47,.7);
+  background:rgba(224,51,47,.16);color:#fff;font-weight:800;letter-spacing:.1em;font-size:13px;display:grid;place-items:center}
+#fUse{position:absolute;left:50%;transform:translateX(-50%);bottom:32%;padding:12px 22px;
+  border:2px solid var(--gold);border-radius:8px;background:rgba(6,9,14,.72);color:var(--gold);
+  font-weight:800;letter-spacing:.16em;font-size:15px;opacity:0;transition:opacity .12s;pointer-events:none}
+#fUse.on{opacity:1;pointer-events:auto}
+
+/* ---- veil: title, options, controls ---- */
+#veil{position:absolute;inset:0;background:rgba(4,7,15,.94);display:grid;place-items:center;
+  padding:24px;z-index:20;overflow:auto}
+#veil.hidden{display:none}
+.vw{width:100%;max-width:380px;text-align:center}
+#veil h1{font-family:var(--disp);font-size:clamp(34px,11vw,56px);margin:0 0 4px;
+  letter-spacing:.04em;color:var(--gold);font-weight:800}
+#veil .sub{font-size:11px;letter-spacing:.22em;color:rgba(205,214,226,.5);margin-bottom:26px}
+#veil button{display:block;width:100%;margin:10px 0;padding:15px;border-radius:10px;
+  border:2px solid rgba(139,151,168,.4);background:rgba(20,26,35,.7);color:#e7edf5;
+  font-family:var(--mono);font-weight:700;letter-spacing:.16em;font-size:14px}
+#veil button.go{border-color:var(--gold);color:var(--gold)}
+.opt{display:flex;justify-content:space-between;padding:12px 2px;font-size:12px;
+  letter-spacing:.12em;border-bottom:1px solid rgba(139,151,168,.18)}
+.ctrls{text-align:left;font-size:12px;line-height:1.9;letter-spacing:.06em}
+.ctrls b{color:var(--gold)}
+.legal{margin-top:16px;font-size:8px;letter-spacing:.14em;color:rgba(255,255,255,.26)}
+</style>
+</head>
+<body>
+<div id="stage"><div id="frame">
+  <canvas id="cv"></canvas>
+
+  <!-- FLIGHT -->
+  <div id="flyHud" class="hud">
+    <div class="row">
+      <div class="stat" id="spd"><span>VELOCITY</span><b>0</b></div>
+      <div class="stat c" id="lock"><span>REAR CONE</span><b>&mdash;</b></div>
+      <div class="stat r" id="heat"><span>HEAT</span><b>0%</b></div>
+    </div>
+  </div>
+  <div id="msg" class="msg"></div>
+  <div id="flyCtl">
+    <div id="lpad" style="position:absolute;left:0;bottom:0;top:30%;width:56%"></div>
+    <div id="stick"><div id="nub"></div></div>
+    <div id="btns">
+      <button class="wbtn" id="msl">MSL</button>
+      <button class="wbtn" id="las">LAS</button>
+    </div>
+    <div id="thr"><div id="thrLbl">THRUST</div><div id="thrFill"></div><div id="detent"></div><div id="grip">0</div></div>
+  </div>
+
+  <!-- BOARDING -->
+  <div id="footHud" class="hud hidden">
+    <div class="row">
+      <div class="stat" id="fHp"><span>HULL</span><b>100</b></div>
+      <div class="stat c" id="fCargo"><span>CARGO</span><b>0</b></div>
+      <div class="stat r" id="fAmmo"><span>AMMO</span><b>24</b></div>
+    </div>
+  </div>
+  <div id="fMsg" class="msg"></div>
+  <div id="footCtl" class="hidden">
+    <div id="fLpad"></div><div id="fRpad"></div>
+    <div id="fStick"><div id="fNub"></div></div>
+    <button id="fFire" aria-label="Fire">FIRE</button>
+    <div id="fUse">TAKE</div>
+  </div>
+
+  <div id="veil"><div class="vw" id="veilBody"></div></div>
+</div></div>
+
+<script>
+/* ===========================================================================
+   PRIVATEER — Effigy original
+
+   Hunt a ship. Cripple it. Board it. Take everything.
+
+   Two views, one cabinet. PRIVATEER.md is the design; this file is builds 1
+   and 2 of it joined at the seam that matters: hold a ship in your rear cone
+   until its engines go dark, dock, and walk aboard.
+
+   The two views were prototyped separately (proto/bridge.html and
+   proto/corridor.html) and are merged here as CLOSURES rather than by
+   renaming anything — two 300-line prototypes sharing a global scope is how
+   you get a bug that only appears in one of them.
+   =========================================================================== */
+var AR = window.Arcade;
+var GAME_ID = 'privateer';
+var SV = (AR && AR.save) ? AR.save.get(GAME_ID) : null;
+var best = (SV && SV.bestRun) || 0;
+var opts = ((AR && AR.save) ? AR.save.get(GAME_ID + '-opts') : null) || { invertY:false };
+
+var MODE = 'title';           /* title | fly | board */
+var runT = 0, taken = 0;
+
+/* ---- sound: one bed, effects on the sfx bus, per the minimum standard --- */
+var snd = {
+  begin: function(){
+    if(!AR) return;
+    AR.audio.init();
+    if(!AR.audio.ctx) return;
+    if(!snd.drone) snd.drone = AR.sfx.hold({ freq:38.9, type:'sawtooth', cutoff:210, q:2.2, verb:0.45, bus:'music' });
+    snd.drone.set(38.9, 0.13, 210, 1.6);
+    AR.music.start(58, 4, snd.bed);
+  },
+  /* THE BED REACTS TO PLAY: a drone on the bridge, harder on a boarding */
+  bed: function(step){
+    if(!AR) return;
+    var s = step % 32;
+    var boarding = MODE === 'board';
+    if(s % 8 === 0)
+      AR.sfx.tone({ freq: boarding ? 87.3 : 65.4, dur:0.5, type:'triangle', gain:0.035, cutoff:520, bus:'music' });
+    if(boarding && s % 4 === 2)
+      AR.sfx.noise({ freq:2400, dur:0.05, gain:0.028, q:3, bus:'music' });
+    if(!boarding && s % 16 === 8)
+      AR.sfx.tone({ freq:98, dur:0.9, type:'sine', gain:0.028, bus:'music' });
+  },
+  shot:  function(){ AR && AR.sfx.tone({freq:420,to:90,dur:0.09,gain:0.10,type:'square'}); AR && AR.sfx.noise({freq:1600,dur:0.10,gain:0.13}); },
+  hit:   function(){ AR && AR.sfx.noise({freq:600,dur:0.09,gain:0.15,q:0.8}); },
+  kill:  function(){ AR && AR.sfx.tone({freq:200,to:50,dur:0.30,gain:0.12,type:'sawtooth'}); AR && AR.sfx.noise({freq:300,dur:0.26,gain:0.13}); },
+  wind:  function(){ AR && AR.sfx.tone({freq:150,to:340,dur:0.42,gain:0.07,type:'sawtooth'}); },
+  ow:    function(){ AR && AR.sfx.tone({freq:180,to:70,dur:0.20,gain:0.14,type:'triangle'}); AR && AR.sfx.noise({freq:400,dur:0.16,gain:0.12}); },
+  dry:   function(){ AR && AR.sfx.tone({freq:900,dur:0.04,gain:0.05,type:'square'}); },
+  take:  function(){ AR && AR.sfx.tone({freq:520,to:780,dur:0.10,gain:0.10}); AR && AR.sfx.tone({freq:780,to:1180,dur:0.12,gain:0.08}); },
+  laser: function(){ AR && AR.sfx.tone({freq:880,to:220,dur:0.12,gain:0.09,type:'square',cutoff:2200}); },
+  msl:   function(){ AR && AR.sfx.noise({freq:700,dur:0.5,gain:0.16,q:0.6}); },
+  boom:  function(){ AR && AR.sfx.noise({freq:180,dur:0.7,gain:0.22,q:0.5}); AR && AR.sfx.tone({freq:120,to:40,dur:0.6,gain:0.14,type:'sawtooth'}); },
+  dock:  function(){ AR && AR.sfx.tone({freq:300,to:520,dur:0.25,gain:0.10,type:'square'}); },
+  ok:    function(){ AR && AR.sfx.tone({freq:520,to:900,dur:0.20,gain:0.10}); }
+};
+function say(t){ var m=document.getElementById('msg'); m.textContent=t;
+  m.classList.remove('on'); void m.offsetWidth; m.classList.add('on'); }
+function sayFoot(t){ var m=document.getElementById('fMsg'); m.textContent=t;
+  m.classList.remove('on'); void m.offsetWidth; m.classList.add('on'); }
+</script>
+
+<script>
+/* ======================= THE BRIDGE (build 2, closed over) ================ */
+var FLY = (function(){
+
+/* ===========================================================================
+   THE SHIP
+
+   Position, and a FACING held as pitch/yaw. No roll, by decision: on a phone
+   roll is disorientation with no upside, and without it "up" stays up and the
+   starfield keeps reading as a horizon.
+
+   Rate control: the stick sets an angular VELOCITY, and the ship keeps
+   turning while it is held. Position control (stick angle = ship angle) needs
+   a thumb that can hold an absolute position, which a thumb on glass cannot.
+   =========================================================================== */
+const S = {
+  x:0, y:0, z:0,
+  yaw:0, pitch:0,
+  vyaw:0, vpitch:0,
+  thr:0,           /* 0..110, where the lever is */
+  spd:0,           /* actual, chases thr */
+  heat:0,          /* afterburn cost */
+  cut:0            /* seconds of engine cut-out remaining */
+};
+const MAXV = 320;              /* units/sec at 100% */
+const TURN = 1.15;             /* rad/sec at full stick */
+
+/* The target runs, and TURNS TO DENY ITS TAIL — the behaviour the whole
+   combat model is built around, present here before any weapon exists. */
+const T = {
+  x:0, y:40, z:900, yaw:0, pitch:0, spd:150,
+  evade:0, evadeT:0,
+  hull:100, disabled:0, dead:0
+};
+
+let coneT = 0, held = 0, best = 0, won = false;
+
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let W=390, H=780, DPR=1;
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(2, devicePixelRatio||1);
+  W = Math.round(r.width); H = Math.round(r.height);
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  g.setTransform(DPR,0,0,DPR,0,0);
+}
+
+
+/* ---- stars: a fixed sphere of them, projected. Cheap and it is the only
+   thing that tells you that you are moving and turning. ------------------- */
+const STARS = [];
+for(let i=0;i<220;i++){
+  const th = Math.random()*Math.PI*2, ph = Math.acos(2*Math.random()-1);
+  STARS.push({ x:Math.sin(ph)*Math.cos(th), y:Math.cos(ph), z:Math.sin(ph)*Math.sin(th),
+               m: 0.35 + Math.random()*0.65 });
+}
+/* dust: near particles that streak with speed, so thrust READS */
+const DUST = [];
+for(let i=0;i<90;i++) DUST.push({ x:(Math.random()-.5)*600, y:(Math.random()-.5)*600, z:Math.random()*900 });
+
+
+/* ===========================================================================
+   CONTROLS
+   =========================================================================== */
+const stick=document.getElementById('stick'), nub=document.getElementById('nub');
+let sId=null, sx=0, sy=0, ax=0, ay=0;
+
+document.getElementById('lpad').addEventListener('pointerdown', e=>{
+  e.preventDefault();  sId=e.pointerId; sx=e.clientX; sy=e.clientY;
+  const r=document.getElementById('frame').getBoundingClientRect();
+  stick.style.left=(e.clientX-r.left-66)+'px';
+  stick.style.top =(e.clientY-r.top -66)+'px';
+  stick.classList.add('on');
+});
+
+/* ---- the throttle -------------------------------------------------------
+   A LEVER, not a button: you drag the grip and it stays where you let go.
+   That is the whole reason the layout works — a thumb that has set the
+   throttle is a thumb free for the weapons in Build 3. */
+const thr=document.getElementById('thr'), grip=document.getElementById('grip'),
+      fill=document.getElementById('thrFill'), det=document.getElementById('detent');
+let tId=null;
+function thrFromY(clientY){
+  const r=thr.getBoundingClientRect();
+  const f=1-(clientY-r.top)/r.height;
+  return Math.max(0, Math.min(1.10, f*1.10));
+}
+function setThr(v, quiet){
+  const was=S.thr;
+  S.thr=Math.max(0,Math.min(110, v*100));
+  /* the detent: it takes a deliberate push to cross 100 into afterburn */
+  if(was<=100 && S.thr>100 && !quiet){ AR&&AR.sfx.tone({freq:220,to:420,dur:0.12,gain:0.09}); window.say('AFTERBURN'); }
+  layoutThr();
+}
+function layoutThr(){
+  const r=thr.getBoundingClientRect(), h=r.height;
+  const f=S.thr/110;
+  grip.style.bottom=(f*(h-38)+2)+'px';
+  grip.textContent=Math.round(S.thr);
+  fill.style.height=(f*h)+'px';
+  det.style.bottom=((100/110)*(h-38)+18)+'px';
+  grip.style.borderColor = S.thr>100 ? 'rgba(224,51,47,.9)' : 'rgba(205,214,226,.55)';
+}
+thr.addEventListener('pointerdown', e=>{ e.preventDefault();  tId=e.pointerId; setThr(thrFromY(e.clientY)); });
+
+addEventListener('pointermove', e=>{
+  if(e.pointerId===sId){
+    const dx=e.clientX-sx, dy=e.clientY-sy, R=62;
+    ax=Math.max(-1,Math.min(1,dx/R)); ay=Math.max(-1,Math.min(1,dy/R));
+    nub.style.transform='translate('+(ax*R)+'px,'+(ay*R)+'px)';
+  }
+  if(e.pointerId===tId) setThr(thrFromY(e.clientY));
+});
+function up(e){
+  if(e.pointerId===sId){ sId=null; ax=ay=0; stick.classList.remove('on'); nub.style.transform=''; }
+  if(e.pointerId===tId) tId=null;      /* the lever STAYS. that is the point. */
+}
+addEventListener('pointerup',up); addEventListener('pointercancel',up);
+
+/* keyboard, for the harness and a desk */
+const keys={};
+addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=1;
+  if(e.key.startsWith('Arrow')||e.key===' ') e.preventDefault(); });
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+
+/* ===========================================================================
+   FLIGHT
+   =========================================================================== */
+function stepShip(dt){
+  let stx=ax, sty=ay;
+  if(keys['arrowleft']) stx=-1; if(keys['arrowright']) stx=1;
+  if(keys['arrowup'])   sty=-1; if(keys['arrowdown'])  sty=1;
+  if(keys['q']) setThr(Math.max(0,S.thr/100-1.2*dt));
+  if(keys['e']) setThr(Math.min(1.10,S.thr/100+1.2*dt));
+
+  /* rate control with a little inertia, so it is a SHIP and not a cursor */
+  const want = TURN*stx, wantP = TURN*sty*0.78;
+  S.vyaw   += (want  - S.vyaw)   * Math.min(1, dt*5.5);
+  S.vpitch += (wantP - S.vpitch) * Math.min(1, dt*5.5);
+  S.yaw   += S.vyaw*dt;
+  S.pitch  = Math.max(-1.2, Math.min(1.2, S.pitch + S.vpitch*dt));
+
+  /* ---- afterburn heat ------------------------------------------------
+     110% builds heat and at redline the engines cut and you drift. The one
+     tool that catches a runner is the one that can hand you to a hunter. */
+  if(S.cut > 0){
+    S.cut -= dt; S.thr = 0; layoutThr();
+    S.heat = Math.max(0, S.heat - dt*22);
+    if(S.cut <= 0) window.say('ENGINES RESTARTED');
+  } else {
+    if(S.thr > 100){ S.heat += dt*(14 + (S.thr-100)*3.2); }
+    else S.heat = Math.max(0, S.heat - dt*9);
+    if(S.heat >= 100){ S.heat=100; S.cut=3.2; AR&&AR.sfx.tone({freq:300,to:60,dur:0.6,gain:0.12,type:'sawtooth'}); window.say('ENGINES CUT'); }
+  }
+
+  const target = (S.cut>0 ? 0 : S.thr/100) * MAXV;
+  S.spd += (target - S.spd) * Math.min(1, dt*1.35);
+
+  const f = facing(S.yaw, S.pitch);
+  S.x += f.x*S.spd*dt; S.y += f.y*S.spd*dt; S.z += f.z*S.spd*dt;
+
+}
+function facing(yaw,pitch){
+  const cp=Math.cos(pitch);
+  return { x:Math.sin(yaw)*cp, y:-Math.sin(pitch), z:Math.cos(yaw)*cp };
+}
+
+/* ---- the target runs, and turns to deny its tail --------------------- */
+function stepTarget(dt){
+  if(T.disabled){
+    T.spd += (0 - T.spd)*Math.min(1,dt*0.8);
+    const f0=facing(T.yaw,T.pitch);
+    T.x+=f0.x*T.spd*dt; T.y+=f0.y*T.spd*dt; T.z+=f0.z*T.spd*dt; return;
+  }
+  const dx=S.x-T.x, dy=S.y-T.y, dz=S.z-T.z;
+  const d=Math.hypot(dx,dy,dz);
+  /* where is the hunter relative to my nose? */
+  const tf=facing(T.yaw,T.pitch);
+  const dot=(dx*tf.x+dy*tf.y+dz*tf.z)/Math.max(1,d);
+  /* dot < 0 means he is BEHIND me: turn hard, do not fly straight */
+  T.evadeT -= dt;
+  if(T.evadeT<=0){ T.evadeT=0.9+Math.random()*1.1; T.evade=(Math.random()*2-1); }
+  const denial = dot < 0.2 ? 1 : 0.25;
+  T.yaw   += (T.evade*0.85*denial)*dt;
+  T.pitch += (Math.sin(T.evadeT*2.1)*0.30*denial)*dt;
+  T.pitch  = Math.max(-0.9,Math.min(0.9,T.pitch));
+  T.spd = d < 700 ? 190 : 150;
+  const f=facing(T.yaw,T.pitch);
+  T.x+=f.x*T.spd*dt; T.y+=f.y*T.spd*dt; T.z+=f.z*T.spd*dt;
+}
+
+/* ---- am I in its rear cone? the shot that will matter in Build 3 ------- */
+function coneState(){
+  const dx=S.x-T.x, dy=S.y-T.y, dz=S.z-T.z, d=Math.hypot(dx,dy,dz);
+  const tf=facing(T.yaw,T.pitch);
+  const behind = -(dx*tf.x+dy*tf.y+dz*tf.z)/Math.max(1,d);   /* 1 = dead astern */
+  /* a 60 degree cone: cos(30deg) ~ 0.866 measured off the tail axis */
+  return { in: behind > 0.80 && d < 620 && d > 45, d, behind };
+}
+
+/* ===========================================================================
+   THE VIEW — from the chair, through the glass
+   =========================================================================== */
+function project(px,py,pz){
+  /* ---- world -> camera -------------------------------------------------
+     Both rotations were signed wrong, and the symptom was absurd: the
+     harness reported dead astern at 303m with the cone held, and the ship
+     was not on the screen — the off-screen chevron was pointing at a target
+     that should have been filling the middle of the glass.
+
+     The test: the forward vector (sin yaw·cp, -sin pitch, cos yaw·cp) MUST
+     transform to (0,0,1). It now does. */
+  const cy=Math.cos(S.yaw), sy=Math.sin(S.yaw);
+  const x=px*cy - pz*sy, z=px*sy + pz*cy, y=py;
+  const cp=Math.cos(S.pitch), sp=Math.sin(S.pitch);
+  const y2=y*cp + z*sp, z2=-y*sp + z*cp;
+  if(z2<=1) return null;
+  const fl=W*0.9;
+  return { x:W/2 + x*fl/z2, y:H/2 + y2*fl/z2, z:z2, s:fl/z2 };
+}
+
+function draw(){
+  g.fillStyle='#04060a'; g.fillRect(0,0,W,H);
+
+  /* stars, at infinity: rotate only */
+  const cy=Math.cos(S.yaw), sy=Math.sin(S.yaw);
+  const cp=Math.cos(S.pitch), sp=Math.sin(S.pitch);
+  for(const st of STARS){
+    const x=st.x*cy - st.z*sy, z=st.x*sy + st.z*cy, y=st.y;
+    const y2=y*cp + z*sp, z2=-y*sp + z*cp;
+    if(z2<=0.05) continue;
+    const fl=W*0.9;
+    const sx2=W/2 + x*fl/z2, sy2=H/2 + y2*fl/z2;
+    if(sx2<0||sx2>W||sy2<0||sy2>H) continue;
+    g.fillStyle='rgba(205,220,240,'+(0.25+st.m*0.6)+')';
+    const r=st.m*1.5;
+    g.fillRect(sx2, sy2, r, r);
+  }
+
+  /* dust: the only thing that makes SPEED legible in empty space */
+  const f=facing(S.yaw,S.pitch);
+  for(const p of DUST){
+    const rx=p.x-(S.x%600), ry=p.y-(S.y%600), rz=p.z-(S.z%900);
+    const a=project(rx,ry,rz<0?rz+900:rz);
+    if(!a) continue;
+    const len=Math.min(46, S.spd*0.055);
+    g.strokeStyle='rgba(150,180,220,'+Math.min(.5,(1-a.z/900)*0.6)+')';
+    g.lineWidth=1;
+    g.beginPath(); g.moveTo(a.x,a.y); g.lineTo(a.x, a.y+len*0.02+ (a.z<300?len*0.2:0)); g.stroke();
+  }
+
+  /* ---- the target ---- */
+  const rel=project(T.x-S.x, T.y-S.y, T.z-S.z);
+  const cs=coneState();
+  if(rel){
+    const sz=Math.max(3, 3000*rel.s/90);
+    const tf=facing(T.yaw,T.pitch);
+    /* hull */
+    g.fillStyle = cs.in ? '#4dd6a0' : '#8b97a8';
+    g.globalAlpha = 0.92;
+    g.fillRect(rel.x-sz*0.5, rel.y-sz*0.26, sz, sz*0.52);
+    g.fillStyle = '#2c3648';
+    g.fillRect(rel.x-sz*0.5, rel.y-sz*0.06, sz*0.78, sz*0.12);
+    g.globalAlpha = 1;
+    /* the ENGINE GLOW: where the shot goes. Bright when you are astern. */
+    const showTail = cs.behind > 0.35;
+    if(showTail){
+      const gl = 0.25 + cs.behind*0.75;
+      g.fillStyle='rgba(120,200,255,'+gl+')';
+      g.beginPath(); g.arc(rel.x, rel.y, sz*0.18*(0.6+gl*0.6), 0, 6.2832); g.fill();
+      g.fillStyle='rgba(255,255,255,'+(gl*0.6)+')';
+      g.beginPath(); g.arc(rel.x, rel.y, sz*0.07, 0, 6.2832); g.fill();
+    }
+    /* bracket */
+    g.strokeStyle = cs.in ? 'rgba(77,214,160,.95)' : 'rgba(139,151,168,.55)';
+    g.lineWidth=2; const b=sz*0.85;
+    g.beginPath();
+    g.moveTo(rel.x-b,rel.y-b+8); g.lineTo(rel.x-b,rel.y-b); g.lineTo(rel.x-b+8,rel.y-b);
+    g.moveTo(rel.x+b,rel.y-b+8); g.lineTo(rel.x+b,rel.y-b); g.lineTo(rel.x+b-8,rel.y-b);
+    g.moveTo(rel.x-b,rel.y+b-8); g.lineTo(rel.x-b,rel.y+b); g.lineTo(rel.x-b+8,rel.y+b);
+    g.moveTo(rel.x+b,rel.y+b-8); g.lineTo(rel.x+b,rel.y+b); g.lineTo(rel.x+b-8,rel.y+b);
+    g.stroke();
+    g.fillStyle='rgba(205,214,226,.75)'; g.font='11px ui-monospace,monospace';
+    g.textAlign='center';
+    g.fillText(Math.round(cs.d)+'m', rel.x, rel.y+b+16);
+  } else {
+    /* off-screen chevron: without it you lose the target and never find it */
+    const dx=T.x-S.x, dy=T.y-S.y, dz=T.z-S.z;
+    const cyy=Math.cos(S.yaw), syy=Math.sin(S.yaw);
+    const x=dx*cyy - dz*syy;
+    g.fillStyle='rgba(233,230,168,.8)';
+    const ex = x>0 ? W-26 : 26;
+    g.beginPath(); g.moveTo(ex, H*0.42); g.lineTo(ex+(x>0?-16:16), H*0.42-11);
+    g.lineTo(ex+(x>0?-16:16), H*0.42+11); g.closePath(); g.fill();
+  }
+
+  /* ---- the hunter, when there is one ---- */
+  if(HUN.live){
+    const hr=project(HUN.x-S.x, HUN.y-S.y, HUN.z-S.z);
+    if(hr){
+      const hz=Math.max(3, 2600*hr.s/90);
+      g.fillStyle = HUN.onTail ? '#e0332f' : '#a5606a';
+      g.fillRect(hr.x-hz*0.5, hr.y-hz*0.22, hz, hz*0.44);
+      g.fillStyle='rgba(255,140,110,.9)';
+      g.beginPath(); g.arc(hr.x, hr.y, hz*0.14, 0, 6.2832); g.fill();
+      g.strokeStyle='rgba(224,51,47,.9)'; g.lineWidth=2;
+      const hb=hz*0.85;
+      g.strokeRect(hr.x-hb, hr.y-hb, hb*2, hb*2);
+    } else if(HUN.onTail){
+      /* off the glass and shooting at you: the warning matters more than
+         the ship does */
+      g.fillStyle='rgba(224,51,47,.8)';
+      g.fillRect(0, H*0.5-2, W, 3);
+    }
+  }
+  if(S.hull < 100){
+    g.fillStyle='rgba(224,51,47,'+(0.10+(1-S.hull/100)*0.28)+')';
+    g.fillRect(0,0,W,6); g.fillRect(0,H-6,W,6);
+  }
+
+  /* ---- the bridge: a frame around the glass, so you are SOMEWHERE ---- */
+  const fh=H*0.11;
+  const gd=g.createLinearGradient(0,H-fh*2.2,0,H);
+  gd.addColorStop(0,'rgba(10,14,20,0)'); gd.addColorStop(1,'rgba(10,14,20,.92)');
+  g.fillStyle=gd; g.fillRect(0,H-fh*2.2,W,fh*2.2);
+  g.fillStyle='#0d121a'; g.fillRect(0,H-fh*0.5,W,fh*0.5);
+  /* window pillars */
+  g.fillStyle='rgba(16,22,31,.95)';
+  g.fillRect(0,0,W*0.045,H); g.fillRect(W-W*0.045,0,W*0.045,H);
+  g.fillStyle='rgba(16,22,31,.9)'; g.fillRect(0,0,W,H*0.035);
+
+  /* the reticle: where the nose points */
+  g.strokeStyle='rgba(205,214,226,.5)'; g.lineWidth=1.5;
+  g.beginPath(); g.arc(W/2,H/2,13,0,6.2832); g.stroke();
+  g.fillStyle='rgba(205,214,226,.75)';
+  g.fillRect(W/2-1,H/2-22,2,9); g.fillRect(W/2-1,H/2+13,2,9);
+  g.fillRect(W/2-22,H/2-1,9,2); g.fillRect(W/2+13,H/2-1,9,2);
+
+  /* the cone timer: the only goal in this build */
+  if(cs.in || held>0){
+    const p=Math.min(1,held/3);
+    g.strokeStyle='rgba(77,214,160,.9)'; g.lineWidth=4;
+    g.beginPath(); g.arc(W/2,H/2,26,-Math.PI/2,-Math.PI/2+6.2832*p); g.stroke();
+  }
+}
+
+/* ===========================================================================
+   LOOP
+   =========================================================================== */
+
+
+
+  /* ===== THE HUNTER — PRIVATEER.md 5b ==================================
+     The design closes on itself here, and it costs almost nothing: he flies
+     the pursuit the player just flew, wants the same rear cone, and takes
+     the same shot. The only difference is that the engines he is aiming at
+     are yours. Named HUN, not H — H is already this view's canvas height,
+     and finding that out by way of a syntax error was avoidable. */
+  const HUN = { x:0, y:-60, z:-1100, yaw:0, pitch:0, spd:0, live:0, fireT:0, onTail:0 };
+  S.hull = 100; S.disabled = 0;
+
+  function stepHunter(dt){
+    if(!HUN.live) return;
+    const dx=S.x-HUN.x, dy=S.y-HUN.y, dz=S.z-HUN.z, d=Math.hypot(dx,dy,dz);
+    const pf=facing(S.yaw,S.pitch);
+    const gx=S.x-pf.x*160, gy=S.y-pf.y*160, gz=S.z-pf.z*160;
+    const ax=gx-HUN.x, ay=gy-HUN.y, az=gz-HUN.z;
+    let dyaw=Math.atan2(ax,az)-HUN.yaw;
+    while(dyaw>Math.PI) dyaw-=6.2832; while(dyaw<-Math.PI) dyaw+=6.2832;
+    HUN.yaw += Math.max(-0.95*dt, Math.min(0.95*dt, dyaw));
+    const wantP = -Math.atan2(ay, Math.hypot(ax,az));
+    HUN.pitch += Math.max(-0.7*dt, Math.min(0.7*dt, wantP-HUN.pitch));
+    HUN.spd += ((d>420 ? 300 + HUN.heat*22 : 205) - HUN.spd) * Math.min(1, dt*1.1);
+    const hf=facing(HUN.yaw,HUN.pitch);
+    HUN.x+=hf.x*HUN.spd*dt; HUN.y+=hf.y*HUN.spd*dt; HUN.z+=hf.z*HUN.spd*dt;
+
+    /* the same cone test, pointed the other way */
+    const behind = (dx*pf.x+dy*pf.y+dz*pf.z)/Math.max(1,d);
+    HUN.onTail = behind < -0.60 && d < 660;
+    HUN.fireT -= dt;
+    if(HUN.onTail && HUN.fireT <= 0 && !S.disabled){
+      HUN.fireT = Math.max(0.6, 1.15 - HUN.heat*0.14);
+      if(Math.random() < 0.75){
+        S.hull -= 9 + HUN.heat*2;
+        if(S.hull <= 45 && Math.random() < 0.5) S.disabled = 1;
+        if(window.onHunterHit) window.onHunterHit();
+      }
+    }
+    if(S.disabled){ S.thr = 0; layoutThr(); }
+  }
+  function sendHunter(heat){
+    HUN.heat = heat || 0;               /* how badly they want you */
+    const pf=facing(S.yaw,S.pitch);
+    HUN.x = S.x - pf.x*1500; HUN.y = S.y - pf.y*1500 - 90; HUN.z = S.z - pf.z*1500;
+    HUN.yaw = S.yaw; HUN.pitch = S.pitch; HUN.spd = 230 + HUN.heat*18; HUN.live = 1; HUN.fireT = Math.max(1.2, 2.6 - HUN.heat*0.4);
+  }
+
+  function reset(){
+    S.x=S.y=S.z=0; S.yaw=S.pitch=0; S.vyaw=S.vpitch=0; S.thr=0; S.spd=0; S.heat=0; S.cut=0;
+    T.x=0; T.y=40; T.z=900; T.yaw=0; T.pitch=0; T.spd=150; T.hull=100; T.disabled=0; T.dead=0;
+    S.hull=100; S.disabled=0;
+    HUN.live=0; HUN.x=0; HUN.y=-60; HUN.z=-1100;
+    HUN.yaw=0; HUN.pitch=0; HUN.spd=0; HUN.onTail=0;
+    held=0; layoutThr();
+  }
+  return { resize:function(){ resize(); layoutThr(); },
+           step:function(dt){ stepShip(dt); stepTarget(dt); stepHunter(dt); },
+           draw:draw, S:S, T:T, HUN:HUN, cone:coneState, setThr:setThr, reset:reset,
+           sendHunter:sendHunter,
+           hunterDist:function(){ return Math.hypot(S.x-HUN.x,S.y-HUN.y,S.z-HUN.z); } };
+})();
+</script>
+<script>
+/* ======================= THE BOARDING (build 1, closed over) ============== */
+var FOOT = (function(){
+
+/* ===========================================================================
+   THE MAP
+
+   A grid, because a raycaster wants one. 1 is hull plate, 2 is a bulkhead
+   frame (drawn differently so the corridor has rhythm), 0 is deck.
+
+   This is deliberately ONE CORRIDOR with a room at each end — the spec says
+   variety comes from what is IN the rooms, not from the geometry, and a
+   procedurally generated corridor is exactly as interesting as a corridor.
+   =========================================================================== */
+const MAP = [
+  '111111111111111111',
+  '111111111111111111',
+  '111111111111110001',
+  '122222222222210001',   /* 2 = bulkhead frame: gives the corridor rhythm */
+  '100000000000000001',   /* the corridor, and the doorway at x=13         */
+  '100000000000000001',
+  '122222222222210001',
+  '111111111111110001',
+  '111111111111111111',
+  '111111111111111111'
+].map(r => r.split('').map(c => c === '1' ? 1 : c === '2' ? 2 : 0));
+const MH = MAP.length, MW = MAP[0].length;
+const solid = (x, y) => x < 0 || y < 0 || x >= MW || y >= MH ? 1 : MAP[y|0][x|0];
+
+/* ---- fixed internal resolution ------------------------------------------
+   Raycast cost is one DDA per COLUMN, so it scales with width, not with
+   pixels. 240 columns upscaled looks correct for the era and holds 60fps on
+   a phone that would drop frames at native width. */
+const RW = 240;
+const FOV = Math.PI / 3;
+
+const cv = document.getElementById('cv'), g = cv.getContext('2d', { alpha:false });
+let W = 240, H = 400, DPR = 1;
+
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(2, devicePixelRatio || 1);
+  W = RW;
+  H = Math.round(RW * (r.height / r.width));
+  cv.width = W; cv.height = H;
+  g.imageSmoothingEnabled = false;
+}
+
+
+/* ===========================================================================
+   STATE
+   =========================================================================== */
+const P = { x: 2.5, y: 4.5, a: 0, hp: 100, ammo: 24, cargo: 0, kick: 0, hurt: 0 };
+let zbuf = new Float32Array(RW);
+let msgT = 0, dead = false, won = false;
+
+/* Hostiles. They telegraph LOUDLY and SLOWLY — the fight is positional, and a
+   phone player needs to read a wind-up without a mouse. */
+function mob(x, y){
+  return { x, y, hp: 34, state:'idle', t:0, wind:0, hit:0, dead:0, seen:0, kind:'crew' };
+}
+let mobs = [ mob(8.5, 4.5), mob(11.5, 5.4) ];
+let crate = { x: 15.4, y: 4.5, taken:0 };
+
+/* ===========================================================================
+   AUDIO — thin on purpose
+
+   Build 1 does not load arcade.js: it is a prototype and the shell brings a
+   pause gate, a save layer and a header it has no use for yet. It makes its
+   own noises and will adopt Arcade.sfx when it moves into games/.
+   =========================================================================== */
+
+/* ===========================================================================
+   INPUT
+
+   Left thumb is a floating stick: put it down anywhere on the left half and
+   the stick appears there. Right thumb drags to look. FIRE is its own button
+   under the right thumb so that looking and shooting do not fight.
+
+   Keyboard is here for the test harness and for a desk, not as the design
+   target — this is a phone game first.
+   =========================================================================== */
+const keys = {};
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = 1;
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
+  if(e.key === ' ') shoot();
+  if(e.key.toLowerCase() === 'e') useVerb();
+});
+addEventListener('keyup', e => keys[e.key.toLowerCase()] = 0);
+
+let stickId = null, stickX = 0, stickY = 0, mvX = 0, mvY = 0;
+let lookId = null, lookX = 0;
+const stick = document.getElementById('fStick'), nub = document.getElementById('fNub');
+
+function pt(e){ return { x:e.clientX, y:e.clientY }; }
+document.getElementById('fLpad').addEventListener('pointerdown', e => {
+  e.preventDefault(); stickId = e.pointerId;
+  const p = pt(e); stickX = p.x; stickY = p.y;
+  const r = document.getElementById('frame').getBoundingClientRect();
+  stick.style.left = (p.x - r.left - 56) + 'px';
+  stick.style.top  = (p.y - r.top  - 56) + 'px';
+  stick.classList.add('on');
+});
+document.getElementById('fRpad').addEventListener('pointerdown', e => {
+  e.preventDefault(); lookId = e.pointerId; lookX = pt(e).x;
+});
+addEventListener('pointermove', e => {
+  if(e.pointerId === stickId){
+    const p = pt(e), dx = p.x - stickX, dy = p.y - stickY, R = 52;
+    const d = Math.min(1, Math.hypot(dx, dy) / R);
+    const a = Math.atan2(dy, dx);
+    mvX = Math.cos(a) * d; mvY = Math.sin(a) * d;
+    nub.style.transform = 'translate(' + (Math.cos(a)*d*R) + 'px,' + (Math.sin(a)*d*R) + 'px)';
+  }
+  if(e.pointerId === lookId){
+    const p = pt(e); P.a += (p.x - lookX) * 0.0055; lookX = p.x;
+  }
+});
+function release(e){
+  if(e.pointerId === stickId){ stickId = null; mvX = mvY = 0;
+    stick.classList.remove('on'); nub.style.transform = ''; }
+  if(e.pointerId === lookId) lookId = null;
+}
+addEventListener('pointerup', release);
+addEventListener('pointercancel', release);
+
+/* ===========================================================================
+   SHOOTING — hitscan, generous, no vertical aim (PRIVATEER.md §6)
+
+   "Generous" is a number: anything within ~7° of the crosshair and in line of
+   sight is hit. On a phone the thumb is the enemy, not the aim.
+   =========================================================================== */
+function los(ax, ay, bx, by){
+  const dx = bx-ax, dy = by-ay, n = Math.ceil(Math.hypot(dx,dy) * 8);
+  for(let i=1;i<n;i++){ const t=i/n; if(solid(ax+dx*t, ay+dy*t)) return false; }
+  return true;
+}
+function shoot(){
+  if(dead || won) return;
+  if(P.ammo <= 0){ snd.dry(); window.sayFoot('DRY'); return; }
+  P.ammo--; P.kick = 1; snd.shot();
+  let best = null, bestD = 1e9;
+  for(const m of mobs){
+    if(m.dead) continue;
+    const dx = m.x-P.x, dy = m.y-P.y, d = Math.hypot(dx,dy);
+    let da = Math.atan2(dy,dx) - P.a;
+    while(da >  Math.PI) da -= Math.PI*2;
+    while(da < -Math.PI) da += Math.PI*2;
+    /* generous, and MORE generous close in, where a sprite is wide */
+    const tol = 0.12 + Math.min(0.16, 0.5/Math.max(0.6,d));
+    if(Math.abs(da) < tol && d < bestD && los(P.x,P.y,m.x,m.y)){ best = m; bestD = d; }
+  }
+  if(best){
+    best.hp -= KIT.dmg; best.hit = 1; best.state = 'alert';
+    if(best.hp <= 0){ best.dead = 1; snd.kill(); window.sayFoot('DOWN'); }
+    else snd.hit();
+  }
+  hud();
+}
+
+function useVerb(){
+  if(crate.taken || Math.hypot(crate.x-P.x, crate.y-P.y) > 1.6) return;
+  crate.taken = 1; P.cargo += 1; snd.take(); window.sayFoot('CARGO TAKEN');
+  won = true; hud();
+}
+
+/* ===========================================================================
+   THE MOBS
+
+   Three states and a long wind-up. They do not chase well and they are not
+   meant to: the fight is about whether you can back off down the corridor
+   while one is winding up, and shoot the other.
+   =========================================================================== */
+function otherMob(self, x, y){
+  for(const m of mobs){ if(m===self || m.dead) continue;
+    if(Math.hypot(m.x-x, m.y-y) < 0.62) return m; }
+  return null;
+}
+
+function mobAt(x, y){
+  for(const m of mobs){ if(m.dead) continue;
+    if(Math.hypot(m.x-x, m.y-y) < 0.55) return m; }
+  return null;
+}
+
+function stepMobs(dt){
+  for(const m of mobs){
+    if(m.dead) continue;
+    m.hit = Math.max(0, m.hit - dt*4);
+    const d = Math.hypot(m.x-P.x, m.y-P.y);
+    const sees = d < 11 && los(m.x,m.y,P.x,P.y);
+    if(m.state === 'idle'){
+      if(sees){ m.state = 'alert'; m.t = 0; m.seen = 1; }
+    } else if(m.state === 'alert'){
+      m.t += dt;
+      /* close the gap, but slowly, and never all the way */
+      if(sees && d > 2.2){
+        const a = Math.atan2(P.y-m.y, P.x-m.x), sp = 1.15*dt;
+        const nx = m.x + Math.cos(a)*sp, ny = m.y + Math.sin(a)*sp;
+        if(!solid(nx, m.y) && !otherMob(m, nx, m.y)) m.x = nx;
+        if(!solid(m.x, ny) && !otherMob(m, m.x, ny)) m.y = ny;
+      }
+      /* a raider is not here for you, it is here for the hold — so it
+         keeps moving toward the crate even when it cannot see you */
+      if(m.raider){
+        const a2=Math.atan2(crate.y-m.y, crate.x-m.x), sp2=0.95*dt;
+        const rx=m.x+Math.cos(a2)*sp2, ry=m.y+Math.sin(a2)*sp2;
+        if(!solid(rx,m.y) && !otherMob(m,rx,m.y)) m.x=rx;
+        if(!solid(m.x,ry) && !otherMob(m,m.x,ry)) m.y=ry;
+        if(Math.hypot(crate.x-m.x, crate.y-m.y) < 1.0 && !lost){
+          lost = true; window.sayFoot('THEY HAVE YOUR HOLD');
+        }
+      }
+      if(sees && m.t > 1.0){ m.state = 'wind'; m.wind = 0; snd.wind(); }
+      if(!sees && m.t > 3) m.state = 'idle';
+    } else if(m.state === 'wind'){
+      m.wind += dt;
+      /* 0.75s of telegraph. Long. That is the point. */
+      if(m.wind >= 0.75){
+        m.state = 'alert'; m.t = 0;
+        if(los(m.x,m.y,P.x,P.y) && Math.hypot(m.x-P.x,m.y-P.y) < 11){
+          P.hp -= 11; P.hurt = 1; snd.ow(); hud();
+          if(P.hp <= 0){ P.hp = 0; dead = true; window.sayFoot('YOU ARE DEAD'); }
+        }
+      }
+    }
+  }
+}
+
+/* ===========================================================================
+   THE RENDERER
+   =========================================================================== */
+function frame(){
+  /* ---- ceiling and deck: flat, with a gradient so depth reads ---- */
+  const half = H/2;
+  let sky = g.createLinearGradient(0,0,0,half);
+  sky.addColorStop(0,'#141b26'); sky.addColorStop(1,'#242f40');
+  g.fillStyle = sky; g.fillRect(0,0,W,half);
+  let flr = g.createLinearGradient(0,half,0,H);
+  flr.addColorStop(0,'#20293a'); flr.addColorStop(1,'#10151d');
+  g.fillStyle = flr; g.fillRect(0,half,W,H-half);
+
+  /* ---- walls ---- */
+  const dirX = Math.cos(P.a), dirY = Math.sin(P.a);
+  const planeX = -dirY * Math.tan(FOV/2), planeY = dirX * Math.tan(FOV/2);
+
+  for(let x=0; x<W; x++){
+    const cam = 2*x/W - 1;
+    const rx = dirX + planeX*cam, ry = dirY + planeY*cam;
+    let mx = P.x|0, my = P.y|0;
+    const dX = Math.abs(1/rx), dY = Math.abs(1/ry);
+    let sx, sy, sdx, sdy;
+    if(rx < 0){ sx=-1; sdx=(P.x-mx)*dX; } else { sx=1; sdx=(mx+1-P.x)*dX; }
+    if(ry < 0){ sy=-1; sdy=(P.y-my)*dY; } else { sy=1; sdy=(my+1-P.y)*dY; }
+    let side=0, hit=0, cell=0, guard=0;
+    while(!hit && guard++ < 64){
+      if(sdx < sdy){ sdx += dX; mx += sx; side=0; } else { sdy += dY; my += sy; side=1; }
+      cell = solid(mx,my); if(cell) hit=1;
+    }
+    const dist = side ? (sdy - dY) : (sdx - dX);
+    zbuf[x] = dist;
+    const lh = Math.min(H*4, H / Math.max(0.0001, dist));
+    const y0 = Math.max(0, (H-lh)/2), y1 = Math.min(H, (H+lh)/2);
+    /* shade: side face darker, then fog with distance */
+    /* ---- LIGHT ----------------------------------------------------------
+       The first pass was legible on a desk monitor in a dark room and nearly
+       black on a phone in daylight. Three changes, all measured off the
+       screenshot rather than guessed:
+         · base plate lifted (38 -> 74) so a wall reads as metal, not void
+         · fog falls off over 20 cells instead of 13, and bottoms out at
+           0.30 rather than 0.12 — distance should dim, not erase
+         · the side face is 0.78 of the front, not 0.68: enough to read a
+           corner, not enough to lose the far wall entirely           */
+    const fog = Math.max(0.30, 1 - dist/20);
+    let base = cell === 2 ? [96,112,134] : [74,86,104];
+    if(side) base = base.map(v => v*0.78);
+    g.fillStyle = 'rgb('+base.map(v=>Math.round(v*fog))+')';
+    g.fillRect(x, y0, 1, y1-y0);
+    /* a lit strip along the bulkheads gives the corridor its rhythm */
+    if(cell === 2){
+      const sh = Math.max(1, lh*0.06);
+      g.fillStyle = 'rgba(255,236,170,'+(0.85*fog)+')';
+      g.fillRect(x, y0 + lh*0.30, 1, sh);
+    }
+  }
+
+  /* ---- sprites: painter's order, clipped against the wall z-buffer ---- */
+  const list = [];
+  for(const m of mobs) if(!m.dead) list.push({ o:m, kind:'mob', d:(m.x-P.x)**2+(m.y-P.y)**2 });
+  if(!crate.taken) list.push({ o:crate, kind:'crate', d:(crate.x-P.x)**2+(crate.y-P.y)**2 });
+  list.sort((a,b) => b.d - a.d);
+
+  for(const s of list){
+    const ox = s.o.x - P.x, oy = s.o.y - P.y;
+    const inv = 1 / (planeX*dirY - dirX*planeY);
+    const tx = inv * (dirY*ox - dirX*oy);
+    const ty = inv * (-planeY*ox + planeX*oy);
+    if(ty <= 0.15) continue;
+    const scx = (W/2) * (1 + tx/ty);
+    const sz = Math.abs(H/ty);
+    const hgt = s.kind === 'crate' ? sz*0.42 : sz*0.72;
+    const wid = s.kind === 'crate' ? sz*0.42 : sz*0.30;
+    const y1 = H/2 + sz*0.5, y0 = y1 - hgt;
+    const x0 = Math.round(scx - wid/2), x1 = Math.round(scx + wid/2);
+    const fog = Math.max(0.15, 1 - ty/13);
+    for(let x = Math.max(0,x0); x < Math.min(W,x1); x++){
+      if(zbuf[x] <= ty) continue;                    /* behind a wall */
+      const u = (x - x0) / (x1 - x0);
+      if(s.kind === 'crate'){
+        const c = [Math.round(214*fog), Math.round(180*fog), Math.round(84*fog)];
+        g.fillStyle = 'rgb('+c+')';
+        g.fillRect(x, y0, 1, hgt);
+        if(u > 0.44 && u < 0.56){ g.fillStyle='rgba(233,230,168,'+(0.7*fog)+')'; g.fillRect(x,y0,1,hgt); }
+      } else {
+        const m = s.o;
+        /* wind-up reads as the whole body going hot — visible at a glance,
+           which is the only kind of telegraph that works on a small screen */
+        const heat = m.state === 'wind' ? Math.min(1, m.wind/0.75) : 0;
+        /* a hostile has to be the brightest thing in the corridor or the eye
+           does not find it — at 70,92,112 they were DARKER than the wall
+           behind them and read as holes rather than people */
+        let c = [ Math.round((150 + heat*105 + m.hit*105) * fog),
+                  Math.round((172 - heat*80) * fog),
+                  Math.round((196 - heat*130) * fog) ];
+        /* ---- a body, not a slab ------------------------------------------
+           The first pass drew one flat colour over a head-and-shoulders
+           outline, and at any distance that is a grey rectangle. Three cheap
+           additions make it read as a person: a round-off so the edges fall
+           away from the centre line, a visor band across the head, and a gap
+           between the legs so the silhouette breaks at the bottom. */
+        const headH = hgt*0.26, legTop = y0 + hgt*0.66;
+        const inHead = u > 0.30 && u < 0.70;
+        if(u < 0.14 || u > 0.86) continue;      /* shoulders, not a slab */
+        const round = 1 - Math.pow(Math.abs(u-0.5)*2, 2)*0.42;   /* body shading */
+        const cc = c.map(v => Math.round(v*round));
+        g.fillStyle = 'rgb('+cc+')';
+        if(inHead) g.fillRect(x, y0, 1, hgt*0.66);
+        else       g.fillRect(x, y0 + headH, 1, hgt*0.66 - headH);
+        /* legs: two columns with a gap between them */
+        const legL = u > 0.32 && u < 0.46, legR = u > 0.54 && u < 0.68;
+        if(legL || legR){
+          g.fillStyle = 'rgb('+cc.map(v=>Math.round(v*0.78))+')';
+          g.fillRect(x, legTop, 1, hgt*0.34);
+        }
+        /* the visor: dark when idle, and it is what lights up on a wind-up */
+        if(inHead && u > 0.34 && u < 0.66){
+          g.fillStyle = m.state === 'wind'
+            ? 'rgba(255,214,110,'+(0.35 + 0.65*heat)+')'
+            : 'rgba(14,20,28,0.85)';
+          g.fillRect(x, y0 + headH*0.34, 1, Math.max(1, headH*0.36));
+        }
+        if(m.state === 'wind'){
+          g.fillStyle = 'rgba(255,220,120,'+(0.08 + 0.32*heat)+')';
+          g.fillRect(x, y0, 1, hgt*0.66);
+        }
+      }
+    }
+  }
+
+  /* ---- the gun, and the kick ---- */
+  const k = P.kick;
+  const gw = W*0.30, gx = W*0.62, gy = H - H*0.16 + k*H*0.03;
+  g.fillStyle = '#1b2230'; g.fillRect(gx, gy, gw, H*0.20);
+  g.fillStyle = '#2c3648'; g.fillRect(gx + gw*0.18, gy - H*0.05, gw*0.30, H*0.09);
+  g.fillStyle = '#8b97a8'; g.fillRect(gx + gw*0.26, gy - H*0.085, gw*0.12, H*0.045);
+  if(k > 0.35){
+    g.fillStyle = 'rgba(255,225,140,'+(k)+')';
+    const fx = gx + gw*0.32, fy = gy - H*0.10;
+    g.beginPath(); g.arc(fx, fy, H*0.030*k, 0, 6.2832); g.fill();
+  }
+
+  /* ---- crosshair ---- */
+  g.fillStyle = 'rgba(205,214,226,.55)';
+  g.fillRect(W/2-4, H/2, 3, 1); g.fillRect(W/2+2, H/2, 3, 1);
+  g.fillRect(W/2, H/2-4, 1, 3); g.fillRect(W/2, H/2+2, 1, 3);
+
+  /* ---- damage flash ---- */
+  if(P.hurt > 0){ g.fillStyle = 'rgba(224,51,47,'+(P.hurt*0.34)+')'; g.fillRect(0,0,W,H); }
+  if(dead){ g.fillStyle='rgba(60,0,0,.55)'; g.fillRect(0,0,W,H); }
+  if(won){ g.fillStyle='rgba(0,40,30,.35)'; g.fillRect(0,0,W,H); }
+}
+
+/* ===========================================================================
+   THE LOOP
+   =========================================================================== */
+
+function hud(){
+  const hpEl = document.getElementById('fHp'), amEl = document.getElementById('fAmmo');
+  hpEl.querySelector('b').textContent = P.hp;
+  amEl.querySelector('b').textContent = P.ammo;
+  document.getElementById('fCargo').querySelector('b').textContent = P.cargo;
+  hpEl.classList.toggle('low', P.hp <= 33);
+  amEl.classList.toggle('low', P.ammo <= 6);
+}
+
+/* a prototype gets a restart, not a menu */
+
+
+
+/* the harness reads this; nothing in the game does */
+
+  var SIDE='board', lost=false;
+  /* ---- THE LOCKER, where it lands ------------------------------------
+     A loadout screen is only a menu unless the numbers reach the fight.
+     These four are what a kit can move: how hard a shot hits, how many you
+     brought, how much you can take, and how fast you cross a corridor. */
+  var KIT = { dmg:18, ammo:24, hp:100, speed:2.6, name:'SIDEARM' };
+  function setKit(k){ KIT = k; }
+  function step(dt){
+    if(!dead && !won && !lost){
+      let fx = -(mvY), sxv = mvX;
+      if(keys['w']||keys['arrowup']) fx = 1;
+      if(keys['s']||keys['arrowdown']) fx = -1;
+      if(keys['a']) sxv = -1;
+      if(keys['d']) sxv = 1;
+      if(keys['arrowleft'])  P.a -= 2.2*dt;
+      if(keys['arrowright']) P.a += 2.2*dt;
+      const sp = KIT.speed*dt, dx = Math.cos(P.a), dy = Math.sin(P.a);
+      const nx = P.x + (dx*fx - dy*sxv) * sp, ny = P.y + (dy*fx + dx*sxv) * sp;
+      if(!solid(nx + Math.sign(nx-P.x)*0.18, P.y) && !mobAt(nx, P.y)) P.x = nx;
+      if(!solid(P.x, ny + Math.sign(ny-P.y)*0.18) && !mobAt(P.x, ny)) P.y = ny;
+      stepMobs(dt);
+    }
+    P.kick = Math.max(0, P.kick - dt*6);
+    P.hurt = Math.max(0, P.hurt - dt*2.2);
+    if(SIDE==='defend'){
+      document.getElementById('fUse').classList.remove('on');
+      if(!dead && !lost && mobs.every(m=>m.dead)) won = true;
+    } else {
+      const near = !crate.taken && Math.hypot(crate.x-P.x, crate.y-P.y) < 1.6;
+      document.getElementById('fUse').classList.toggle('on', near && !dead);
+    }
+  }
+  /* ---- one corridor, two situations ---------------------------------
+     'board'  = their ship. You walk in from the airlock, they are between
+                you and the cargo.
+     'defend' = YOURS. Same corridor, but you start at the bridge end, the
+                crate is your own hold, and they come in through the lock
+                at the far end and walk toward it. You know this deck; they
+                do not. That asymmetry is the whole of 5b. */
+  function reset(side){
+    SIDE = side || 'board';
+    P.hp=KIT.hp;
+    /* you defend with what is left in the rack, not a fresh crate */
+    P.ammo = SIDE==='defend' ? Math.max(8, Math.round(KIT.ammo*0.7)) : KIT.ammo;
+    P.cargo=0; P.kick=0; P.hurt=0;
+    mobs.length=0;
+    crate.taken=0; dead=false; won=false; lost=false;
+    if(SIDE==='defend'){
+      P.x=15.0; P.y=4.5; P.a=Math.PI;      /* stood over your own hold */
+      crate.x=15.4; crate.y=4.5;
+      mobs.push(mob(2.5,4.5)); mobs.push(mob(3.4,5.4));
+      for(const m of mobs){ m.state='alert'; m.seen=1; m.raider=1; }
+    } else {
+      P.x=2.5; P.y=4.5; P.a=0;
+      crate.x=15.4; crate.y=4.5;
+      mobs.push(mob(8.5,4.5)); mobs.push(mob(11.5,5.4));
+    }
+    hud();
+  }
+  return { resize:resize, step:step, draw:frame, P:P, shoot:shoot, use:useVerb,
+           reset:reset, get done(){ return won; }, get dead(){ return dead; },
+           get lost(){ return lost; }, get side(){ return SIDE; }, setKit:setKit,
+           /* read-only, for a test to check that a kit reached the fight */
+           mobs:mobs };
+})();
+</script>
+<script>
+/* ===========================================================================
+   THE SHELL — menus, the seam between the two views, and the run
+
+   The loop, end to end: fly, hold the rear cone until the engines go dark,
+   close to docking range and hold position, walk aboard, take the cargo, and
+   the run scores. PRIVATEER.md §5a calls docking a hold rather than a
+   cutscene; that is what dockHold is.
+   =========================================================================== */
+var veil = document.getElementById('veil'), veilBody = document.getElementById('veilBody');
+var dockHold = 0, phase = '', hunted = 0, boardTimer = 0, kept = 1;
+
+function openVeil(html, acts){
+  veilBody.innerHTML = html;
+  veil.classList.remove('hidden');
+  Object.keys(acts||{}).forEach(function(k){
+    var el = veilBody.querySelector('[data-act="'+k+'"]');
+    if(el) el.addEventListener('click', acts[k]);
+  });
+}
+function closeVeil(){ veil.classList.add('hidden'); }
+
+function title(){
+  MODE = 'title';
+  showFly(true);
+  openVeil(
+    '<h1>Privateer</h1><div class="sub">HUNT &middot; CRIPPLE &middot; BOARD</div>' +
+    '<button class="go" data-act="play">PLAY</button>' +
+    '<button data-act="controls">CONTROLS</button>' +
+    '<button data-act="options">OPTIONS</button>' +
+    '<button data-act="quit">QUIT</button>' +
+    (best ? '<div class="sub" style="margin-top:18px">BEST RUN ' + best.toFixed(1) + 's</div>' : '') +
+    '<div class="legal">&copy; 2026 EFFIGY MEDIA</div>',
+    { play: startRun, controls: controls, options: options,
+      quit: function(){ location.href = '../../index.html#em'; } });
+}
+
+function controls(){
+  var touch = AR && AR.touch;
+  openVeil(
+    '<h1 style="font-size:26px">CONTROLS</h1><div class="ctrls">' +
+    (touch
+      ? '<b>BRIDGE</b><br>left thumb &mdash; flight stick, where you touch<br>' +
+        'right &mdash; throttle lever, it stays where you leave it<br>' +
+        'past the red line &mdash; afterburn, and it builds heat<br>' +
+        'LAS / MSL &mdash; lasers and missiles<br><br>' +
+        '<b>ABOARD</b><br>left thumb &mdash; walk<br>right thumb &mdash; look<br>' +
+        'FIRE &mdash; shoot &middot; TAKE &mdash; the single verb'
+      : '<b>BRIDGE</b><br>arrows &mdash; stick<br>Q / E &mdash; throttle down / up<br>' +
+        'space &mdash; lasers &middot; M &mdash; missiles<br><br>' +
+        '<b>ABOARD</b><br>W A S D &mdash; move<br>arrows &mdash; turn<br>' +
+        'space &mdash; fire &middot; E &mdash; take') +
+    '<br><br><b>THE RULE</b><br>Engines disable. Everything else destroys &mdash; ' +
+    'and a wreck has no cargo. Get behind them.</div>' +
+    '<button class="go" data-act="back">BACK</button>',
+    { back: title });
+}
+
+function options(){
+  openVeil(
+    '<h1 style="font-size:26px">OPTIONS</h1>' +
+    '<div class="opt"><span>INVERT PITCH</span><b id="ov">' + (opts.invertY?'ON':'OFF') + '</b></div>' +
+    '<button data-act="inv">TOGGLE INVERT</button>' +
+    '<button class="go" data-act="back">BACK</button>',
+    { inv: function(){
+        opts.invertY = !opts.invertY;
+        if(AR && AR.save) AR.save.merge(GAME_ID + '-opts', { invertY: opts.invertY });
+        document.getElementById('ov').textContent = opts.invertY ? 'ON' : 'OFF';
+      },
+      back: title });
+}
+
+function showFly(on){
+  /* each view has its own banner, and both were left in the DOM — so
+     "THEY DOCK IN 1" from the bridge sat on top of "THEY ARE ABOARD" from
+     the corridor, and the two overprinted into nonsense. Whichever view is
+     not up gets its banner cleared and hidden. */
+  var a = document.getElementById('msg'), bb = document.getElementById('fMsg');
+  (on ? bb : a).classList.remove('on');
+  (on ? bb : a).textContent = '';
+  a.classList.toggle('hidden', !on);
+  bb.classList.toggle('hidden', on);
+  document.getElementById('flyHud').classList.toggle('hidden', !on);
+  document.getElementById('flyCtl').classList.toggle('hidden', !on);
+  document.getElementById('footHud').classList.toggle('hidden', on);
+  document.getElementById('footCtl').classList.toggle('hidden', on);
+}
+
+/* ===========================================================================
+   THE STATION, AND WHAT YOU ARE — PRIVATEER.md §7 and §8
+
+   One room, four things in it, so the whole station is legible at a glance.
+   The trading is deliberately thin: a price is a number, not a market
+   simulation. If it turns into a spreadsheet the game has drifted away from
+   the corridor.
+
+   And the pirate/hunter split is a CONSEQUENCE, not a class you pick. Two
+   numbers, and the world's behaviour is the only feedback there is:
+
+     take a ship nobody asked you to touch   -> pirate standing rises
+     take a ship you were contracted to take -> hunter standing rises
+
+   Pirate standing is what sends the bounty hunter, and how hard he comes.
+   That is the whole loop closing: the thing you do for money is the thing
+   that makes someone come for you.
+   =========================================================================== */
+var credits  = (SV && SV.credits)  || 0;
+var pirate   = (SV && SV.pirate)   || 0;
+var hunter   = (SV && SV.hunter)   || 0;
+var owned    = (SV && SV.owned)    || { sidearm:1 };
+var contract = null;                 /* a named target, or null for free hunting */
+
+var PRICES = { breacher:340, carbine:260, armour:420 };
+
+function saveEcon(){
+  if(AR && AR.save) AR.save.merge(GAME_ID,
+    { credits:credits, pirate:pirate, hunter:hunter, owned:owned });
+}
+function standingLabel(){
+  if(pirate >= hunter + 3) return 'PIRATE';
+  if(hunter >= pirate + 3) return 'BOUNTY HUNTER';
+  return 'PRIVATEER';
+}
+/* a name to hunt, so a contract is a person and not a checkbox */
+var NAMES = ['VARDEN','KOSS','ILEX','MARROW','TASH','BRENNAN','OKONKWO','SELVA'];
+function newContract(){
+  return { name: NAMES[(Math.random()*NAMES.length)|0], pay: 180 + ((Math.random()*140)|0) };
+}
+var offered = newContract();
+
+function station(){
+  MODE = 'title';
+  openVeil(
+    '<h1 style="font-size:26px">STATION</h1>' +
+    '<div class="sub">' + credits + ' CR &middot; ' + standingLabel() + '</div>' +
+    '<button class="go" data-act="board">CONTRACT BOARD</button>' +
+    '<button data-act="armoury">ARMOURY</button>' +
+    '<button data-act="locker">LOCKER</button>' +
+    '<button data-act="dock">UNDOCK</button>' +
+    '<div class="opt"><span>PIRATE</span><b>' + pirate + '</b></div>' +
+    '<div class="opt"><span>HUNTER</span><b>' + hunter + '</b></div>' +
+    (best ? '<div class="sub" style="margin-top:14px">BEST RUN ' + best.toFixed(1) + 's</div>' : ''),
+    { board: contractBoard, armoury: armoury, locker: locker, dock: launch });
+}
+
+function contractBoard(){
+  openVeil(
+    '<h1 style="font-size:24px">CONTRACTS</h1>' +
+    '<div class="sub">A NAME, AND WHAT IT PAYS</div>' +
+    '<button class="go" data-act="take">' + offered.name +
+      '<div style="font-size:10px;opacity:.6;margin-top:4px">BOUNTY &middot; ' +
+      offered.pay + ' CR</div></button>' +
+    '<button data-act="free">HUNT FREE' +
+      '<div style="font-size:10px;opacity:.6;margin-top:4px">' +
+      'CARGO ONLY &middot; RAISES PIRATE</div></button>' +
+    (contract ? '<div class="sub">HOLDING: ' + contract.name + '</div>' : '') +
+    '<button data-act="back">BACK</button>',
+    { take: function(){ contract = offered; station(); },
+      free: function(){ contract = null; station(); },
+      back: station });
+}
+
+function armoury(){
+  var rows = ['breacher','carbine'].map(function(id){
+    var have = owned[id];
+    return '<button data-act="' + id + '"' + (have ? '' : ' class="go"') + '>' +
+      KITS[id].name + '<div style="font-size:10px;opacity:.6;margin-top:4px">' +
+      (have ? 'OWNED' : PRICES[id] + ' CR') + '</div></button>';
+  }).join('');
+  var acts = { back: station };
+  ['breacher','carbine'].forEach(function(id){
+    acts[id] = function(){
+      if(owned[id] || credits < PRICES[id]) return;
+      credits -= PRICES[id]; owned[id] = 1; saveEcon(); snd.ok(); armoury();
+    };
+  });
+  acts.armour = function(){
+    if(owned.armour || credits < PRICES.armour) return;
+    credits -= PRICES.armour; owned.armour = 1; saveEcon(); snd.ok(); armoury();
+  };
+  openVeil(
+    '<h1 style="font-size:24px">ARMOURY</h1>' +
+    '<div class="sub">' + credits + ' CR</div>' + rows +
+    '<button data-act="armour">ARMOUR' +
+      '<div style="font-size:10px;opacity:.6;margin-top:4px">' +
+      (owned.armour ? 'OWNED' : PRICES.armour + ' CR') + '</div></button>' +
+    '<button data-act="back">BACK</button>', acts);
+}
+
+/* ===========================================================================
+   THE LOCKER — PRIVATEER.md §4
+
+   Chosen HERE, in advance, which is what makes it a decision rather than a
+   menu tap during a fight. Three kits, and none of them is best:
+
+     SIDEARM   the middle of everything. Two shots a crewman.
+     BREACHER  one shot a crewman, and ten rounds in the whole magazine.
+               Miss twice and you are walking back empty.
+     CARBINE   forty rounds and it takes four of them, so it is the kit for
+               a ship you expect to be crowded — and the wrong one for the
+               defence, where they are already in the corridor.
+
+   The armour line is the honest trade: HULL against SPEED. A boarding is
+   ninety seconds of crossing open corridor, so weight is not free.
+   =========================================================================== */
+var KITS = {
+  sidearm:  { name:'SIDEARM',  dmg:18, ammo:24, hp:100, speed:2.6,
+              note:'2 shots a man &middot; 24 rounds' },
+  breacher: { name:'BREACHER', dmg:36, ammo:10, hp:100, speed:2.5,
+              note:'1 shot a man &middot; 10 rounds' },
+  carbine:  { name:'CARBINE',  dmg:10, ammo:40, hp:92,  speed:2.7,
+              note:'4 shots a man &middot; 40 rounds' }
+};
+var kitKey = (SV && SV.kit) || 'sidearm';
+var armour = (SV && SV.armour) ? 1 : 0;
+
+function kitNow(){
+  var k = KITS[kitKey] || KITS.sidearm;
+  /* armour is the same trade every time: take more, move slower */
+  return { name:k.name, dmg:k.dmg, ammo:k.ammo,
+           hp: k.hp + (armour ? 35 : 0),
+           speed: k.speed * (armour ? 0.82 : 1) };
+}
+
+function locker(){
+  var rows = Object.keys(KITS).map(function(id){
+    var k = KITS[id], have = owned[id];
+    return '<button data-act="' + (have ? id : 'nope') + '"' +
+           (id === kitKey ? ' class="go"' : '') + (have ? '' : ' disabled') + '>' +
+           k.name + '<div style="font-size:10px;opacity:.6;letter-spacing:.1em;margin-top:4px">' +
+           (have ? k.note : 'NOT OWNED &middot; ARMOURY') + '</div></button>';
+  }).join('');
+  var acts = {};
+  Object.keys(KITS).forEach(function(id){ acts[id] = function(){
+    if(!owned[id]) return;
+    kitKey = id;
+    if(AR && AR.save) AR.save.merge(GAME_ID, { kit:id });
+    locker();
+  }; });
+  acts.armour = function(){
+    if(!owned.armour) return;
+    armour = armour ? 0 : 1;
+    if(AR && AR.save) AR.save.merge(GAME_ID, { armour:!!armour });
+    locker();
+  };
+  acts.launch = launch;
+  acts.back = station;
+  openVeil(
+    '<h1 style="font-size:28px">LOCKER</h1>' +
+    '<div class="sub">WHAT YOU CARRY ACROSS</div>' + rows +
+    '<div class="opt"><span>ARMOUR &mdash; +35 HULL, SLOWER</span><b>' +
+      (owned.armour ? (armour ? 'ON' : 'OFF') : 'NOT OWNED') + '</b></div>' +
+    '<button data-act="armour">TOGGLE ARMOUR</button>' +
+    '<button class="go" data-act="launch">LAUNCH</button>' +
+    '<button data-act="back">BACK</button>', acts);
+}
+
+function startRun(){ station(); }
+
+function launch(){
+  closeVeil(); snd.begin();
+  FOOT.setKit(kitNow());
+  MODE = 'fly'; runT = 0; taken = 0; dockHold = 0; phase = ''; hunted = 0; boardTimer = 9; kept = 1;
+  FLY.reset(); FLY.resize(); showFly(true);
+  say('TARGET AHEAD');
+}
+
+/* ---- weapons: the rear cone decides where the shot lands ---------------- */
+function fire(kind){
+  if(MODE !== 'fly' || FLY.T.dead) return;
+  var cs = FLY.cone();
+  if(kind === 'las'){
+    snd.laser();
+    if(cs.d > 900) return;
+    if(cs.in){                       /* engines: the shot you want */
+      if(!FLY.T.disabled){
+        FLY.T.disabled = 1; snd.ok(); say('ENGINES DARK');
+      }
+    } else if(cs.behind > -0.2){     /* hull: money burning */
+      FLY.T.hull -= 6; snd.hit();
+      if(FLY.T.hull <= 0) wreck();
+    }
+  } else {
+    snd.msl();
+    /* a missile into a hull is an overkill you paid for — §5a */
+    if(cs.in && !FLY.T.disabled){ FLY.T.disabled = 1; snd.ok(); say('ENGINES DARK'); }
+    else { FLY.T.hull -= 70; snd.boom(); if(FLY.T.hull <= 0) wreck(); }
+  }
+}
+function wreck(){
+  FLY.T.dead = 1; snd.boom(); say('DESTROYED \u2014 NOTHING TO TAKE');
+  setTimeout(over, 1700);
+}
+
+/* ---- docking is a HOLD, not a cutscene ---------------------------------- */
+function stepDock(dt){
+  var cs = FLY.cone();
+  if(!FLY.T.disabled || FLY.T.dead){ dockHold = 0; return; }
+  /* 120m/90kps was tighter than the rear cone the player is already sitting
+     in, so a correct approach hovered just outside it and nothing happened.
+     Docking should be the natural end of a good tail chase, not a second,
+     harder alignment puzzle. */
+  var slow = FLY.S.spd < 115;
+  if(cs.d < 190 && slow){
+    dockHold += dt;
+    if(dockHold > 1.6) board();
+  } else {
+    dockHold = Math.max(0, dockHold - dt);
+    if(cs.d < 320 && !slow && phase !== 'slow'){ phase='slow'; say('SLOW TO DOCK'); }
+  }
+}
+function board(){
+  MODE = 'board'; snd.dock();
+  FOOT.reset(); FOOT.resize(); showFly(false);
+  sayFoot('BOARDING');
+}
+/* ---- the run does not end when you get the cargo ------------------------
+   It ends when you get AWAY with it. Taking a ship raises your name, and a
+   bounty hunter comes for you — the same chase, the same cone, the same
+   boarding, pointed the other way. PRIVATEER.md 5b. */
+function backToShip(){
+  MODE = 'fly'; FLY.resize(); showFly(true);
+  if(taken){
+    say('CARGO ABOARD');
+    setTimeout(function(){
+      if(MODE !== 'fly') return;
+      /* the more of a pirate you are, the sooner they dock and the harder
+         he flies. Nobody tells you this; the world just gets worse. */
+      FLY.sendHunter(Math.min(3, pirate));
+      hunted = 1;
+      boardTimer = Math.max(4.5, 9 - pirate * 1.1);
+      say(pirate >= 3 ? 'THEY WANT YOU BADLY' : 'BOUNTY HUNTER INBOUND');
+    }, 1400);
+  } else {
+    say('NOTHING TAKEN');
+    setTimeout(over, 900);
+  }
+}
+
+/* being disabled must be survivable and FRIGHTENING: you drift, weapons
+   offline, and you have a little time before they dock. What you do with it
+   is get out of the chair. */
+function stepHunted(dt){
+  if(!hunted) return;
+  if(FLY.S.hull <= 0){ hunted = 0; say('HULL BREACHED'); setTimeout(over, 1500); return; }
+  if(FLY.S.disabled){
+    boardTimer -= dt;
+    if(boardTimer <= 0){ defend(); return; }
+    if(Math.abs(boardTimer - Math.round(boardTimer)) < dt && boardTimer < 6.5)
+      say('THEY DOCK IN ' + Math.ceil(boardTimer));
+  }
+  /* outrun him and you keep the lot */
+  if(!FLY.S.disabled && FLY.hunterDist() > 2600){
+    hunted = 0; say('LOST HIM'); setTimeout(over, 1200);
+  }
+}
+function defend(){
+  MODE = 'board'; snd.dock();
+  FOOT.reset('defend'); FOOT.resize(); showFly(false);
+  sayFoot('THEY ARE ABOARD');
+}
+
+function over(){
+  MODE = 'title';
+  /* ---- the settle ------------------------------------------------------
+     What the run was WORTH, and what it did to your name. Cargo pays a
+     price, a contract pays a bounty on top, and taking a ship nobody asked
+     you to touch is the thing that sends someone after you next time. */
+  var paid = 0, lines = [];
+  if(taken){
+    var cargoPay = 120 + ((Math.random()*90)|0);
+    paid += cargoPay; lines.push('CARGO ' + cargoPay + ' CR');
+    if(contract){
+      paid += contract.pay;
+      lines.push('BOUNTY &middot; ' + contract.name + ' ' + contract.pay + ' CR');
+      hunter++;
+    } else {
+      pirate++;
+      lines.push('UNSANCTIONED &middot; PIRATE +1');
+    }
+    if(kept){ lines.push('GOT AWAY CLEAN'); }
+    else { paid = Math.round(paid*0.4); lines.push('THEY TOOK MOST OF IT'); }
+    credits += paid;
+    if(!best || runT < best){ best = runT;
+      if(AR && AR.save) AR.save.merge(GAME_ID, { bestRun:+runT.toFixed(1) }); }
+  }
+  contract = null; offered = newContract();
+  saveEcon();
+  openVeil(
+    '<h1 style="font-size:30px">' + (taken ? (kept ? 'CLEAR' : 'ROBBED') : 'RUN OVER') + '</h1>' +
+    '<div class="sub">' + (taken ? '+' + paid + ' CR' : 'no cargo') + '</div>' +
+    lines.map(function(l){ return '<div class="opt"><span>' + l + '</span><b></b></div>'; }).join('') +
+    '<div class="sub" style="margin-top:12px">' + credits + ' CR &middot; ' + standingLabel() + '</div>' +
+    '<button class="go" data-act="play">AGAIN</button>' +
+    '<button data-act="station">STATION</button>',
+    { play: launch, station: station });
+}
+
+/* ---- weapon buttons and keys ---- */
+document.getElementById('las').addEventListener('pointerdown', function(e){ e.preventDefault(); fire('las'); });
+document.getElementById('msl').addEventListener('pointerdown', function(e){ e.preventDefault(); fire('msl'); });
+addEventListener('keydown', function(e){
+  if(MODE === 'fly'){
+    if(e.key === ' ') fire('las');
+    if(e.key.toLowerCase() === 'm') fire('msl');
+  } else if(MODE === 'board'){
+    if(e.key === ' ') FOOT.shoot();
+    if(e.key.toLowerCase() === 'e') FOOT.use();
+  }
+});
+document.getElementById('fFire').addEventListener('pointerdown', function(e){ e.preventDefault(); FOOT.shoot(); });
+document.getElementById('fUse').addEventListener('pointerdown', function(e){ e.preventDefault(); FOOT.use(); });
+
+/* ---- one loop, whichever view is up ------------------------------------ */
+var last = 0;
+function tick(t){
+  requestAnimationFrame(tick);
+  var dt = Math.min(0.05, (t - last)/1000 || 0.016); last = t;
+  if(MODE === 'fly'){
+    runT += dt;
+    FLY.step(dt); stepDock(dt); stepHunted(dt); FLY.draw();
+    var cs = FLY.cone();
+    document.getElementById('spd').querySelector('b').textContent = Math.round(FLY.S.spd);
+    var lk = document.getElementById('lock');
+    lk.classList.toggle('on', cs.in);
+    if(hunted){
+      lk.querySelector('b').textContent = FLY.S.disabled
+        ? 'BOARDERS ' + Math.max(0, Math.ceil(boardTimer))
+        : (FLY.HUN.onTail ? 'ON YOUR TAIL' : 'RUN');
+      lk.classList.toggle('on', false);
+      document.getElementById('spd').querySelector('b').textContent =
+        Math.round(FLY.S.spd) + (FLY.S.hull < 100 ? ' \u00b7 ' + Math.max(0,Math.round(FLY.S.hull)) : '');
+    } else
+    lk.querySelector('b').textContent = FLY.T.disabled
+      ? (dockHold > 0 ? 'DOCKING' : 'DISABLED')
+      : (cs.in ? 'ON TAIL' : (cs.behind > 0.4 ? 'CLOSE' : '\u2014'));
+    var ht = document.getElementById('heat');
+    ht.classList.toggle('hot', FLY.S.heat > 65);
+    ht.querySelector('b').textContent = Math.round(FLY.S.heat) + '%';
+  } else if(MODE === 'board'){
+    runT += dt;
+    FOOT.step(dt); FOOT.draw();
+    if(FOOT.side === 'defend'){
+      if(FOOT.done){ hunted = 0; MODE='fly'; FLY.resize(); showFly(true);
+                     say('REPELLED'); setTimeout(over, 1200); }
+      else if(FOOT.lost || FOOT.dead){ taken = 0; hunted = 0;
+                     MODE='fly'; FLY.resize(); showFly(true);
+                     kept = 0; say('THEY TOOK THE HOLD'); setTimeout(over, 1500); }
+    } else {
+      if(FOOT.done && !taken){ taken = 1; backToShip(); }
+      else if(FOOT.dead){ taken = 0; backToShip(); }
+    }
+  } else {
+    FLY.step(dt*0.25); FLY.draw();     /* the title flies itself, slowly */
+  }
+}
+
+addEventListener('resize', function(){ (MODE === 'board' ? FOOT : FLY).resize(); });
+FLY.resize(); FLY.reset(); title(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

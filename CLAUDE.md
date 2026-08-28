@@ -1,0 +1,191 @@
+# CLAUDE.md
+
+Guidance for Claude Code (claude.ai/code) when working in this repository.
+
+## What this is
+
+**Effigy Arcade** — **four games on one floor**, each meant to be built out into a full
+multi-scene game rather than filled in. Vanilla JavaScript, no framework, no dependency, no build
+step, and no network call at launch. It targets the browser as an installed progressive web app,
+portrait first, phone and tablet and desktop alike.
+
+The four machines:
+
+| Machine | Shelf id | What it is |
+|---|---|---|
+| **Derelict** | `em` | A dead ship. Nothing aboard is alive; plenty of it still moves. |
+| **Privateer** | `em` | Space, first person. Engines disable, everything else destroys. |
+| **Highway** | `sw` | An endless road. |
+| **Raceway** | `sw` | A circuit racer. |
+
+**This is not a version of Tiny Arcade.** That project is nineteen small machines sorted onto three
+shelves, and it is **parked, complete, and still playable** at
+`github.com/EffigyMedia/tiny_arcade`. Nothing here changes it, and a fix made here does not travel
+back to it. This project inverts its premise: few machines, each deep.
+
+**Where this is going.** Each game is intended to be split out into its own standalone binary
+wrapper when it is finished. `./pack.sh --standalone <id>` already performs the first half of that
+— it emits ONE self-contained HTML file with every script inlined — and the frozen `SHIPPING.md`
+in Tiny Arcade assessed the wrappers themselves. **Keep `--standalone` working.** It is the exit
+route for every machine here.
+
+This project runs a documentation-driven **development process**, read in place from the shared
+process docs (never copied here, never edited from project work):
+
+Process docs: `<env-root>/Process/`;
+starter blanks: `<env-root>/Templates/_Project_Template/`
+
+> **`<env-root>` is the directory that holds `.code-continuum-env-root`.** To find it, go up from
+> here, parent by parent, until you find that file. Never write a drive-letter path in this file —
+> see `Path_Policy.md`.
+
+- `Development_Process.md` — the operating manual: the feature loop, releases, the trigger phrases
+  below. **The source of *how*.**
+- `Artifact_Formats.md` — formats for `changelog.md` and technical references.
+- `Performance_Testing.md` / `Audit_and_Testing.md` — perf practice; the audit workflow.
+- `Path_Policy.md` — how anything names a location. **This file carries no absolute path.**
+- `Agent_Scope.md` — how far a session may reach. This is a **project** session.
+- `Writing_Standard.md` — Simplified Technical English (ASD-STE100), American spelling. **All
+  output is written in STE** — chat, every project document, source-code comments, and commit
+  messages. Identifiers and code syntax are exempt. **The inherited source uses British spelling;
+  do not rewrite it, and do not copy it into new prose.**
+- **The work record is the fragment store** in `docs/fragments/`, written with
+  `<env-root>/Commands/fragment.py` and never by hand. **This project keeps no `tracker.md`** — the
+  view over the store is the dashboard, opened by `Dashboard.bat` / `dashboard.sh` at the root.
+- `docs/reference/` — inherited reference, **frozen**. `DESIGN.md` (Tiny Arcade's full decision log,
+  newest first, 277 KB — **search it, never read it end to end**), `DRIVING.md` (what is built in
+  the two driving games and what is not), `REFACTOR.md` (the state of `road.js` and what is
+  load-bearing but invisible), `PRIVATEER.md`. **Read them for reasoning; never add to them.**
+  **They are not equally aged**, and that has already cost one wrong plan in the parent project:
+  `DESIGN.md` kept being appended after the others were written, so **its top entries are the
+  newest**. When they disagree, the top of `DESIGN.md` is newest — **and the code settles it.**
+- **Shared Knowledge Base** — `<env-root>/Process/Knowledge_Base/`: consult it for browser, PWA and
+  Playwright gotchas before stack-specific work, and **append** new lessons there.
+- **Model routing** — `<env-root>/Process/Model_Routing.md`.
+- **Routing posture** — `ROUTING_BIAS: 2` (quality). Each of these four is meant to become a
+  product, and a defect in the 9,849-line driving engine ships to two of them at once. Drop to
+  efficiency only for mechanical churn.
+
+## Trigger phrases
+
+Summaries — the canonical procedures live in `<env-root>/Process/Development_Process.md`.
+
+| Phrase | Meaning |
+|---|---|
+| *(normal work)* | Feature loop: implement → `test` → fragment → changelog → **patch** bump → commit. One feature = one commit = one patch = one changelog entry = one fragment to built. |
+| **Track this: …** | Write a new `RLG-NNN` fragment with status `requested`; do not start it. |
+| *(after a clear)* | Read the thread: `python <env-root>/Commands/thread.py show --store docs/fragments`. It carries the focus, the next action **and its origin**, the constraints in force, and what is unfinished. That is the whole of re-entry. Verify the working tree is clean, then act by the origin — `stated`, do it; `asked`, do it; `inferred`, put it to the owner first; `absent`, say so and stop. |
+| **Perform audit** | Run `Audit_and_Testing.md`; produce a findings report; change no code. |
+
+**Milestones and handoffs do not exist.** The environment replaced both with the **thread
+fragment**, `docs/fragments/THR-001.md`, which is **maintained continuously and never written at
+the threshold** — that is what makes a context clear cheap. Write it with `Commands/thread.py`,
+never by hand. This project keeps no `docs/milestones/` folder.
+
+## Commands
+
+There is **no toolchain to resolve and nothing to install to run the product**. It is a static site.
+Python 3 with Playwright installed runs the two test harnesses; a browser runs everything else.
+
+- `run` — serve the folder and open it: `python -m http.server 8000`, then `http://localhost:8000`.
+  `index.html` also opens straight from the file system. **Neither is an on-target check** — a
+  desktop browser does not verify phone layout, webview audio, or feel.
+- `setup` — build the test environment. Playwright cannot be installed into the environment's
+  uv-managed Python (it refuses, by PEP 668), so the harnesses run from a project-local venv:
+  `<env-root>/Runtime/bin/uv venv .venv` then
+  `<env-root>/Runtime/bin/uv pip install --python .venv playwright`. `.venv/` is git-ignored.
+- `test` — `.venv/Scripts/python tools/smoke-test.py` boots all four machines and the launcher and
+  asserts a clean console and real paint on the canvas. `.venv/Scripts/python tools/drive-test.py`
+  drives Highway and Raceway for 30 seconds with an autopilot and asserts speed, laps, fuel, tires,
+  damage, the HUD, and page errors. **Run both before shipping anything.**
+  The harnesses use the Chrome already on the machine when Playwright has no browser of its own,
+  **and they print which engine they used** — a harness that silently changes engine produces
+  numbers that cannot be compared between runs.
+- `build` — `./pack.sh` builds and validates `effigy-arcade.zip` from an explicit whitelist;
+  `./pack.sh --check` validates and builds nothing; `--standalone <id>` emits one self-contained
+  HTML file. A build **regenerates `assets.js` and `sw.js ALL_FILES`** from what is shipping, so run
+  it after any file is added, moved, or removed. **It needs `node` on PATH**, which the
+  environment's shim provides. It uses `zip` when present and falls back to PowerShell's
+  `Compress-Archive`, so it completes on a stock Windows box.
+- `deploy` — GitHub Pages serves `main` directly. A push deploys. `sync.sh` is inherited and
+  **obsolete in its current form**: it clones the remote to a temporary folder and copies files over
+  the top, from when the working folder was not a repository. This folder is the repository.
+
+## Architecture (the load-bearing boundaries)
+
+- **`index.html`** — the launcher: **one floor**, the rack, cabinet cards, the attract `draw` map,
+  settings; **must not** hold any list of machines of its own, or any knowledge of one machine's
+  rules.
+- **`games.js`** — the catalog, one entry per machine; **must not** hold any code.
+- **`arcade.js`** — the shell: title bar, pause, `gesture`, `pad`, `menu`, `save`, `crt`, `cinema`,
+  `options`, `home`, `wordmark`, and the service worker registration; **must not** contain anything
+  specific to one machine.
+- **`audio.js`** — the synthesizer and the three buses (`sfx`, `music`, `ui`) with the mute state;
+  **must not** know what a game is.
+- **`road.js`** — the shared driving engine, 9,849 lines, serving Highway and Raceway; **must not**
+  know which of its two games is running, except through a `CFG` seam.
+- **`games/<cat>/<id>.html`** — one machine, whole; **must not** reach into another machine, or
+  define `--stage-h` or `--safe-top`.
+- **`sw.js`** / **`assets.js`** — the cache policy, and the generated cache list. `assets.js` is
+  generated; **never edit it by hand.**
+
+**Single sources of truth.** The catalog is `games.js`. The shell owns the room (`--stage-h`,
+`--safe-top`). The engine owns driving — anything in `road.js` is in both driving games
+automatically. **`Arcade.version` in `arcade.js` is the version**, and the git tag mirrors it.
+
+**One floor, and the shelf mechanism is still there.** `SHELVES` holds a single entry whose id is
+`all`, and `all` matches every cabinet. The launcher opens straight onto the rack; nothing lands on
+a picker. A fifth machine, or a real second shelf, is one entry away.
+
+## Conventions that bite if ignored
+
+- **Chat output is terse by default; records are not.** Telegraphic style is fine in conversation.
+  **Exempt: commit messages, fragment bodies, changelog entries, and every document** — those are
+  the permanent record and keep full deliberate prose.
+- **A static check cannot tell you the game works.** The packer has passed while it shipped a syntax
+  error, a missing file, and two machines that booted to a black screen. **A green build is not
+  evidence.** Run the harnesses, and check the artifact rather than the source.
+- **When a check fails identically everywhere, suspect the check.** A scan once flagged every
+  object-method shorthand; a selector once reported the pause button missing from every machine.
+  **Test for the effect, not for your own implementation of it.**
+- **Do not believe a number the driver can influence.** A harness run once reported that Raceway
+  tires died in 20 seconds. The autopilot was sawing the wheel, and lateral load is what wears
+  tires. Measure with a steady driver.
+- **A machine must never define `--stage-h` or `--safe-top` in its own `:root`.** The shell appends
+  its stylesheet during parse, so a later `:root` wins on source order and silently discards the
+  shell's calculation. Use the fallback form at the point of use.
+- **The launcher keeps its styles in one `<style>` block, and a stray `}` closes it early** and
+  silently kills every rule below it — no error, no warning. If layout goes strange after an edit,
+  check the brace balance before anything else.
+- **Reskin a machine and update its attract card in the same unit of work.**
+- **An `attract` name with no entry in the `draw` map renders a black card, with no error.**
+- **Never splice a function by a search for `var draw`.** A cut to "the next `var draw =`" once
+  matched the last one in the file and deleted eight attract functions at once. Splice on the
+  function's own closing brace.
+- **A variable font `@font-face` is silently refused when the declared weight range excludes what is
+  asked for**, and the declared range must match the file's real axes. **Do not measure text width
+  to test this** — `document.fonts` status or a screenshot is the ground truth.
+- **The seam contract fills in two stages.** Anything a seam might touch is attached at the top of
+  `ROAD()`, because `onReset` fires during setup, before the function returns. This has bitten three
+  times.
+- **Do not collapse the car painters, and do not delete `paintProfile` or `paintQuarter`.** The
+  duplication is the record of tuning against screenshots; the two unused painters are groundwork
+  for a kart racer.
+- **The corner cap in the driving engine is a renderer limit, not a taste one.** Past about 90
+  degrees the road leaves the frame.
+- **Changes the tooling cannot observe need the owner's verdict on a real device.** Rendering,
+  audio mix, on-device layout, and feel are not verified by a green harness run. Say so plainly.
+- **Every tunable lives in configuration with a committed default** — never an edited-in-place code
+  constant.
+- **Never edit this product through the GitHub web UI.** An upload replaces a whole file, so there
+  is no merge and no conflict to warn anyone. Six shipped fixes were silently reverted in the parent
+  project that way, and they survived a green build. If it ever happens again, **read the diff
+  against the last known-good commit before doing anything else.**
+- **Commits are authored as the project owner** — no AI identity, no co-author trailer. One unit of
+  work is one commit. The remote is `origin`, `github.com/EffigyMedia/effigy_arcade`, **public**, and
+  it is also the deployed GitHub Pages site.
+- **Never commit** (see `.gitignore`): the packaged zip, anything matching the scratch pattern `_*`
+  (four instrumented debug builds once reached a public release that way), the generated dashboard
+  and fragment index, and **any licensed or copyrighted reference material** — no sprite rips, no
+  captured audio, and no artwork from anything these descend from. The product uses no keys, tokens,
+  or credentials of any kind; if that ever changes, they go nowhere near this repository.

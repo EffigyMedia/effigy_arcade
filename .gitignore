@@ -1,0 +1,31 @@
+# Effigy Arcade - what never enters the repository.
+
+# The packaged distributable. It is built from the source in this repository, so a
+# committed copy is a second answer to "what is the current build?".
+effigy-arcade.zip
+output/
+
+# Scratch and instrumented debug builds. Four of these once reached the public zip
+# (`_n.html`, `_s.html`, `_st.html`, `_x.html`), which is why the build uses a
+# whitelist. The ignore rule is the second guard on the same failure.
+_*
+!_set
+
+# Generated views over the fragment store. Both regenerate on demand, so a commit of
+# either is churn that can disagree with the store it came from.
+docs/dashboard.html
+docs/fragments/.index.json
+
+# Tool caches and operating system cruft.
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+
+# The test venv. Playwright cannot be installed into the environment's uv-managed
+# Python - it refuses, by PEP 668 - so the harnesses get a project-local venv. It is
+# rebuilt by the setup command in one line and never belongs in the repository.
+.venv/
