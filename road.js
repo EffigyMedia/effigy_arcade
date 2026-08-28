@@ -4537,10 +4537,34 @@ let wet = 0, wetTarget = 0, wetNext = 0, snowy = 0, settle = 0;
    feels different from a mountain one without anything else being said.
    ---------------------------------------------------------------------- */
 let biomeNext = 0;
+
+/* ---- WEATHER BELONGS TO A PLACE, SO IT HAS TO LEAVE WITH IT ---------------
+   The biome decided what MIGHT fall, and then nothing checked it again. A front
+   picked in a tundra kept falling for the 35 to 80 seconds left on its own
+   timer, so **snow followed you into the desert** and settled there. The odds
+   were being used to start weather and never to end it.
+
+   A biome that cannot produce what is falling ends it now. Rain in a desert is
+   rare rather than impossible, so it is allowed to run itself out; snow with a
+   zero chance is not, and neither is the settled white on the ground - that
+   melts fast rather than lingering, because a desert is not somewhere snow
+   sits.
+   -------------------------------------------------------------------------- */
+function endImpossibleWeather(){
+  const B = bio();
+  if(snowy && B.snow <= 0){
+    wetTarget = 0;
+    wetNext = Math.min(wetNext, rnd(3, 8));   /* and try again for this place soon */
+    settleMelt = 1;
+  }
+  if(!snowy && B.rain <= 0){ wetTarget = 0; wetNext = Math.min(wetNext, rnd(3, 8)); }
+}
+let settleMelt = 0;
+
 function stepBiome(dt){
   if(CFG.biome){
     const b2 = CFG.biome();
-    if(b2 !== biome){ biome = b2; buildSkyline(); }
+    if(b2 !== biome){ biome = b2; buildSkyline(); endImpossibleWeather(); }
     return;
   }
   biomeNext -= dt;
@@ -4553,6 +4577,7 @@ function stepBiome(dt){
       while(k === biome) k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
       biome = k;
       buildSkyline();          /* the horizon is part of the place */
+      endImpossibleWeather();
       flashWarn(bio().name);
     }
     biomeNext = rnd(70, 130);
@@ -4577,7 +4602,11 @@ function stepWeather(dt){
   }
   /* snow SETTLES: it whitens the ground long after it stops falling */
   const want = snowy ? wet : 0;
-  settle += (want - settle) * Math.min(1, dt * (want > settle ? 0.10 : 0.03));
+  /* ...unless the place it settled on cannot hold it. Driving out of a tundra
+     into a desert used to leave the ground white for a minute and a half. */
+  const fade = settleMelt ? 0.55 : (want > settle ? 0.10 : 0.03);
+  settle += (want - settle) * Math.min(1, dt * fade);
+  if(settleMelt && settle < 0.02){ settle = 0; settleMelt = 0; }
   /* rain arrives faster than a road dries */
   const rate = wetTarget > wet ? 0.22 : 0.055;
   wet += (wetTarget - wet) * Math.min(1, dt * rate * 3);

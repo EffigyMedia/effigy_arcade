@@ -14,6 +14,12 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-7-2"></a>
+## [0.7.2] — 2026-08-25
+- Fixed: **snow followed you into the desert.** The biome's odds were used to START weather and never
+  to end it, so a front kept falling for the rest of its own timer wherever the road went — and
+  settled snow took a minute and a half to fade ([RLG-017](../fragments/RLG-017.md)).
+
 <a id="v0-7-1"></a>
 ## [0.7.1] — 2026-08-25
 - Changed: **Interstate's verge costs speed, not health.** The barrier took 9 health on a repeating
