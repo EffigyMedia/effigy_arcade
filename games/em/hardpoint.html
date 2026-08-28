@@ -79,9 +79,22 @@ canvas{display:block;width:100%;height:100%}
 #fUse.on{opacity:1;pointer-events:auto}
 
 /* ---- veil: title, options, controls ---- */
+/* THE VEIL IS A WINDOW ON THE TITLE SCREEN, A WALL EVERYWHERE ELSE. It was
+   opaque, which is right over a paused game and wrong over title art - the
+   scene would have been painted and then covered up. `.art` is added only
+   while the title is up. */
 #veil{position:absolute;inset:0;background:rgba(4,7,15,.94);display:grid;place-items:center;
   padding:24px;z-index:20;overflow:auto}
 #veil.hidden{display:none}
+#veil.art{background:transparent}
+#hpArt{position:absolute;inset:0;width:100%;height:100%;display:none;z-index:0}
+#veil.art #hpArt{display:block}
+/* the content sits over the scene, with its own falloff so the menu stays
+   readable no matter what the dogfight is doing behind it */
+#veil .vw{position:relative;z-index:1}
+#veil.art .vw{background:radial-gradient(ellipse at 50% 48%,
+  rgba(4,7,15,.80) 0%, rgba(4,7,15,.62) 52%, rgba(4,7,15,.18) 82%, rgba(4,7,15,0) 100%);
+  padding:14px 14px 10px;border-radius:18px}
 .vw{width:100%;max-width:380px;text-align:center}
 #veil h1{font-family:var(--disp);font-size:clamp(34px,11vw,56px);margin:0 0 4px;
   letter-spacing:.04em;color:var(--gold);font-weight:800}
@@ -147,7 +160,7 @@ canvas{display:block;width:100%;height:100%}
     <div id="fUse">TAKE</div>
   </div>
 
-  <div id="veil"><div class="vw" id="veilBody"></div></div>
+  <div id="veil"><canvas id="hpArt"></canvas><div class="vw" id="veilBody"></div></div>
 </div></div>
 
 <script>
@@ -1137,6 +1150,288 @@ function closeVeil(){ veil.classList.add('hidden'); }
    tag. Every other machine already used it.
    -------------------------------------------------------------------------- */
 
+/* ---- THE TITLE SCENE: A CHASE, HELD -----------------------------------------
+   A dogfight drawn every frame: two ships, one shooting, thrusters lit, a
+   starfield in three parallax layers, and a planet turning under a low sun.
+
+   IT IS A LOOP, AND IT IS DELIBERATELY NOT A SIMULATION. The two ships fly one
+   fixed curve, phase-locked so the hunter sits behind and slightly below the
+   runner and the pair bank in opposition. A physics chase would drift, settle,
+   and eventually put both ships in the same place or off the frame - what reads
+   as an action pose is the MOMENT, and the moment has to be there whenever the
+   player happens to look. Anything with a random look to it is a hash of its own
+   index, so the scene is identical on every visit rather than subtly different.
+
+   It stops when the title goes away. A canvas loop still running behind a game
+   is frame budget spent on something nobody can see.
+   -------------------------------------------------------------------------- */
+var artCv = null, artG = null, artRAF = 0, artT0 = 0, artOn = false;
+
+function artNoise(i){                    /* stable pseudo-random, 0..1 */
+  var n = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function artResize(){
+  if(!artCv) return;
+  var r = artCv.getBoundingClientRect();
+  var d = Math.min(2, window.devicePixelRatio || 1);
+  artCv.width = Math.max(1, Math.round(r.width * d));
+  artCv.height = Math.max(1, Math.round(r.height * d));
+  artG = artCv.getContext('2d');
+  artG.setTransform(d, 0, 0, d, 0, 0);
+  artCv._w = r.width; artCv._h = r.height;
+}
+
+/* ---- the two ships ---------------------------------------------------------
+   Drawn nose-right in their own space, so the caller only rotates. Two
+   silhouettes rather than one mirrored: the runner is a slim interceptor, the
+   hunter heavier and wider. A chase where both ships are the same shape reads
+   as one ship and its reflection. */
+function shipRunner(g, s){
+  g.beginPath();
+  g.moveTo(s * 1.00, 0);
+  g.lineTo(s * 0.10, -s * 0.20);
+  g.lineTo(-s * 0.42, -s * 0.16);
+  g.lineTo(-s * 0.30, 0);
+  g.lineTo(-s * 0.42, s * 0.16);
+  g.lineTo(s * 0.10, s * 0.20);
+  g.closePath();
+  var grd = g.createLinearGradient(0, -s * 0.22, 0, s * 0.22);
+  grd.addColorStop(0, '#c9d3e0');
+  grd.addColorStop(0.5, '#79838f');
+  grd.addColorStop(1, '#2f363f');
+  g.fillStyle = grd; g.fill();
+  g.strokeStyle = 'rgba(10,14,20,.85)'; g.lineWidth = s * 0.035; g.stroke();
+  /* swept wings, tucked back */
+  g.beginPath();
+  g.moveTo(-s * 0.05, -s * 0.16); g.lineTo(-s * 0.62, -s * 0.58);
+  g.lineTo(-s * 0.40, -s * 0.14); g.closePath();
+  g.moveTo(-s * 0.05, s * 0.16); g.lineTo(-s * 0.62, s * 0.58);
+  g.lineTo(-s * 0.40, s * 0.14); g.closePath();
+  g.fillStyle = '#5b6572'; g.fill(); g.stroke();
+  /* canopy, catching the sun */
+  g.beginPath(); g.ellipse(s * 0.42, 0, s * 0.24, s * 0.10, 0, 0, 6.284);
+  g.fillStyle = 'rgba(150,214,255,.75)'; g.fill();
+}
+
+function shipHunter(g, s){
+  g.beginPath();
+  g.moveTo(s * 0.98, -s * 0.05);
+  g.lineTo(s * 0.30, -s * 0.30);
+  g.lineTo(-s * 0.50, -s * 0.26);
+  g.lineTo(-s * 0.34, 0);
+  g.lineTo(-s * 0.50, s * 0.26);
+  g.lineTo(s * 0.30, s * 0.30);
+  g.lineTo(s * 0.98, s * 0.05);
+  g.closePath();
+  var grd = g.createLinearGradient(0, -s * 0.30, 0, s * 0.30);
+  grd.addColorStop(0, '#8e6a4a');
+  grd.addColorStop(0.45, '#4b3a2c');
+  grd.addColorStop(1, '#211a15');
+  g.fillStyle = grd; g.fill();
+  g.strokeStyle = 'rgba(8,10,14,.9)'; g.lineWidth = s * 0.04; g.stroke();
+  /* the guns it is firing with, slung under the shoulders */
+  g.fillStyle = '#39424e';
+  g.fillRect(s * 0.10, -s * 0.44, s * 0.62, s * 0.10);
+  g.fillRect(s * 0.10, s * 0.34, s * 0.62, s * 0.10);
+  g.strokeRect(s * 0.10, -s * 0.44, s * 0.62, s * 0.10);
+  g.strokeRect(s * 0.10, s * 0.34, s * 0.62, s * 0.10);
+  g.beginPath(); g.ellipse(s * 0.34, 0, s * 0.20, s * 0.11, 0, 0, 6.284);
+  g.fillStyle = 'rgba(255,142,86,.62)'; g.fill();
+}
+
+/* Thrust: a hot core inside a cooler plume, breathing on two sine waves of
+   different periods. NOT a per-frame random - a plume that jitters every frame
+   reads as a rendering fault rather than as combustion. */
+function thrust(g, x, y, len, wide, T, seed, warm){
+  var f = 0.78 + 0.16 * Math.sin(T * 21 + seed) + 0.06 * Math.sin(T * 7.3 + seed * 2);
+  var L = len * f;
+  var c = warm ? ['rgba(255,214,150,.95)', 'rgba(255,132,54,.55)', 'rgba(255,80,30,0)']
+               : ['rgba(198,236,255,.95)', 'rgba(96,178,255,.55)', 'rgba(60,120,255,0)'];
+  var outer = g.createLinearGradient(x, y, x - L, y);
+  outer.addColorStop(0, c[0]); outer.addColorStop(0.42, c[1]); outer.addColorStop(1, c[2]);
+  g.fillStyle = outer;
+  g.beginPath();
+  g.moveTo(x, y - wide);
+  g.quadraticCurveTo(x - L * 0.55, y - wide * 0.5, x - L, y);
+  g.quadraticCurveTo(x - L * 0.55, y + wide * 0.5, x, y + wide);
+  g.closePath(); g.fill();
+  g.fillStyle = warm ? 'rgba(255,244,222,.92)' : 'rgba(236,250,255,.92)';
+  g.beginPath();
+  g.moveTo(x, y - wide * 0.42); g.lineTo(x - L * 0.46, y); g.lineTo(x, y + wide * 0.42);
+  g.closePath(); g.fill();
+}
+
+function drawArt(){
+  if(!artOn) return;
+  if(!artG){ artResize(); if(!artG) return; }
+  var w = artCv._w, h = artCv._h, g = artG;
+  var T = (performance.now() - artT0) / 1000;
+
+  /* ---- deep space ------------------------------------------------------ */
+  var sky = g.createLinearGradient(0, 0, w * 0.35, h);
+  sky.addColorStop(0.00, '#05070f');
+  sky.addColorStop(0.45, '#0a1020');
+  sky.addColorStop(0.78, '#12172c');
+  sky.addColorStop(1.00, '#070a14');
+  g.fillStyle = sky; g.fillRect(0, 0, w, h);
+
+  /* ---- three parallax star layers -------------------------------------- */
+  for(var L = 0; L < 3; L++){
+    var count = [70, 46, 26][L], sp = [2.1, 5.5, 11][L], sz = [0.9, 1.3, 1.9][L];
+    for(var i = 0; i < count; i++){
+      var id = L * 191 + i;
+      var sx = (artNoise(id) * (w + 80) - T * sp) % (w + 80);
+      if(sx < -40) sx += w + 80;
+      var sy = artNoise(id + 7) * h;
+      var tw = 0.55 + 0.45 * Math.sin(T * (1.1 + artNoise(id + 3)) + id);
+      g.fillStyle = 'rgba(226,238,255,' + (0.28 + 0.5 * tw * (L / 2.4 + 0.3)) + ')';
+      g.fillRect(sx, sy, sz, sz);
+    }
+  }
+
+  /* ---- the sun, low and just off frame --------------------------------- */
+  var sunX = w * 1.02, sunY = h * 0.16;
+  var glow = g.createRadialGradient(sunX, sunY, 0, sunX, sunY, w * 0.62);
+  glow.addColorStop(0.00, 'rgba(255,238,206,.72)');
+  glow.addColorStop(0.14, 'rgba(255,178,96,.28)');
+  glow.addColorStop(0.42, 'rgba(180,96,60,.09)');
+  glow.addColorStop(1.00, 'rgba(0,0,0,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, w, h);
+
+  /* ---- the planet, turning, lit from the sun's side --------------------- */
+  var pr = Math.min(w, h) * 0.42;
+  var px = w * 0.20 + Math.sin(T * 0.045) * w * 0.02;
+  var py = h * 0.76 + Math.cos(T * 0.037) * h * 0.012;
+  g.save();
+  g.beginPath(); g.arc(px, py, pr, 0, 6.284); g.clip();
+  var pg = g.createLinearGradient(px - pr, py - pr, px + pr, py + pr);
+  pg.addColorStop(0.00, '#0b1b2a');
+  pg.addColorStop(0.44, '#1d4358');
+  pg.addColorStop(0.72, '#3f7a72');
+  pg.addColorStop(1.00, '#9ab98a');
+  g.fillStyle = pg; g.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+  /* cloud bands drifting at different rates - the planet turns */
+  for(var bnd = 0; bnd < 9; bnd++){
+    var by = py - pr + (bnd + artNoise(bnd) * 0.6) * (pr * 2 / 9);
+    var off = ((T * (4 + bnd % 3) + bnd * 90) % (pr * 3)) - pr * 1.5;
+    g.fillStyle = 'rgba(226,240,246,' + (0.05 + artNoise(bnd + 20) * 0.07) + ')';
+    g.beginPath();
+    g.ellipse(px + off, by, pr * (0.5 + artNoise(bnd + 5) * 0.5), pr * 0.045, 0, 0, 6.284);
+    g.fill();
+  }
+  /* the terminator: night on the side away from the sun */
+  var term = g.createLinearGradient(px + pr * 0.15, py - pr, px - pr, py + pr);
+  term.addColorStop(0, 'rgba(3,5,10,0)');
+  term.addColorStop(0.42, 'rgba(3,5,10,.62)');
+  term.addColorStop(1, 'rgba(3,5,10,.96)');
+  g.fillStyle = term; g.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+  g.restore();
+  /* the lit limb */
+  g.beginPath(); g.arc(px, py, pr, -1.5, 0.7);
+  g.strokeStyle = 'rgba(190,226,255,.40)'; g.lineWidth = 1.6; g.stroke();
+
+  /* ---- the chase --------------------------------------------------------
+     One path, two ships on it a fixed distance apart, sweeping right to left
+     across the upper third and weaving as they go. */
+  var period = 13.0, u = (T % period) / period;
+  function pathAt(t){
+    return {
+      x: w * (1.22 - 1.44 * t),
+      /* THE UPPER BAND, CLEAR OF THE WORDMARK. Flown across the middle the
+         pair sat behind HARDPOINT and read as debris rather than as a chase.
+         The menu occupies the centre downwards; this is the strip above it. */
+      y: h * (0.145 + 0.052 * Math.sin(t * 6.283 * 1.5) + 0.022 * Math.sin(t * 6.283 * 3.1))
+    };
+  }
+  /* THE GAP HAS TO BE LONGER THAN A SHIP. At 0.055 the hunter sat on top of
+     the runner once both were scaled up, and the pair read as one object
+     with a confusing outline instead of as a pursuit. It also left the
+     bolts no distance to cross, which is the thing the frame is about. */
+  var lead = 0.145;                       /* how far ahead the runner flies */
+  var A = pathAt(u), A2 = pathAt(u + 0.004);
+  var B = pathAt(u - lead), B2 = pathAt(u - lead + 0.004);
+  var aAng = Math.atan2(A2.y - A.y, A2.x - A.x);
+  var bAng = Math.atan2(B2.y - B.y, B2.x - B.x);
+  var scale = Math.min(w, h);
+  /* big enough to read as a pose rather than as two specks - the ships are
+     the subject of the frame, not set dressing in it */
+  var aS = scale * 0.090, bS = scale * 0.104;
+
+  /* the hunter's guns: bolts in flight, spaced along the gap */
+  var cycle = T % 3.4;
+  if(cycle < 1.5){
+    for(var q = 0; q < 3; q++){
+      var ft = ((T * 1.9 + q * 0.33) % 1);
+      var bx = B.x + (A.x - B.x) * ft, by = B.y + (A.y - B.y) * ft;
+      var len = scale * 0.075;
+      var bg = g.createLinearGradient(bx, by, bx + len, by);
+      bg.addColorStop(0, 'rgba(255,110,70,0)');
+      bg.addColorStop(0.5, 'rgba(255,196,120,.95)');
+      bg.addColorStop(1, 'rgba(255,255,235,1)');
+      g.strokeStyle = bg; g.lineWidth = scale * 0.008; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + len, by - scale * 0.004); g.stroke();
+    }
+    /* muzzle flash on the hunter's gun pods */
+    g.save(); g.translate(B.x, B.y); g.rotate(bAng);
+    var mf = 0.5 + 0.5 * Math.sin(T * 30);
+    g.fillStyle = 'rgba(255,206,140,' + (0.35 + 0.45 * mf) + ')';
+    g.beginPath(); g.arc(bS * 0.75, -bS * 0.39, bS * 0.17 * (0.7 + mf * 0.5), 0, 6.284); g.fill();
+    g.beginPath(); g.arc(bS * 0.75, bS * 0.39, bS * 0.17 * (0.7 + mf * 0.5), 0, 6.284); g.fill();
+    g.restore();
+  }
+
+  /* the runner takes it on the shield, near the tail */
+  if(cycle > 1.15 && cycle < 1.5){
+    var k = 1 - (cycle - 1.15) / 0.35;
+    g.save(); g.translate(A.x, A.y); g.rotate(aAng);
+    g.strokeStyle = 'rgba(120,200,255,' + (0.75 * k) + ')';
+    g.lineWidth = scale * 0.006;
+    g.beginPath(); g.arc(-aS * 0.1, 0, aS * (1.15 + (1 - k) * 0.5), -1.1, 1.1); g.stroke();
+    g.restore();
+  }
+
+  /* the runner, banking hard */
+  g.save();
+  g.translate(A.x, A.y); g.rotate(aAng);
+  thrust(g, -aS * 0.40, -aS * 0.09, aS * 1.5, aS * 0.10, T, 1.7, false);
+  thrust(g, -aS * 0.40,  aS * 0.09, aS * 1.5, aS * 0.10, T, 3.1, false);
+  g.scale(1, 0.62 + 0.38 * Math.cos(u * 6.283 * 1.5));   /* the bank */
+  shipRunner(g, aS);
+  g.restore();
+
+  /* the hunter, heavier, a beat behind and below */
+  g.save();
+  g.translate(B.x, B.y + scale * 0.018); g.rotate(bAng);
+  thrust(g, -bS * 0.50, -bS * 0.13, bS * 1.7, bS * 0.13, T, 5.2, true);
+  thrust(g, -bS * 0.50,  bS * 0.13, bS * 1.7, bS * 0.13, T, 6.6, true);
+  g.scale(1, 0.66 + 0.34 * Math.cos((u - lead) * 6.283 * 1.5));
+  shipHunter(g, bS);
+  g.restore();
+
+  artRAF = requestAnimationFrame(drawArt);
+}
+
+function artStart(){
+  artCv = document.getElementById('hpArt');
+  if(!artCv) return;
+  veil.classList.add('art');
+  if(artOn) return;
+  artOn = true; artT0 = performance.now();
+  artResize();
+  artRAF = requestAnimationFrame(drawArt);
+}
+
+function artStop(){
+  artOn = false;
+  if(artRAF) cancelAnimationFrame(artRAF);
+  artRAF = 0;
+  if(veil) veil.classList.remove('art');
+}
+
+window.addEventListener('resize', function(){ if(artOn) artResize(); });
+
 /* ---- THE WORDMARK IS CUT FROM HULL PLATE ----------------------------------
    The letters are not coloured in. They are a MASK, and the material is painted
    through it: `Arcade.wordmark` lays the shapes into an offscreen canvas, then
@@ -1290,6 +1585,7 @@ function careerStrip(){
 function title(){
   MODE = 'title';
   showFly(true);
+  artStart();
   var started = credits !== 0 || pirate || hunter || best;
   openVeil(
     '<canvas id="hpMark"></canvas>' +
@@ -1307,6 +1603,7 @@ function title(){
 }
 
 function controls(){
+  artStop();
   var touch = AR && AR.touch;
   openVeil(
     '<h1 style="font-size:26px">CONTROLS</h1><div class="ctrls">' +
@@ -1357,6 +1654,7 @@ function eraseStep(){
 }
 
 function options(){
+  artStop();
   openVeil(
     '<h1 style="font-size:26px">OPTIONS</h1>' +
     '<div class="opt"><span>INVERT PITCH</span><b id="ov">' + (opts.invertY?'ON':'OFF') + '</b></div>' +
@@ -1431,6 +1729,7 @@ function newContract(){
 var offered = newContract();
 
 function station(){
+  artStop();
   MODE = 'title';
   openVeil(
     '<h1 style="font-size:26px">STATION</h1>' +
@@ -1560,6 +1859,7 @@ function locker(){
 function startRun(){ station(); }
 
 function launch(){
+  artStop();
   closeVeil(); snd.begin();
   FOOT.setKit(kitNow());
   MODE = 'fly'; runT = 0; taken = 0; dockHold = 0; phase = ''; hunted = 0; boardTimer = 9; kept = 1;

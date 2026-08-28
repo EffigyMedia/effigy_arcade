@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-5-0"></a>
+## [0.5.0] — 2026-08-25
+- Added: **Hardpoint's title is an animated chase** — two ships, the hunter firing on the runner,
+  lit thrusters, three parallax star layers, a sun off frame and a planet turning under it. Drawn
+  every frame, nothing downloaded ([RLG-012](../fragments/RLG-012.md)).
+- Changed: the veil turns to glass while the title is up, so the scene is visible rather than painted
+  and covered ([RLG-012](../fragments/RLG-012.md)).
+- Added: `tools/scene-test.py`, which asserts the scene paints, runs on the title, and **stops** when
+  another screen takes over ([RLG-012](../fragments/RLG-012.md)).
+
 <a id="v0-4-1"></a>
 ## [0.4.1] — 2026-08-25
 - Changed: the driving wordmark is a **marque lockup** — REDLINE small above, INTERSTATE or
