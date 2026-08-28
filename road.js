@@ -5271,10 +5271,38 @@ function stepRacers(dt){
     const lead = (r.z - pos) / MILE;              /* miles ahead of you */
     const band = clamp(-lead * 0.11, -0.14, 0.14);
     want *= (1 + band);
-    /* same drivetrain as yours, capped at 180 */
-    want = Math.min(want, AI_TOP);
+    /* ---- THE TOW NEEDS A CEILING OF ITS OWN -------------------------------
+       This used to be `want = Math.min(want, AI_TOP)`, and that one line threw
+       the entire tow away. Measured, band on against a band-off control: a
+       rival held two miles BEHIND ran 179.0mph with the band and 178.7mph
+       without it — nothing — while a rival held two miles AHEAD ran 154.0
+       against 167.0. The governor worked and the tow did not exist.
+
+       The cause is arithmetic rather than tuning. A rival's `base` comes from
+       `r.vmax`, which is MAX_SPD times a body multiplier of 0.97 to 1.03,
+       while AI_TOP is a flat MAX_SPD * 180/200. So `base` is ALREADY above the
+       cap — by 4.4% to 6.1% for the cars measured — and `want` is over the
+       ceiling before the tow is applied and still over it after a 14% tow. The
+       cap discarded the whole thing. The governor survived the same cap only
+       because it pulls DOWN, and the cap pulls down too.
+
+       So the ceiling rises with the tow, and only with the tow: `max(0, band)`
+       leaves the governor exactly as it was. A rival being towed at full
+       saturation may reach 205mph, above the 200 you can do — and it is only
+       ever towed when it is more than 1.3 miles behind, which is far off the
+       back of the screen. You stay the quickest thing you can SEE, which is
+       what that stance was ever about. Owner's call, 2026-08-28.
+
+       The same ceiling goes to `aiAccel`, and that is load-bearing rather than
+       tidy. `aiGearFactor` clamps `v / top` to 1, so a car above `top` is
+       treated as sitting on the limiter and accelerates on 6% torque. Raise
+       the target without raising the drivetrain and the tow is lifted but
+       toothless: the rival would crawl toward a speed it never reaches.
+       ---------------------------------------------------------------------- */
+    const ceiling = AI_TOP * (1 + Math.max(0, band));
+    want = Math.min(want, ceiling);
     const rWas = r.spd;
-    r.spd += aiAccel(r.spd, want, AI_TOP, dt);
+    r.spd += aiAccel(r.spd, want, ceiling, dt);
     const rDec = (rWas - r.spd) / Math.max(dt, 1/240);
     if(rDec > 900) r.brakeT = 0.35; else if(r.brakeT > 0) r.brakeT -= dt;
     r.braking = (r.brakeT || 0) > 0;

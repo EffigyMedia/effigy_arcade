@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-5"></a>
+## [0.9.5] — 2026-08-28
+- Fixed: **the rubber band's tow did nothing at all.** A rival held two miles behind ran 179.0mph
+  with the band and 178.7mph without it. `want` was multiplied by the band and capped at `AI_TOP` on
+  the very next line, and every rival's base pace already exceeds that cap, so the tow was discarded
+  before it could take effect. The ceiling now rises with the tow and only with the tow: measured
+  **+13.21%** of a claimed 14%, with the governor unchanged at −7.80%
+  ([RLG-038](../fragments/RLG-038.md)).
+- Changed: a rival at full tow may now reach 205mph, above the player's 200. It only saturates past
+  1.27 miles of separation, which is off the back of the screen, so the player stays the quickest
+  thing they can see ([RLG-038](../fragments/RLG-038.md)).
+- Added: `tools/band-test.py`, which measures the band against a band-off control arm served from
+  memory, pins each rival to a fixed gap, and seeds `Math.random` so both arms race the same grid.
+  It found the fault and then proved the fix ([RLG-029](../fragments/RLG-029.md)).
+- Known: the other four harnesses cannot be run as step evidence. On Windows `CreateProcess`
+  resolves a relative executable against the calling process's directory, so nothing can reach the
+  project `.venv` from the environment root. `band-test.py` finds its own interpreter; the rest do
+  not ([RLG-039](../fragments/RLG-039.md)).
+
 <a id="v0-9-4"></a>
 ## [0.9.4] — 2026-08-25
 - Fixed: **things spawned inside the drawn road.** Traps and cruisers were placed as close as 26,000

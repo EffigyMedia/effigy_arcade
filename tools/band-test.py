@@ -298,17 +298,21 @@ def summarise(arm, ai_top):
             out[tag] = None
             continue
         base = statistics.fmean(r['base'] for r in rows)
+        # ---- these two columns are OBSERVATIONS, not interpretations ---------
+        # An earlier version reported "at cap" against a flat AI_TOP and a "headroom" that
+        # assumed the engine caps `want` at AI_TOP after the band. Both were true of the engine
+        # on the day they were written, and both went false the moment the cap was changed - so
+        # the report kept printing a confident explanation of a mechanism that had gone. What a
+        # harness may state is what it saw: how fast the car went, against its own `base` and
+        # against the flat 180mph figure. Why it went that fast belongs to whoever reads it.
         out[tag] = {
             'n': len(rows),
             'spd': statistics.fmean(r['spd'] for r in rows),
             'base': base,
             'ratio': statistics.fmean(r['spd'] / r['base'] for r in rows),
             'lead': statistics.fmean(r['lead'] for r in rows),
-            'at_ceiling': sum(1 for r in rows if r['spd'] >= ai_top * 0.995) / len(rows),
-            # How much band this rival needs before `want` moves at all. `want` is capped at
-            # AI_TOP AFTER the band multiplies it, so any tow smaller than this headroom is
-            # thrown away by the very next line of the engine.
-            'headroom': ai_top / base - 1.0,
+            'over_top': sum(1 for r in rows if r['spd'] > ai_top * 1.005) / len(rows),
+            'base_top': base / ai_top,
         }
     out['player'] = statistics.fmean(r['pspd'] for r in arm['rows']) if arm['rows'] else 0.0
     return out
@@ -367,7 +371,7 @@ def main():
             print('    page errors: ' + errs[0][:110])
         print('    player averaged %.1f mph'
               % (statistics.fmean(pr[label]['summary']['player'] for pr in pairs) * MPH))
-        print(ROW.format('tag', 'samples', 'lead(mi)', 'mph', 'spd/base', 'at cap', 'headroom'))
+        print(ROW.format('tag', 'samples', 'lead(mi)', 'mph', 'spd/base', 'over 180', 'base/180'))
         for tag in ('behind', 'near', 'ahead'):
             vs = [pr[label]['summary'][tag] for pr in pairs if pr[label]['summary'][tag]]
             if not vs:
@@ -376,8 +380,7 @@ def main():
             avg = lambda k: statistics.fmean(v[k] for v in vs)
             print(ROW.format(tag, sum(v['n'] for v in vs), '%+.2f' % avg('lead'),
                              '%.1f' % (avg('spd') * MPH), '%.3f' % avg('ratio'),
-                             '%.0f%%' % (avg('at_ceiling') * 100),
-                             '%+.1f%%' % (avg('headroom') * 100)))
+                             '%.0f%%' % (avg('over_top') * 100), '%.3f' % avg('base_top')))
         print()
 
     print('  THE ANSWER  -  what the band changes, band on minus band off')
@@ -397,10 +400,14 @@ def main():
     print('  The band claims up to 14 percent either way. A difference near zero means it is')
     print('  inert, and the control arm above proves the measurement can see a difference.')
     print()
-    print('  HEADROOM is what the tow has to clear. `want` is capped at AI_TOP on the line')
-    print('  AFTER the band multiplies it, so a rival whose base already exceeds AI_TOP has a')
-    print('  NEGATIVE headroom and no tow can reach it at all. The governor is unaffected: it')
-    print('  pulls `want` down, and the cap only ever pulls down as well.')
+    print('  OVER 180 is the share of samples above AI_TOP, the flat ceiling a rival used to be')
+    print('  held to whatever the band said. BASE/180 is the pace the car would ask for with no')
+    print('  band at all, against that same figure - above 1.000 means the flat ceiling binds')
+    print('  the car before the band is even considered. Both are readings, not explanations:')
+    print('  what the engine does with them is for the reader of this report to say.')
+    print()
+    print('  The middle row is held inside traffic, where the blocking-car clamp sets the speed')
+    print('  rather than the band. Read its spread before reading its mean.')
     return 0
 
 
