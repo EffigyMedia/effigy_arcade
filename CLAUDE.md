@@ -6,8 +6,13 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 **Effigy Arcade** — **four games on one floor**, each meant to be built out into a full
 multi-scene game rather than filled in. Vanilla JavaScript, no framework, no dependency, no build
-step, and no network call at launch. It targets the browser as an installed progressive web app,
-portrait first, phone and tablet and desktop alike.
+step, and no network call at launch.
+
+**MOBILE ONLY, AND TOUCH IS THE INPUT.** Portrait, phone first, installed to the home screen as a
+progressive web app. **Keyboard, mouse and gamepad are out of scope** — not deprecated, not a lower
+priority, simply not part of what this product is. Every input question answers itself from that: a
+control is designed for a thumb, and a feature that needs a keyboard is not built. Owner ruling,
+2026-08-25, recorded in `docs/fragments/RLG-002.md`.
 
 The four machines:
 
@@ -23,11 +28,17 @@ shelves, and it is **parked, complete, and still playable** at
 `github.com/EffigyMedia/tiny_arcade`. Nothing here changes it, and a fix made here does not travel
 back to it. This project inverts its premise: few machines, each deep.
 
-**Where this is going.** Each game is intended to be split out into its own standalone binary
-wrapper when it is finished. `./pack.sh --standalone <id>` already performs the first half of that
-— it emits ONE self-contained HTML file with every script inlined — and the frozen `SHIPPING.md`
-in Tiny Arcade assessed the wrappers themselves. **Keep `--standalone` working.** It is the exit
-route for every machine here.
+**Where this is going, and there are two routes.** Each game is intended to leave this arcade when
+it is finished, either wrapped as a standalone binary or **converted to Godot**.
+`./pack.sh --standalone <id>` performs the first half of the wrapper route — it emits ONE
+self-contained HTML file with every script inlined — and the frozen `SHIPPING.md` in Tiny Arcade
+assessed the wrappers themselves. **Keep `--standalone` working.**
+
+**The second route changes what this codebase is for.** Under a Godot conversion, the HTML and
+JavaScript here are the playable design document that the Godot version is built from, rather than
+the thing that ships. **So do not invest in work whose only value is on the web** — a bundle-size
+fight, or offline behavior beyond what the owner needs to test on a phone. Gameplay, tuning and the
+rules of each machine survive either route; web plumbing does not.
 
 This project runs a documentation-driven **development process**, read in place from the shared
 process docs (never copied here, never edited from project work):
@@ -173,6 +184,12 @@ a picker. A fifth machine, or a real second shelf, is one entry away.
   for a kart racer.
 - **The corner cap in the driving engine is a renderer limit, not a taste one.** Past about 90
   degrees the road leaves the frame.
+- **Do not build for a keyboard, a mouse or a gamepad.** The shell still carries `Arcade.menu`, the
+  `A.pad` layer and per-cabinet key handlers, inherited from Tiny Arcade and left in place because
+  they work and cost nothing. **They are not load-bearing. Do not extend them to a new machine, and
+  do not spend effort maintaining them.** If they are ever removed, note that `tools/drive-test.py`
+  steers with a keyboard and is the only automated proof the driving engine still drives — **teach
+  it to drive by touch first, then remove.** In that order.
 - **Changes the tooling cannot observe need the owner's verdict on a real device.** Rendering,
   audio mix, on-device layout, and feel are not verified by a green harness run. Say so plainly.
 - **Every tunable lives in configuration with a committed default** — never an edited-in-place code

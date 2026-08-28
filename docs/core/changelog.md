@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-1-1"></a>
+## [0.1.1] — 2026-08-25
+- Changed: **mobile only.** Touch is the input; keyboard, mouse and gamepad are out of scope. Owner
+  ruling, recorded with what it makes redundant and what it does not delete
+  ([RLG-002](../fragments/RLG-002.md)).
+- Documented: a game leaves this arcade by one of two routes — a binary wrapper around the web
+  build, or a conversion to Godot. Under the Godot route this codebase is the playable design
+  document rather than the shipping artifact, so web-only plumbing is not worth investing in
+  ([RLG-002](../fragments/RLG-002.md)).
+
 <a id="v0-1-0"></a>
 ## [0.1.0] — 2026-08-25
 - Added: **Effigy Arcade** — Derelict, Privateer, Highway and Raceway on one floor, forked from Tiny
