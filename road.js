@@ -6324,12 +6324,24 @@ function step(dt){
   if(offRoad){
     shake = Math.max(shake, 0.22);
     targetX = clamp(targetX, -1.18, 1.18);
-    if(Math.abs(playerX) > 1.15 && iframe<=0){          // concrete barrier
-      hurt(9, 'barrier');
-      iframe = 0.5;
+    /* ---- THE VERGE COSTS TIME, NOT HEALTH ---------------------------------
+       Scraping the barrier used to take 9 health, which made the edge of the
+       road as dangerous as a car. It is not. Running wide is a mistake you pay
+       for by losing the speed you were carrying and by fighting the wheel to
+       get back on - and that is a complete punishment on its own, because in a
+       game about distance against a clock, speed IS the currency.
+
+       Damage is reserved for hitting something. A wall you are sliding along
+       is not something you hit; it is somewhere you should not be.
+       ---------------------------------------------------------------------- */
+    if(Math.abs(playerX) > 1.15){
       playerX = Math.sign(playerX)*1.13;
       targetX = playerX*0.7;
-      spd *= 0.72;
+      /* scrubbed hard and continuously, rather than in one hit - a barrier is
+         something you drag along, and dragging along it should feel expensive
+         every moment it lasts */
+      spd *= Math.max(0, 1 - dt*1.9);
+      shake = Math.max(shake, 0.34);
     }
   }
 

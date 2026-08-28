@@ -14,6 +14,12 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-7-1"></a>
+## [0.7.1] — 2026-08-25
+- Changed: **Interstate's verge costs speed, not health.** The barrier took 9 health on a repeating
+  cooldown, so sliding along a wall was as expensive as hitting a truck. It scrubs speed
+  continuously instead ([RLG-016](../fragments/RLG-016.md)).
+
 <a id="v0-7-0"></a>
 ## [0.7.0] — 2026-08-25
 - Added: **Hardpoint's full sound pass.** Four held layers that follow the ship every frame — engine
