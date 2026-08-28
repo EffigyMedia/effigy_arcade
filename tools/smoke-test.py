@@ -250,35 +250,41 @@ def saves(page, base):
       if (!A || !A.save || !A.save.clear) return { fatal: 'Arcade.save.clear missing' };
 
       localStorage.clear();
-      // the four shapes one machine can store under
-      A.save.set('inter', { best: 1 });                       // the save slot
-      A.save.set('inter-opts', { invertY: true });             // a second slot
-      localStorage.setItem('effigyarcade.inter.tally.v1', '{}');   // its own key
-      localStorage.setItem('effigyarcade.cinema.v1',
-        JSON.stringify({ 'inter.intro': 1, 'interstate.intro': 1 }));
+      // EVERY SHAPE A MACHINE CAN OWN. If a new store is added and not listed
+      // here, this check keeps passing while that store survives an erase -
+      // so adding a store means adding it to this list.
+      A.save.set('inter', { best: 1 });                                  // the save
+      A.save.set('inter-opts', { invertY: true });                       // a second slot
+      localStorage.setItem('effigyarcade.inter.tally.v1', '{}');         // its own key
+      localStorage.setItem('effigyarcade.inter.opts.v1', '{"mirror":"OFF"}');  // shell options
+      localStorage.setItem('effigyarcade.inter.audio.v1', '{"music":false}');  // audio prefs
+      localStorage.setItem('effigyarcade.inter.cinema.v1', '{"intro":1}');     // seen intros
 
       // a neighbour whose id shares a prefix with the one being erased
       A.save.set('interstate', { best: 99 });
-      localStorage.setItem('effigyarcade.interstate.tally.v1', '{}');
+      localStorage.setItem('effigyarcade.interstate.audio.v1', '{"music":true}');
+      // and the launcher, which is a scope but not a machine
+      localStorage.setItem('effigyarcade.launcher.audio.v1', '{"music":true}');
 
       const before = A.save.has('inter');
       const removed = A.save.clear('inter');
 
-      const left = Object.keys(localStorage).filter(k => k.indexOf('effigyarcade.inter.') === 0
-                                                     || k === 'effigyarcade.save.v1.inter'
-                                                     || k.indexOf('effigyarcade.save.v1.inter-') === 0);
-      const cinema = JSON.parse(localStorage.getItem('effigyarcade.cinema.v1') || '{}');
+      const left = Object.keys(localStorage).filter(k =>
+        k.indexOf('effigyarcade.inter.') === 0
+        || k === 'effigyarcade.save.v1.inter'
+        || k.indexOf('effigyarcade.save.v1.inter-') === 0);
+
       const neighbour = A.save.get('interstate');
-      const neighbourRaw = localStorage.getItem('effigyarcade.interstate.tally.v1');
+      const neighbourAudio = localStorage.getItem('effigyarcade.interstate.audio.v1');
+      const launcherAudio = localStorage.getItem('effigyarcade.launcher.audio.v1');
+      const reserved = A.save.clear('launcher');
 
       const all = A.save.clearAll();
       const anyLeft = Object.keys(localStorage).filter(k => k.indexOf('effigyarcade.') === 0);
 
-      return {
-        before, removed, left, cinema, neighbour, neighbourRaw,
-        stillSeen: A.save.has('inter'),
-        clearedAll: all, anyLeft
-      };
+      return { before, removed, left, neighbour, neighbourAudio, launcherAudio,
+               reserved, stillSeen: A.save.has('inter'), clearedAll: all, anyLeft,
+               scope: A.scope };
     }""")
 
     if result.get('fatal'):
@@ -286,20 +292,23 @@ def saves(page, base):
         return checks
 
     ok(result['before'] is True, 'save.has sees a machine with data')
-    ok(result['left'] == [], 'erasing a machine leaves none of its keys',
-       ', '.join(result['left']))
-    ok('inter.intro' not in result['cinema'],
-       'and forgets the intros it had shown', str(result['cinema']))
+    ok(result['left'] == [], 'erasing a machine leaves NONE of its six stores',
+       'survived: ' + ', '.join(result['left']))
     ok(result['stillSeen'] is False, 'and save.has agrees it is gone')
 
     # the precision test: `inter` must not eat `interstate`
     ok(result['neighbour'] is not None and result['neighbour'].get('best') == 99,
        'a machine with a shared prefix survives', str(result['neighbour']))
-    ok(result['neighbourRaw'] is not None,
-       'including its own stored keys')
-    ok(result['cinema'].get('interstate.intro') == 1,
-       'and its intro record')
+    ok(result['neighbourAudio'] is not None,
+       'including its own audio settings')
 
+    # the launcher is a scope, not a machine, and must be un-erasable by id
+    ok(result['reserved'] == 0, 'the launcher scope cannot be erased as a machine',
+       f"clear('launcher') removed {result['reserved']}")
+    ok(result['launcherAudio'] is not None, 'so its settings stay')
+
+    ok(result['scope'] == 'launcher', 'the launcher resolves its own scope',
+       str(result['scope']))
     ok(result['anyLeft'] == [], 'clearAll leaves nothing behind',
        ', '.join(result['anyLeft']))
     return checks

@@ -44,7 +44,7 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.3.1';
+A.version = '0.4.0';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;
@@ -247,7 +247,12 @@ A.home = function(){
 };
 
 A.cinema = (function(){
-  var KEY = 'effigyarcade.cinema.v1';
+  /* ONE BLOB FOR THE WHOLE ARCADE, until this line. Every machine's record of
+     which intros it had already shown lived together, which meant erasing one
+     game had to reach inside a shared object and prune it, and a game split out
+     on its own would have carried its neighbours' flags. Scoped, it is simply
+     one of that machine's own keys. */
+  var KEY = 'effigyarcade.' + (A.scope || 'launcher') + '.cinema.v1';
 
   function seenSet(){
     try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e){ return {}; }
@@ -392,8 +397,7 @@ if (raf) {
    ---------------------------------------------------------------------- */
 var NS   = 'effigyarcade.';
 var SKEY = NS + 'save.v1.';
-var CKEY = NS + 'cinema.v1';
-var RESERVED = { save:1, cinema:1 };
+var RESERVED = { save:1, cinema:1, launcher:1 };
 
 /* every stored key that belongs to one machine, and nothing that does not.
    The `-` and `.` in these tests are load-bearing: a bare `indexOf` prefix
@@ -425,14 +429,7 @@ A.save = {
 
   /* is there anything to erase? So a menu can say so instead of offering a
      button that does nothing. */
-  has: function(id){
-    if (ownedBy(id).length) return true;
-    try {
-      var seen = JSON.parse(localStorage.getItem(CKEY) || '{}');
-      for (var k in seen) if (k === id || k.indexOf(id + '.') === 0) return true;
-    } catch(e){}
-    return false;
-  },
+  has: function(id){ return ownedBy(id).length > 0; },
 
   /* ERASE ONE MACHINE, COMPLETELY. Returns how many keys went, so a caller
      can tell the player something true. */
@@ -442,13 +439,11 @@ A.save = {
     for (var i = 0; i < keys.length; i++){
       try { localStorage.removeItem(keys[i]); n++; } catch(e){}
     }
-    /* the cinema keeps every machine's "already seen" flags in ONE blob, so
-       this one is a prune rather than a delete */
-    try {
-      var seen = JSON.parse(localStorage.getItem(CKEY) || '{}'), hit = false;
-      for (var k in seen) if (k === id || k.indexOf(id + '.') === 0){ delete seen[k]; hit = true; n++; }
-      if (hit) localStorage.setItem(CKEY, JSON.stringify(seen));
-    } catch(e){}
+    /* THE PRUNE THAT USED TO LIVE HERE IS GONE, and its absence is the point:
+       the cinema is scoped per machine now, so its key is `effigyarcade.<id>.
+       cinema.v1` and `ownedBy` above already took it. So are that machine's
+       audio preferences and the shell's options for it. Nothing about one
+       machine is stored anywhere that erasing it cannot reach. */
     return n;
   },
 
@@ -882,12 +877,17 @@ function boot(){
        ], onChange);
      -------------------------------------------------------------------------- */
   var optDefs = [], optOnChange = null;
-  /* keyed off the same slug the save system uses, so options travel with the
-     right cabinet. There is no `id` in this scope — referencing one threw and
-     silently killed the rest of boot(), which is why the options never
-     appeared and the pause menu looked fine. */
-  var OPT_KEY = 'effigyarcade.opts.v1.' +
-                String(title || 'game').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  /* ---- KEYED ON THE MACHINE, NOT ON ITS NAME ----------------------------
+     This was `effigyarcade.opts.v1.` plus a slug of the cabinet's TITLE, and a
+     title is display text. Renaming Highway to Redline Interstate silently
+     orphaned every option the player had set, because the key moved with the
+     words. Worse, that shape matched none of the patterns `Arcade.save.clear`
+     recognises, so erasing a machine left the shell's own settings behind
+     while reporting that it had cleared everything.
+
+     `Arcade.scope` is the cabinet's id, declared in its own meta tag. The key
+     is now one of the machine's own, so it is erased with the rest of it. */
+  var OPT_KEY = 'effigyarcade.' + (A.scope || 'launcher') + '.opts.v1';
 
   function optAll(){
     try { return JSON.parse(localStorage.getItem(OPT_KEY) || '{}'); } catch(e){ return {}; }

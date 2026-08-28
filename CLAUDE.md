@@ -153,6 +153,30 @@ Python 3 with Playwright installed runs the two test harnesses; a browser runs e
 - **`sw.js`** / **`assets.js`** — the cache policy, and the generated cache list. `assets.js` is
   generated; **never edit it by hand.**
 
+**EVERY MACHINE OWNS EVERYTHING IT STORES.** These are standalone games sharing a launcher for
+convenience, so nothing persisted may be shared between them — anything shared is a thing that
+breaks, or silently goes missing, on the day one is split out. `Arcade.scope` is the storage scope,
+read from each cabinet's `<meta name="arcade-id">` (falling back to the file name, then `launcher`).
+Every persisted key is `effigyarcade.<scope>.<what>.v1`, plus the save slots at
+`effigyarcade.save.v1.<id>`:
+
+| What | Key |
+|---|---|
+| the save | `effigyarcade.save.v1.<id>` and any `-suffix` |
+| the shell's options | `effigyarcade.<id>.opts.v1` |
+| audio settings | `effigyarcade.<id>.audio.v1` |
+| intros already seen | `effigyarcade.<id>.cinema.v1` |
+| anything the machine writes itself | `effigyarcade.<id>.<anything>` |
+
+**A store outside those shapes is invisible to the eraser**, and `Arcade.save.clear` will report
+success while leaving it behind. **Add a store, add it to the `saves()` check in `smoke-test.py`** —
+that check exists so this rule cannot rot silently. `save`, `cinema` and `launcher` are reserved and
+cannot be machine ids.
+
+**The launcher seeds a cabinet once.** A machine with no audio settings of its own copies the
+launcher's on first visit **and writes them down**, so it owns them from then on. Independent,
+without being deaf to the volume you just set.
+
 **Single sources of truth.** The catalog is `games.js`. The shell owns the room (`--stage-h`,
 `--safe-top`). The engine owns driving — anything in `road.js` is in both driving games
 automatically. **`Arcade.version` in `arcade.js` is the version**, and the git tag mirrors it.

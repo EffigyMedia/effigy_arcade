@@ -18,8 +18,40 @@
 (function(){
 "use strict";
 
-var KEY = 'effigyarcade.audio.v1';
 var A = window.Arcade = window.Arcade || {};
+
+/* ---- THE STORAGE SCOPE, AND EVERY PERSISTED THING HANGS OFF IT ------------
+   These four machines are standalone games that share a launcher for the
+   owner's convenience while they are built. Anything they share in storage is
+   a thing that breaks, or silently goes missing, on the day one of them is
+   split out. Audio preferences were shared: one mute switch, one set of levels,
+   for all four. So was the shell's option store and the cinema's record of
+   which intros had been seen.
+
+   `Arcade.scope` is the answer, and it is defined HERE rather than in the shell
+   because audio.js loads first and needs it immediately.
+
+     <meta name="arcade-id" content="hardpoint">   the cabinet says who it is
+     the file name                                 a standalone build renamed
+     'launcher'                                    index.html, which is no game
+
+   Every key becomes `effigyarcade.<scope>.<what>.v1`, which is exactly the
+   shape `Arcade.save.clear` already treats as belonging to one machine - so
+   erasing a game now takes its audio settings and its seen-intros with it,
+   which it did not before.
+   ------------------------------------------------------------------------ */
+A.scope = (function(){
+  function slug(v){ return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+  try {
+    var m = document.querySelector('meta[name="arcade-id"]');
+    if (m && m.content) return slug(m.content);
+    var f = slug((location.pathname.split('/').pop() || '').replace(/\.html?$/i, ''));
+    return (!f || f === 'index') ? 'launcher' : f;
+  } catch(e){ return 'launcher'; }
+})();
+
+var KEY = 'effigyarcade.' + A.scope + '.audio.v1';
+var SEED_KEY = 'effigyarcade.launcher.audio.v1';
 
 var ctx = null, master = null, sfxBus = null, musBus = null, uiBus = null;
 var verb = null, noiseBuf = null, hushed = false;
@@ -41,6 +73,15 @@ var pref = { sfx:true, music:true, vMaster:1, vMusic:1, vSfx:1 };
 var musicTrim = 1.00;
 try {
   var raw = localStorage.getItem(KEY);
+  /* ---- THE LAUNCHER SEEDS A CABINET THAT HAS NO SETTINGS OF ITS OWN -------
+     Splitting the stores would otherwise cost a real convenience: turning the
+     music down in the launcher and having a cabinet ignore you. A machine with
+     nothing saved reads the launcher's settings ONCE, as its starting point,
+     and owns them from then on. Independent, without being deaf. */
+  var seeded = false;
+  if (!raw && A.scope !== 'launcher'){
+    try { raw = localStorage.getItem(SEED_KEY); seeded = !!raw; } catch(e){}
+  }
   if (raw){
     var o = JSON.parse(raw);
     pref.sfx   = o.sfx   !== false;
@@ -55,6 +96,13 @@ try {
 } catch(e){}
 
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(pref)); } catch(e){} }
+
+/* WRITE THE SEED DOWN IMMEDIATELY, or the machine has not taken ownership of
+   anything - it is just reading the launcher's settings on every load, and a
+   later change in the launcher would move it again. Persisting on the first
+   visit is what makes "its own settings" true rather than a description of
+   what happens until somebody touches a slider. */
+if (seeded) save();
 function fire(){ for (var i=0;i<listeners.length;i++) try { listeners[i](pref); } catch(e){} }
 
 /* a stored level, clamped, defaulting to full if it was never set */

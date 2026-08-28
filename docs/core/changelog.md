@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-4-0"></a>
+## [0.4.0] — 2026-08-25
+- Changed: **every machine owns everything it stores.** The shell's options, the audio settings and
+  the record of seen intros were shared between all four; they are now scoped per machine under
+  `Arcade.scope`, read from a new `<meta name="arcade-id">` ([RLG-010](../fragments/RLG-010.md)).
+- Fixed: the shell's options were keyed on a slug of the cabinet's **title**, so the rename orphaned
+  them — and that shape was invisible to `Arcade.save.clear`, **so erasing a machine had been
+  leaving its settings behind while reporting success** ([RLG-010](../fragments/RLG-010.md)).
+- Added: the launcher seeds a cabinet's audio settings once, on first visit, and the cabinet writes
+  them down and owns them from then on ([RLG-010](../fragments/RLG-010.md)).
+- Added: `tools/isolation-test.py`, and the `saves()` check now covers all six stores
+  ([RLG-010](../fragments/RLG-010.md)).
+
 <a id="v0-3-1"></a>
 ## [0.3.1] — 2026-08-25
 - Added: **Hardpoint has a proper title** — a drawn wordmark, the career read back as STANDING,
