@@ -43,6 +43,21 @@ with sync_playwright() as p:
             pg.evaluate("() => window.__road.setSpd && window.__road.setSpd(0)")
             pg.wait_for_timeout(250)
         n = pg.evaluate("() => (window.__road.trafficCount ? window.__road.trafficCount() : null)")
+        # THE HORN AND THE SIREN ARE HIGHWAY FURNITURE TOO. A horn asks traffic
+        # to move over and a siren tells it to; a circuit has neither traffic
+        # nor police, so both answer a question it does not ask. The BUTTON has
+        # to go, not just its effect - a control that is present and does
+        # nothing costs the player a lap of wondering what they are missing.
+        horn = pg.evaluate("() => !!document.getElementById('horn')")
+        siren_off = pg.evaluate("() => !!(window.__road.snd && window.__road.snd.noSiren)")
+        want_horn = (gid != 'motorsport')
+        hg = (horn == want_horn) and (siren_off == (gid == 'motorsport'))
+        print(f'  {"ok  " if hg else "FAIL"}  {gid:<11} '
+              f'horn control present: {horn}, siren muted: {siren_off}'
+              f'  ({"a circuit needs neither" if gid == "motorsport" else "a highway needs both"})')
+        if not hg:
+            bad[0] += 1
+
         want_empty = (gid == 'motorsport')
         good = (n == 0) if want_empty else (n > 0)
         print(f'  {"ok  " if good else "FAIL"}  {gid:<11} '

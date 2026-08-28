@@ -103,6 +103,25 @@ def main():
         # in front and never once considered the lane beside them, so the road
         # silted up into rolling walls. A merge count of zero over a long run
         # at speed means the decision is not being reached at all.
+        # THE HORN HAS TO MOVE SOMEBODY. It was wrong in three separate ways at
+        # once - it compared a lane INDEX to a road position, so it asked cars
+        # that were not in front of you; a car that agreed only had its lane
+        # LABEL changed and never moved; and the search started at the camera
+        # rather than the car, about 880 units back, so its window covered road
+        # already passed. Any one of those alone makes a horn look inert.
+        before_sc = page.evaluate("() => window.__road.scattered()")
+        for _ in range(30):
+            page.evaluate("() => window.__road.setSpd(window.__road.MAX_SPD*0.55)")
+            page.evaluate("() => document.getElementById('horn')"
+                          ".dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))")
+            page.wait_for_timeout(150)
+            page.evaluate("() => document.getElementById('horn')"
+                          ".dispatchEvent(new PointerEvent('pointerup',{bubbles:true}))")
+            page.wait_for_timeout(150)
+        moved_over = page.evaluate("() => window.__road.scattered()") - before_sc
+        ok(moved_over > 0, 'the horn moves cars out of the way',
+           f'{moved_over} cars moved over')
+
         merges = page.evaluate("() => window.__road.mergesMade()")
         ok(merges > 0, 'traffic decides to go round slower cars',
            f'{merges} merges over the run')

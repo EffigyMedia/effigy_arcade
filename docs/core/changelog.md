@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-3"></a>
+## [0.9.3] — 2026-08-25
+- Fixed: **the horn and siren had no effect on traffic**, from three separate faults — a lane INDEX
+  compared against a road position, a car that agreed to move only having its lane LABEL changed, and
+  a search that started at the camera rather than the car. The sound itself was always working
+  ([RLG-035](../fragments/RLG-035.md)).
+- Changed: **no horn and no siren on the circuit, control included.** A closed track has neither
+  traffic nor police, and a button that is present but does nothing costs the player a lap of
+  wondering what they are missing ([RLG-035](../fragments/RLG-035.md)).
+- Known: scatter and the lane-open guarantee pull against each other; the corridor measurement varies
+  between runs and goes under the limit in some ([RLG-037](../fragments/RLG-037.md)).
+
 <a id="v0-9-2"></a>
 ## [0.9.2] — 2026-08-25
 - Fixed: **the revs could pass the limiter, from three separate causes.** The slipstream scaled the

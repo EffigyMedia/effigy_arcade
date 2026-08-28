@@ -210,6 +210,7 @@ var snd = {
   },
   begin: function(){
     if (!AR) return;
+    snd.noSiren = !!CFG.circuitOnly;
     AR.audio.init();
     if (!AR.audio.ctx) return;  // no engine yet; a real gesture will call us back
     snd.arm();
@@ -690,7 +691,8 @@ var snd = {
 
     /* your own bar wails too, and louder than a distant pursuit */
     var mine = (typeof barOn !== 'undefined' && barOn) ? 1.25 : 0;
-    var wail = Math.max(copNear, mine);
+    /* nothing on a circuit has a siren, and nothing on it is being chased */
+    var wail = snd.noSiren ? 0 : Math.max(copNear, mine);
     if (wail > 0){
       snd.sirenPhase += 0.055;
       var two = Math.sin(snd.sirenPhase) > 0 ? 760 : 560;
@@ -3757,8 +3759,13 @@ function nearestLane(x){
    somebody's braking distance, and less behind, because a car back there can
    lift. It also checks the PLAYER, who is a car like any other - traffic that
    merges through you is worse than traffic that never merges at all. */
-function laneClear(c, tx){
-  const needF = 2600, needB = 1500;
+function laneClear(c, tx, urgency){
+  /* `urgency` shrinks the margin a driver insists on. A voluntary lane change
+     wants a comfortable hole; a car making room because somebody is leaning on
+     a horn behind it will take a tighter one, which is what people do. It never
+     goes to zero - a gap that is not there is still not there. */
+  const k = urgency === undefined ? 1 : Math.max(0.35, urgency);
+  const needF = 2600 * k, needB = 1500 * k;
   for(const o of traffic){
     if(o === c) continue;
     if(Math.abs(o.x - tx) > (o.w + c.w)/2 + 0.05) continue;
@@ -5397,6 +5404,7 @@ function inCruiser(){
 }
 
 function setHorn(on){
+  if(CFG.circuitOnly) return;          /* see the note at the button binding */
   if(inCruiser()){
     /* only the press latches; the release does nothing */
     if(!on) return;
@@ -5426,10 +5434,21 @@ function setHorn(on){
    `fromZ` and `fromLane` let an NPC cruiser use it too, so traffic gets out of
    ITS way exactly as it gets out of yours.
    ------------------------------------------------------------------------- */
+let scattered = 0;                  /* cars that have actually moved over */
 function scatter(chance, fromZ, fromLane){
   if(hornCool > 0) return;
   hornCool = 0.55;
-  const oz = (fromZ === undefined) ? pos : fromZ;
+  /* ---- THE ORIGIN IS THE CAR, NOT THE CAMERA ---------------------------
+     This defaulted to `pos`, which is the camera. The player sits `PLAYER_Z`
+     further down the road - about 880 units - so a window of 40 to 1500 ahead
+     of `pos` is really about 840 BEHIND the car to 620 in front of it. The
+     horn was being answered by traffic level with you or already passed, which
+     is the third and last reason it looked like it did nothing.
+
+     A siren passes its own `fromZ` - the cruiser's position - and that was
+     always right, which is why this only ever showed on the horn.
+     ------------------------------------------------------------------- */
+  const oz = (fromZ === undefined) ? (pos + PLAYER_Z) : fromZ;
   /* ---- THE BUG THAT SWALLOWED THE SPEED TRAPS ------------------------
      `lane` does not exist in this engine — the player's lateral position is
      `playerX`. Every frame a cop was on the road, `scatter` threw here, and
@@ -5443,8 +5462,24 @@ function scatter(chance, fromZ, fromLane){
   const odds = (chance === undefined) ? 0.40 : chance;
   for(const c of traffic){
     const ahead = c.z - oz;
-    if(ahead < 40 || ahead > 1500) continue;
-    if(Math.abs(c.lane - ol) > 0.6) continue;
+    /* far enough to be worth asking, near enough to be about YOU. 1500 was
+       measured from the camera and so covered barely a car length of real road
+       in front of the bumper. */
+    if(ahead < 120 || ahead > 4200) continue;
+    /* ---- AND THIS LINE WAS HALF-FIXED, WHICH IS WHY NOTHING MOVED -------
+       `ol` is a lateral position, corrected in the pass recorded above. `c.lane`
+       is still a lane INDEX, 0 to 3. Comparing them asks whether a lane number
+       is within 0.6 of a road position: a car in lane 3 reads as 3 away from a
+       player in the middle of the road and is never asked to move, while a car
+       in lane 0 reads as 0 away and is asked wherever it actually is.
+
+       So the horn was answered almost exclusively by cars that were not in
+       front of you, which is indistinguishable from a horn that does nothing.
+       Compare like with like - `c.x` is the car's own lateral position, in the
+       same units as `ol`. 0.34 is a lane's width plus a little: in front of you
+       or overlapping your line.
+       ------------------------------------------------------------------- */
+    if(Math.abs(c.x - ol) > 0.34) continue;
     /* ---- THEY GET FED UP ------------------------------------------------
        Each car carries its own `heed`, starting at 1. Every time it is asked
        and refuses, that drops — so leaning on the horn behind the same car
@@ -5460,12 +5495,35 @@ function scatter(chance, fromZ, fromLane){
       c.heed = Math.max(0.12, c.heed * 0.62);
       continue;
     }
+    /* ---- AND IT HAS TO ACTUALLY MOVE -------------------------------------
+       This used to reassign `c.lane` and stop. But `lane` is a label; what is
+       drawn, collided and seen is `c.x`, and nothing moved it. The only code
+       that reads `lane` afterwards is the drift, which merely flips direction.
+
+       So a car that agreed to move over sat exactly where it was, and the horn
+       looked broken even when a car had said yes. Both halves of this function
+       were wrong in the same way: one compared a lane index to a road position,
+       and the other wrote a lane index and expected a road position to follow.
+
+       It goes through the same merge the traffic AI uses - a committed lateral
+       move carried out over about a second, with the indicator on. That is
+       what a car does when somebody sounds a horn behind it.
+       ------------------------------------------------------------------- */
     const room = [];
     if(c.lane > 0) room.push(c.lane - 1);
     if(c.lane < LANES - 1) room.push(c.lane + 1);
     if(!room.length) continue;
-    c.lane = room[(Math.random()*room.length)|0];
-    c.swerve = 1;
+    const pick = LANE_X[room[(Math.random()*room.length)|0]];
+    /* asked to move, so it accepts a tighter gap than it would choose */
+    if(!laneClear(c, pick, 0.45) || wouldBlock(c, pick)) continue;
+    c.mergeFrom = c.x;
+    c.mergeX    = pick;
+    c.mergeT    = 1.3;
+    c.mergeCool = 0;
+    c.blink     = 0.9;
+    c.lane      = nearestLane(pick);
+    c.swerve    = 1;
+    scattered++;
     /* it moved, so it is not the one being stubborn */
     c.heed = Math.max(0.12, c.heed * 0.86);
   }
@@ -6133,10 +6191,26 @@ if(wheelCv){
   window.addEventListener('pointercancel', grabEnd);
 }
 
+/* ---- NO HORN AND NO SIREN ON A CIRCUIT ---------------------------------
+   A horn asks traffic to move over and a siren tells it to. A closed track has
+   neither traffic nor police, so both are answering a question the circuit does
+   not ask - and a control that is present but does nothing is worse than no
+   control, because the player spends a lap wondering what they are missing.
+
+   The BUTTON goes, not just its effect. Removing it from the DOM rather than
+   disabling it also gives the remaining controls their space back, which is
+   the visible half of this on a phone.
+   ------------------------------------------------------------------------ */
+if(CFG.circuitOnly && hornBtn && hornBtn.parentNode){
+  hornBtn.parentNode.removeChild(hornBtn);
+}
+
+if(hornBtn){
 hornBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); setHorn(true); });
 hornBtn.addEventListener('pointerup',     ()=>setHorn(false));
 hornBtn.addEventListener('pointerleave',  ()=>setHorn(false));
 hornBtn.addEventListener('pointercancel', ()=>setHorn(false));
+}
 
 gasBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); setGas(true); });
 gasBtn.addEventListener('pointerup',     ()=>setGas(false));
@@ -6150,12 +6224,12 @@ brakeBtn.addEventListener('pointercancel', ()=>setBrake(false));
 window.addEventListener('keydown', e=>{
   if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S'){ e.preventDefault(); setBrake(true); }
   if(e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W'){ e.preventDefault(); setGas(true); }
-  if(e.key === 'h' || e.key === 'H'){ e.preventDefault(); setHorn(true); }
+  if(!CFG.circuitOnly && (e.key === 'h' || e.key === 'H')){ e.preventDefault(); setHorn(true); }
 });
 window.addEventListener('keyup', e=>{
   if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setBrake(false);
   if(e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') setGas(false);
-  if(e.key === 'h' || e.key === 'H') setHorn(false);
+  if(!CFG.circuitOnly && (e.key === 'h' || e.key === 'H')) setHorn(false);
 });
 
 window.addEventListener('keydown',e=>{
@@ -10244,6 +10318,7 @@ requestAnimationFrame(frameLoop);
   API.blockedAhead = function(){ return blockedAhead; };
   API.mergesMade = function(){ return mergesMade; };
   API.trafficCount = function(){ return traffic.length; };
+  API.scattered = function(){ return scattered; };
   API.setTow = function(v){ towOverride = (v === undefined || v < 0) ? -1 : v; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
