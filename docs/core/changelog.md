@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-7-5"></a>
+## [0.7.5] — 2026-08-25
+- Fixed: **cars popped to a different texture in the rearview.** The mirror switched from a drawn
+  block to a painted sprite at exactly 26px wide, and every car crossed that line in the same place
+  on screen. The sprite fades in across a band now ([RLG-020](../fragments/RLG-020.md)).
+
+<a id="v0-7-4"></a>
+## [0.7.4] — 2026-08-25
+- Fixed: **racers drove through the player.** They collided with traffic, cruisers, roadblocks and
+  each other, and never once looked at the player. It is a rub rather than a wreck, scaled by closing
+  speed ([RLG-019](../fragments/RLG-019.md)).
+
 <a id="v0-7-3"></a>
 ## [0.7.3] — 2026-08-25
 - Changed: **the damage smoke and fire are smaller.** At high damage the plume filled the middle of
