@@ -5066,6 +5066,33 @@ function stepRacers(dt){
         r.wreck = 1.0; r.spd *= 0.55;
       }
     }
+
+    /* ---- AND INTO YOU, WHICH THEY DID NOT ---------------------------------
+       Racers avoided traffic, avoided cruisers, avoided roadblocks and each
+       other - and drove straight THROUGH the player. Every other body on this
+       road was solid to them except the one the player is sitting in, so a
+       rival could occupy your lane and share your bumper for a mile.
+
+       This is a contact hit rather than a wreck for either car. A rival is
+       racing you: leaning on each other is the sport, and spinning a rival
+       every time you touch would empty the field in the first mile. Both of
+       you lose speed, both get pushed apart, and only you take damage, because
+       you are the only one keeping a health bar.
+       --------------------------------------------------------------------- */
+    const pRdz = r.z - (pos + PLAYER_Z), pRdx = Math.abs(r.x - playerX);
+    if(iframe <= 0 && Math.abs(pRdz) < ((r.len || 380) + 380)/2 && pRdx < ((r.w || 0.30) + 0.26)/2){
+      hurt(8, 'racer');                       /* less than traffic: it is a rub, not a T-bone */
+      iframe = 0.7;
+      const push = Math.sign(playerX - r.x || 1);
+      /* the bigger the speed difference the harder the shunt */
+      const closing = Math.min(1, Math.abs(spd - r.spd) / 4200);
+      playerX = clamp(playerX + push * (0.16 + closing*0.16), -1.18, 1.18);
+      targetX = playerX;
+      r.x     = clamp(r.x - push * (0.12 + closing*0.12), -0.92, 0.92);
+      spd    *= 0.80 - closing*0.10;
+      r.spd  *= 0.86;
+      burst(r, '#ffd27a');
+    }
   }
   /* Do NOT cull. Racers that dropped behind were deleted at 14,000 back, so
      once you got clear of the field it evaporated and could never catch up —
