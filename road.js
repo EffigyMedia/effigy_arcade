@@ -8411,10 +8411,28 @@ function drawMirrorFull(mx, my, mw, mh){
        Below about 26px wide the sprite is mush and the drawn block is
        cleaner, so the simplified version stays for distant cars. Close up
        you get the actual front — which is the whole reason the painters
-       exist. */
+       exist.
+
+       ---- AND IT USED TO POP -------------------------------------------
+       That was a hard switch at exactly 26px: one frame a car was a drawn
+       block, the next it was a painted sprite, and the two do not look alike.
+       Every car crossed that line at the same screen width, so the change was
+       not just visible - it was visible in the same place every time, which is
+       what made it read as a fault rather than as detail arriving.
+
+       Both renderings are right; the reasoning above still holds at both ends.
+       What was missing was the middle. The sprite now fades IN across a band
+       rather than appearing, drawn over the block instead of instead of it, so
+       the detail arrives gradually and there is no frame where the car changes
+       identity. A blend costs one extra draw on a handful of cars in a strip
+       of screen the size of a mirror.
+       ------------------------------------------------------------------- */
     const fs = (!it.cop && it.o.type && FRONT_SP[it.o.type])
       ? FRONT_SP[it.o.type][(it.o.paintN|0) % FRONT_SP[it.o.type].length] : null;
-    if(fs && sw >= 26){
+    /* fully the block below FADE_LO, fully the sprite above FADE_HI */
+    const FADE_LO = 20, FADE_HI = 34;
+    const spriteMix = fs ? clamp((sw - FADE_LO) / (FADE_HI - FADE_LO), 0, 1) : 0;
+    if(spriteMix >= 1){
       const fh = sw * fs.height / fs.width;
       ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
       continue;
@@ -8466,6 +8484,15 @@ function drawMirrorFull(mx, my, mw, mh){
       const on2 = Math.floor(sirenPhase*1.4) % 2;
       ctx.fillStyle = on2 ? '#3b6bff' : '#ff2b4a';
       ctx.fillRect(x0, y0 - Math.max(1, sh*0.12), sw, Math.max(1, sh*0.12));
+    }
+
+    /* the detail arriving, over the block that is already there */
+    if(spriteMix > 0){
+      const fh = sw * fs.height / fs.width;
+      ctx.save();
+      ctx.globalAlpha = spriteMix;
+      ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
+      ctx.restore();
     }
   }
   ctx.restore();
