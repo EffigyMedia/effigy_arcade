@@ -6145,10 +6145,21 @@ function drawTitleArt(){
     g.fillRect(x, y, 3 + (i%5), 30 + (i%7)*30);
   }
 
-  /* ---- the emergency light: red, low, and swinging ------------------------ */
-  const swing = Math.sin(T*0.55);
-  const lx = w*0.5 + swing*w*0.16, ly = h*0.075;
-  const flick = (Math.sin(T*17.3) > 0.86) ? 0.35 : 1;
+  /* ---- the emergency light: bolted over the door, and pulsing -------------
+     It used to swing across the frame on a sine, which is a horror-film image
+     and the wrong one here: nothing else in this room moves, there is no draught
+     and no ship's roll to move it, so a light drifting back and forth read as a
+     rectangle floating rather than as a lamp on a chain.
+
+     Bolted over the doorway it says what it is. An emergency light sits at the
+     hatch it warns about, and a slow pulse - up over a second, down over two -
+     is what those fittings actually do: they are not strobes, they breathe.
+     ------------------------------------------------------------------------ */
+  const lx = (DOOR_L + Math.min(DOOR_R, w)) * 0.5, ly = DOOR_T - h*0.030;
+  /* two sines of different periods so the pulse never settles into a tick, and
+     a floor under it so the room is never fully dark */
+  const pulse = 0.55 + 0.45 * Math.sin(T*1.9) * 0.7 + 0.15 * Math.sin(T*0.83);
+  const flick = Math.max(0.22, Math.min(1, pulse));
   g.save();
   g.globalCompositeOperation = 'lighter';
   const wash = g.createRadialGradient(lx, ly, 0, lx, ly, h*0.95);
@@ -6160,11 +6171,42 @@ function drawTitleArt(){
      which is the only thing there is for it to fall on. */
   g.fillStyle = wash; g.fillRect(0, 0, w, h);
   g.restore();
-  /* the fitting itself */
-  g.fillStyle = 'rgba(20,22,22,.95)';
-  g.fillRect(lx-16, ly-6, 32, 12);
-  g.fillStyle = 'rgba(255,90,70,' + (0.9*flick) + ')';
-  g.fillRect(lx-12, ly-3, 24, 6);
+  /* ---- the fitting, bolted to the bulkhead over the hatch ------------------
+     Drawn as a housing with a lens in it and a bracket at each end, rather than
+     as a bare rectangle. The bracket is what makes it read as BOLTED TO
+     something instead of as a shape sitting on top of the picture, and it is
+     four pixels of work. */
+  const lw = Math.max(26, w*0.085), lh = Math.max(9, h*0.011);
+  g.save();
+  /* the throw it casts on the plating just under it */
+  const cast = g.createLinearGradient(lx, ly, lx, ly + lh*4.5);
+  cast.addColorStop(0, 'rgba(255,86,66,' + (0.32*flick) + ')');
+  cast.addColorStop(1, 'rgba(255,86,66,0)');
+  g.fillStyle = cast;
+  g.beginPath();
+  g.moveTo(lx - lw*0.5, ly + lh*0.5);
+  g.lineTo(lx + lw*0.5, ly + lh*0.5);
+  g.lineTo(lx + lw*1.15, ly + lh*4.5);
+  g.lineTo(lx - lw*1.15, ly + lh*4.5);
+  g.closePath(); g.fill();
+  /* brackets */
+  g.fillStyle = 'rgba(16,18,20,.95)';
+  g.fillRect(lx - lw*0.56, ly - lh*0.9, lw*0.10, lh*1.8);
+  g.fillRect(lx + lw*0.46, ly - lh*0.9, lw*0.10, lh*1.8);
+  /* the housing */
+  g.fillStyle = 'rgba(22,24,26,.96)';
+  g.fillRect(lx - lw*0.5, ly - lh*0.5, lw, lh);
+  g.strokeStyle = 'rgba(58,62,66,.9)'; g.lineWidth = 1;
+  g.strokeRect(lx - lw*0.5, ly - lh*0.5, lw, lh);
+  /* the lens, inset, with a wire guard across it */
+  g.fillStyle = 'rgba(255,84,62,' + (0.30 + 0.65*flick) + ')';
+  g.fillRect(lx - lw*0.42, ly - lh*0.22, lw*0.84, lh*0.44);
+  g.strokeStyle = 'rgba(12,14,16,.8)'; g.lineWidth = 1;
+  for(let gd = 1; gd < 4; gd++){
+    const gx = lx - lw*0.42 + (lw*0.84) * (gd/4);
+    g.beginPath(); g.moveTo(gx, ly - lh*0.24); g.lineTo(gx, ly + lh*0.24); g.stroke();
+  }
+  g.restore();
 
   /* ---- THE MESSAGE, in blood ---------------------------------------------
      Three passes and the order matters: the RUNS first so they sit under the
@@ -6500,39 +6542,25 @@ function showOptions(){
     '<div class="veyebrow">QUIETUS</div>' +
     '<div class="vtitle ice">Options</div>' +
     '<div class="tmenu">' +
-      '<button class="vbtn ghost" data-act="ctrl" style="margin-top:22px">CONTROLS</button>' +
       '<button class="vbtn ghost" data-act="erase">' + eraseLabel() + '</button>' +
       '<button class="vbtn" data-act="back">BACK</button>' +
     '</div>',
     {
-      ctrl:   ()=>{ showControls(); },
       erase:  ()=>{ eraseStep(); },
       back:   ()=>{ eraseArmed = false; showTitle(); }
     });
 }
 
-function showControls(){
-  /* One set of controls, because there is one way to play. The only thing that
-     changes is the word for the gesture. */
-  const touch = !!(AR && AR.touch);
-  const v = touch ? 'Tap' : 'Click';
-  const rows = [
-    [v + ' a tile',     'move there'],
-    [v + ' a hostile',  'read it \u00B7 ' + v.toLowerCase() + ' again to strike'],
-    [v + ' an item',    'walk to it and take it'],
-    [v + ' SURVEY',     'reveals the deck and repairs the suit'],
-    [v + ' GEAR',       'what you are carrying'],
-    ['Pause, top right','options']
-  ];
-  openVeil(
-    '<div class="veyebrow">' + (touch ? 'TOUCH' : 'POINTER') + '</div>' +
-    '<div class="vtitle ice">Controls</div>' +
-    '<div class="ctrls">' +
-      rows.map(r => '<div class="crow"><b>' + r[0] + '</b><i>' + r[1] + '</i></div>').join('') +
-    '</div>' +
-    '<button class="vbtn" data-act="back" style="margin-top:18px">BACK</button>',
-    { back: ()=>{ showOptions(); } });
-}
+/* ---- THE CONTROLS SCREEN IS GONE, AND THIS NOTE IS WHY --------------------
+   These are touch games through and through ([[RLG-002]]), and a controls
+   screen exists to tell a player which KEYS do what. A thumb does not need to
+   be told where it is. The screen listed gestures the interface already shows -
+   a stick where you put your thumb, a throttle that stays where you leave it -
+   which is a page describing what is visible one tap away.
+
+   Owner ruling, 2026-08-25. If a gesture ever needs explaining, teach it in
+   play the first time it matters rather than on a page nobody opens twice.
+   -------------------------------------------------------------------------- */
 
 function showDeckCard(){
   const info = deckInfo();

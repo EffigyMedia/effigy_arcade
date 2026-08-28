@@ -1593,36 +1593,18 @@ function title(){
     careerStrip() +
     '<button class="go" data-act="play">' + (started ? 'CONTINUE' : 'BEGIN') + '</button>' +
     '<div class="hint">' + (started ? 'BACK TO THE STATION' : 'YOU START DOCKED') + '</div>' +
-    '<button data-act="controls">CONTROLS</button>' +
     '<button data-act="options">OPTIONS</button>' +
     '<button data-act="quit">QUIT</button>' +
     '<div class="legal">&copy; 2026 EFFIGY MEDIA</div>',
-    { play: startRun, controls: controls, options: options,
+    { play: startRun, options: options,
       quit: function(){ if(AR && AR.home) AR.home(); } });
   paintTitleMark();
 }
 
-function controls(){
-  artStop();
-  var touch = AR && AR.touch;
-  openVeil(
-    '<h1 style="font-size:26px">CONTROLS</h1><div class="ctrls">' +
-    (touch
-      ? '<b>BRIDGE</b><br>left thumb &mdash; flight stick, where you touch<br>' +
-        'right &mdash; throttle lever, it stays where you leave it<br>' +
-        'past the red line &mdash; afterburn, and it builds heat<br>' +
-        'LAS / MSL &mdash; lasers and missiles<br><br>' +
-        '<b>ABOARD</b><br>left thumb &mdash; walk<br>right thumb &mdash; look<br>' +
-        'FIRE &mdash; shoot &middot; TAKE &mdash; the single verb'
-      : '<b>BRIDGE</b><br>arrows &mdash; stick<br>Q / E &mdash; throttle down / up<br>' +
-        'space &mdash; lasers &middot; M &mdash; missiles<br><br>' +
-        '<b>ABOARD</b><br>W A S D &mdash; move<br>arrows &mdash; turn<br>' +
-        'space &mdash; fire &middot; E &mdash; take') +
-    '<br><br><b>THE RULE</b><br>Engines disable. Everything else destroys &mdash; ' +
-    'and a wreck has no cargo. Get behind them.</div>' +
-    '<button class="go" data-act="back">BACK</button>',
-    { back: title });
-}
+/* The controls screen is gone - see the note in Quietus. These are touch games
+   ([[RLG-002]]) and a thumb does not need to be told where it is. What that
+   screen carried besides key bindings was the rule of the game, and the rule is
+   already on the title in three words: HUNT, CRIPPLE, BOARD. */
 
 /* ---- ERASING THE CAREER ----------------------------------------------------
    One press arms, the second does it. No dialog: the veil IS the menu, and a

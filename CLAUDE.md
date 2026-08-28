@@ -14,6 +14,11 @@ priority, simply not part of what this product is. Every input question answers 
 control is designed for a thumb, and a feature that needs a keyboard is not built. Owner ruling,
 2026-08-25, recorded in `docs/fragments/RLG-002.md`.
 
+**No machine has a controls screen, and none should get one.** A controls page exists to tell a
+player which keys do what; a thumb does not need to be told where it is, and a page listing gestures
+only describes what the interface already shows one tap away. **If a gesture needs explaining, teach
+it in play the first time it matters.** `tools/menu-test.py` asserts the absence.
+
 The four machines:
 
 | Machine | id | What it is |

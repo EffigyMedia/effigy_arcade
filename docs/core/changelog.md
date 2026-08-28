@@ -14,6 +14,17 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-6-0"></a>
+## [0.6.0] — 2026-08-25
+- Removed: **every controls screen.** These are touch games, and a page listing gestures describes
+  what the interface already shows one tap away ([RLG-014](../fragments/RLG-014.md)).
+- Changed: Quietus's emergency light is **bolted over the hatch and pulses** instead of swinging
+  across the frame. Nothing else in that room moves, so a drifting light read as a floating
+  rectangle. It is drawn as a fitting now — housing, lens, wire guard, brackets and a throw on the
+  plating ([RLG-014](../fragments/RLG-014.md)).
+- Added: `tools/menu-test.py`, which asserts every title has the same set and that OPTIONS returns
+  to it ([RLG-014](../fragments/RLG-014.md)).
+
 <a id="v0-5-1"></a>
 ## [0.5.1] — 2026-08-25
 - Fixed: **Quietus drew its title as `IET`.** Its hand-painted blood alphabet was authored for

@@ -9447,38 +9447,19 @@ function showOptions(){
     '<div class="eyebrow">' + GAME_TITLE.toUpperCase() + '</div><h1>Options</h1>' +
     '<div class="ark-opts"></div>' +
     '<div class="tmenu">' +
-      '<button class="go ghost" data-act="ctrl">CONTROLS</button>' +
       '<button class="go ghost" data-act="debug">DEBUG</button>' +
       '<button class="go ghost" data-act="erase">' + eraseLabel() + '</button>' +
       '<button class="go" data-act="back">BACK</button>' +
     '</div>',
-    { ctrl: () => showControls(), debug: () => showDebug(),
+    { debug: () => showDebug(),
       erase: () => eraseStep(),
       back: () => { eraseArmed = false; showTitle(); } });
   if(AR && AR.options && AR.options.paint) AR.options.paint();
 }
 
-function showControls(){
-  const touch = !!(AR && AR.touch);
-  const rows = touch
-    ? [['Drag anywhere', 'steer'],
-       ['NOS', 'burn what you have banked'],
-       ['BRAKE', 'scrub speed into a corner'],
-       ['Squeeze past traffic', 'fills the nitrous'],
-       ['Pause, top right', 'options']]
-    : [['Drag, or arrow keys', 'steer'],
-       ['NOS button', 'burn what you have banked'],
-       ['BRAKE button', 'scrub speed into a corner'],
-       ['Squeeze past traffic', 'fills the nitrous'],
-       ['Pause, top right', 'options']];
-  openVeil(
-    '<div class="eyebrow">' + (touch ? 'TOUCH' : 'POINTER') + '</div><h1>Controls</h1>' +
-    '<div class="ctrls">' +
-      rows.map(r => '<div class="crow"><b>' + r[0] + '</b><i>' + r[1] + '</i></div>').join('') +
-    '</div>' +
-    '<button class="go" data-act="back" style="margin-top:16px">BACK</button>',
-    { back: () => showOptions() });
-}
+/* The controls screen is gone - see the note in Quietus. These are touch games
+   ([[RLG-002]]), and a page listing gestures is a page describing what the
+   screen already shows. */
 /* ---- between rounds ------------------------------------------------------
    The standings are the whole reason to keep driving, so they are the screen.
    -------------------------------------------------------------------------- */
