@@ -1,6 +1,10 @@
 @echo off
 rem Code Continuum - double-click to open this project's dashboard.
 rem
+rem GENERATED. The source is Templates/_Project_Template/Dashboard.bat in the Code Continuum
+rem environment, and `Commands/materialize-projects.py` writes it into each project. An edit here is
+rem overwritten the next time that runs, and reported as drift before then. Change the template.
+rem
 rem the name is the interface (Artifact_Formats.md, Dashboard Launchers): this launcher derives the
 rem project name from its own folder and hands it to dashboard.py, which owns the paths. Nothing
 rem here is edited per project - the same file works in every project it is copied into.
