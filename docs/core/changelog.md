@@ -14,6 +14,11 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-7-3"></a>
+## [0.7.3] — 2026-08-25
+- Changed: **the damage smoke and fire are smaller.** At high damage the plume filled the middle of
+  the frame and hid the traffic you were about to hit ([RLG-018](../fragments/RLG-018.md)).
+
 <a id="v0-7-2"></a>
 ## [0.7.2] — 2026-08-25
 - Fixed: **snow followed you into the desert.** The biome's odds were used to START weather and never

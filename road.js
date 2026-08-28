@@ -7786,20 +7786,26 @@ function drawPlayer(){
     ctx.rect(0, 0, W, noseY - h*0.62);
     ctx.clip();
 
-    /* Sixteen puffs read as a wisp at this size, not a plume. The column has
-       to be dense enough to hold together as one shape while it rises, so this
-       is roughly four times as many, on two staggered emission rows. */
-    const n = Math.round(10 + q*46);
+    /* ---- IT HAS TO READ AS DAMAGE WITHOUT BECOMING THE VIEW ---------------
+       Density was pushed up until the column held together as one shape, and it
+       went past that: at high damage the plume filled the middle of the frame
+       and hid the traffic you were about to hit. A game that punishes damage by
+       taking the road away is a game that turns one mistake into all of them.
+
+       So the plume is shorter, narrower and thinner. It still reads instantly
+       as a wrecked car, because what says that is the SOURCE and the colour,
+       not the acreage. */
+    const n = Math.round(8 + q*26);
     for(let i=0;i<n;i++){
       /* the golden-angle offset keeps them from banding into visible rings
          the way a uniform i*0.31 does at high counts */
       const life = ((now*0.00040) + i*0.2361) % 1;
-      const rise = life * h * (1.4 + q*1.2);
-      const sway = Math.sin(life*3.4 + i*2.1) * w * (0.06 + life*0.30);
-      const rad  = w * (0.09 + life*0.40) * (0.55 + q*0.85);
+      const rise = life * h * (0.85 + q*0.65);   /* was 1.4 + 1.2 - it climbed past the horizon */
+      const sway = Math.sin(life*3.4 + i*2.1) * w * (0.05 + life*0.18);
+      const rad  = w * (0.07 + life*0.24) * (0.55 + q*0.55);
       /* each puff is thinner now, because there are far more of them stacking
          — otherwise sixty at the old alpha is a solid grey wall */
-      const a    = (1 - life*0.86) * (0.13 + q*0.26);
+      const a    = (1 - life*0.86) * (0.10 + q*0.17);
       const sx   = noseX + sway + ((i%3)-1) * w*0.10;
       const sy   = noseY - h*0.58 - rise;
       /* grey to dirty charcoal: true black is invisible on a night road */
@@ -7815,13 +7821,13 @@ function drawPlayer(){
     if(dmg > 75){
       const f = clamp((dmg - 75) / 25, 0, 1);
       ctx.globalCompositeOperation = 'lighter';
-      const licks = Math.round(14 + f*26);
+      const licks = Math.round(10 + f*16);
       for(let i=0;i<licks;i++){
         const life = ((now*0.0011) + i*0.2361) % 1;
-        const rise = life * h * (0.55 + f*0.5);
+        const rise = life * h * (0.38 + f*0.32);
         const sway = Math.sin(life*7 + i*1.7) * w * 0.07 * life;
-        const rad  = w * (0.09 + (1-life)*0.11) * (0.7 + f*0.6);
-        const a    = (1 - life) * (0.20 + f*0.26);
+        const rad  = w * (0.07 + (1-life)*0.08) * (0.7 + f*0.45);
+        const a    = (1 - life) * (0.17 + f*0.20);
         const fx   = noseX + sway + ((i%5)-2) * w*0.045;
         const fy   = noseY - h*0.60 - rise;
         const gr = ctx.createRadialGradient(fx, fy, 0, fx, fy, Math.max(1, rad));
@@ -7833,10 +7839,10 @@ function drawPlayer(){
       }
       /* embers: small, fast, and they carry further than the flame does —
          they are what sells it as burning rather than glowing */
-      const embers = Math.round(10 + f*22);
+      const embers = Math.round(8 + f*14);
       for(let i=0;i<embers;i++){
         const life = ((now*0.0016) + i*0.2361) % 1;
-        const rise = life * h * (1.1 + f*0.9);
+        const rise = life * h * (0.75 + f*0.6);
         const sway = Math.sin(life*9 + i*3.3) * w * 0.16 * life;
         const a    = (1 - life) * (0.55 + f*0.4);
         const ex   = p.x + sway + ((i%7)-3) * w*0.035;
