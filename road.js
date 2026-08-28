@@ -9671,7 +9671,7 @@ window.addEventListener('load', resize);
 reset();
 /* Options live in the pause menu, rendered and remembered by the shell. */
 /* the menu shows the LAST USED setting, not the default: `optManual` and the
-   rest are already loaded from `highway-opts` by the time this runs, so the
+   rest are already loaded from `<id>-opts` by the time this runs, so the
    defaults are read off the live state rather than hardcoded. Without this the
    pause menu always opened on AUTO however you had left it. */
 if (AR && AR.options) AR.options.define([

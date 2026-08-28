@@ -14,6 +14,17 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-2-1"></a>
+## [0.2.1] — 2026-08-25
+- Fixed: **erasing a machine did not erase it.** `Arcade.save.clear` removed the save slot only, so
+  options, a machine's own stored keys, and the record of which intros it had shown all survived —
+  and the call reported success. The launcher's ERASE left even more behind
+  ([RLG-007](../fragments/RLG-007.md)).
+- Added: `Arcade.save.has(id)` and `Arcade.save.clearAll()`, and a namespace rule in the shell that
+  says what belongs to a machine ([RLG-007](../fragments/RLG-007.md)).
+- Added: a `saves` check in `smoke-test.py`, run against the old implementation first to prove it
+  is not vacuous ([RLG-007](../fragments/RLG-007.md)).
+
 <a id="v0-2-0"></a>
 ## [0.2.0] — 2026-08-25
 - Changed: **the four machines are renamed**, in one unit — Derelict to **Quietus**, Privateer to

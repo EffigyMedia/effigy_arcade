@@ -44,7 +44,7 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.2.0';
+A.version = '0.2.1';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;
@@ -371,8 +371,43 @@ if (raf) {
 
 /* ---- 2. saving ------------------------------------------------------
    One slot per game id. Anything JSON-serialisable. If a game writes a
-   `label`, the launcher prints it on that machine's cabinet card.      */
-var SKEY = 'effigyarcade.save.v1.';
+   `label`, the launcher prints it on that machine's cabinet card.
+
+   THE NAMESPACE RULE, AND CLEARING DEPENDS ENTIRELY ON IT.
+   Everything the arcade stores lives under `effigyarcade.`, and everything
+   ONE MACHINE stores lives under one of exactly two shapes:
+
+       effigyarcade.save.v1.<id>          the save slot        (this API)
+       effigyarcade.save.v1.<id>-<suffix> a second slot, e.g. `-opts`
+       effigyarcade.<id>.<anything>       written by the machine itself
+
+   A machine that stores something outside those shapes is invisible to the
+   eraser, and `clear` will report success while leaving it behind. That was
+   the state before this comment existed: `clear` removed the save slot only,
+   so `-opts` survived, Quietus's own tally and intro flags survived, and the
+   cinema's record of which intros had been seen survived. Erasing a game left
+   it remembering most of what it knew.
+
+   `save` and `cinema` are therefore reserved and cannot be game ids.
+   ---------------------------------------------------------------------- */
+var NS   = 'effigyarcade.';
+var SKEY = NS + 'save.v1.';
+var CKEY = NS + 'cinema.v1';
+var RESERVED = { save:1, cinema:1 };
+
+/* every stored key that belongs to one machine, and nothing that does not.
+   The `-` and `.` in these tests are load-bearing: a bare `indexOf` prefix
+   test would let a machine called `inter` claim `interstate`'s keys. */
+function ownedBy(id){
+  var out = [], exact = SKEY + id, slot = exact + '-', raw = NS + id + '.';
+  try {
+    Object.keys(localStorage).forEach(function(k){
+      if (k === exact || k.indexOf(slot) === 0 || k.indexOf(raw) === 0) out.push(k);
+    });
+  } catch(e){}
+  return out;
+}
+
 A.save = {
   get: function(id){
     try { var r = localStorage.getItem(SKEY + id); return r ? JSON.parse(r) : null; }
@@ -387,7 +422,48 @@ A.save = {
     for (var k in obj) cur[k] = obj[k];
     return A.save.set(id, cur);
   },
-  clear: function(id){ try { localStorage.removeItem(SKEY + id); } catch(e){} }
+
+  /* is there anything to erase? So a menu can say so instead of offering a
+     button that does nothing. */
+  has: function(id){
+    if (ownedBy(id).length) return true;
+    try {
+      var seen = JSON.parse(localStorage.getItem(CKEY) || '{}');
+      for (var k in seen) if (k === id || k.indexOf(id + '.') === 0) return true;
+    } catch(e){}
+    return false;
+  },
+
+  /* ERASE ONE MACHINE, COMPLETELY. Returns how many keys went, so a caller
+     can tell the player something true. */
+  clear: function(id){
+    if (!id || RESERVED[id]) return 0;
+    var keys = ownedBy(id), n = 0;
+    for (var i = 0; i < keys.length; i++){
+      try { localStorage.removeItem(keys[i]); n++; } catch(e){}
+    }
+    /* the cinema keeps every machine's "already seen" flags in ONE blob, so
+       this one is a prune rather than a delete */
+    try {
+      var seen = JSON.parse(localStorage.getItem(CKEY) || '{}'), hit = false;
+      for (var k in seen) if (k === id || k.indexOf(id + '.') === 0){ delete seen[k]; hit = true; n++; }
+      if (hit) localStorage.setItem(CKEY, JSON.stringify(seen));
+    } catch(e){}
+    return n;
+  },
+
+  /* ERASE THE WHOLE ARCADE. The launcher's own ERASE used to match
+     `effigyarcade.save` and so left the cinema blob and every machine's own
+     keys in place, under a note promising it cleared runs in progress. */
+  clearAll: function(){
+    var n = 0;
+    try {
+      Object.keys(localStorage).forEach(function(k){
+        if (k.indexOf(NS) === 0){ localStorage.removeItem(k); n++; }
+      });
+    } catch(e){}
+    return n;
+  }
 };
 
 /* ---- 3. gamepad -----------------------------------------------------

@@ -198,6 +198,87 @@ def launcher(page, base, games):
     return checks
 
 
+def saves(page, base):
+    """ERASING ONE MACHINE MUST ERASE ALL OF IT, AND NONE OF ITS NEIGHBOUR.
+
+    `Arcade.save.clear` used to remove the save slot and nothing else, so a
+    machine that had been erased still remembered its options, its own stored
+    counters, and every intro it had already shown. The call reported success
+    the whole time, which is why this is a harness check and not a code review
+    note: the only way to know an eraser erased is to put something in front of
+    it and look afterwards.
+
+    Seeds all four shapes a machine can store under, plus a NEIGHBOUR whose id
+    shares a prefix - the case a naive `startsWith` gets wrong.
+    """
+    checks = []
+
+    def ok(cond, label, detail=''):
+        checks.append((bool(cond), label, detail))
+
+    page.goto(f'{base}/index.html', wait_until='load')
+    page.wait_for_timeout(900)
+
+    result = page.evaluate("""() => {
+      const A = window.Arcade;
+      if (!A || !A.save || !A.save.clear) return { fatal: 'Arcade.save.clear missing' };
+
+      localStorage.clear();
+      // the four shapes one machine can store under
+      A.save.set('inter', { best: 1 });                       // the save slot
+      A.save.set('inter-opts', { invertY: true });             // a second slot
+      localStorage.setItem('effigyarcade.inter.tally.v1', '{}');   // its own key
+      localStorage.setItem('effigyarcade.cinema.v1',
+        JSON.stringify({ 'inter.intro': 1, 'interstate.intro': 1 }));
+
+      // a neighbour whose id shares a prefix with the one being erased
+      A.save.set('interstate', { best: 99 });
+      localStorage.setItem('effigyarcade.interstate.tally.v1', '{}');
+
+      const before = A.save.has('inter');
+      const removed = A.save.clear('inter');
+
+      const left = Object.keys(localStorage).filter(k => k.indexOf('effigyarcade.inter.') === 0
+                                                     || k === 'effigyarcade.save.v1.inter'
+                                                     || k.indexOf('effigyarcade.save.v1.inter-') === 0);
+      const cinema = JSON.parse(localStorage.getItem('effigyarcade.cinema.v1') || '{}');
+      const neighbour = A.save.get('interstate');
+      const neighbourRaw = localStorage.getItem('effigyarcade.interstate.tally.v1');
+
+      const all = A.save.clearAll();
+      const anyLeft = Object.keys(localStorage).filter(k => k.indexOf('effigyarcade.') === 0);
+
+      return {
+        before, removed, left, cinema, neighbour, neighbourRaw,
+        stillSeen: A.save.has('inter'),
+        clearedAll: all, anyLeft
+      };
+    }""")
+
+    if result.get('fatal'):
+        ok(False, 'the shell exposes save.clear', result['fatal'])
+        return checks
+
+    ok(result['before'] is True, 'save.has sees a machine with data')
+    ok(result['left'] == [], 'erasing a machine leaves none of its keys',
+       ', '.join(result['left']))
+    ok('inter.intro' not in result['cinema'],
+       'and forgets the intros it had shown', str(result['cinema']))
+    ok(result['stillSeen'] is False, 'and save.has agrees it is gone')
+
+    # the precision test: `inter` must not eat `interstate`
+    ok(result['neighbour'] is not None and result['neighbour'].get('best') == 99,
+       'a machine with a shared prefix survives', str(result['neighbour']))
+    ok(result['neighbourRaw'] is not None,
+       'including its own stored keys')
+    ok(result['cinema'].get('interstate.intro') == 1,
+       'and its intro record')
+
+    ok(result['anyLeft'] == [], 'clearAll leaves nothing behind',
+       ', '.join(result['anyLeft']))
+    return checks
+
+
 def main():
     console_utf8()
     ap = argparse.ArgumentParser()
@@ -233,6 +314,21 @@ def main():
             line = f'  {mark}  {"launcher":<10}'
             if lbad:
                 line += '  ·  ' + '; '.join(f'{l} ({d})' if d else l for _, l, d in lbad)
+            print(line)
+            page.close()
+
+            page = ctx.new_page()
+            try:
+                schecks = saves(page, base)
+            except Exception as e:
+                schecks = [(False, 'the save layer answers', f'{type(e).__name__}: {e}')]
+            sbad = [c for c in schecks if not c[0]]
+            failed += bool(sbad)
+            total += 1
+            mark = 'ok  ' if not sbad else 'FAIL'
+            line = f'  {mark}  {"saves":<10}'
+            if sbad:
+                line += '  ·  ' + '; '.join(f'{l} ({d})' if d else l for _, l, d in sbad)
             print(line)
             page.close()
 

@@ -490,7 +490,9 @@ footer{margin-top:30px;border-top:1px solid var(--line);padding-top:26px;text-al
       <b>SAVED DATA</b>
       <button class="shbtn" id="shWipe">ERASE</button>
     </div>
-    <div class="shnote">Erasing clears high scores and any run in progress.</div>
+    <div class="shnote">Erasing clears every machine — high scores, runs in progress,
+      settings, and the intros you have already seen. One machine can be erased on its own
+      from that machine’s own options.</div>
     <div class="shrow"><button class="shbtn key" id="shClose" style="flex:1">CLOSE</button></div>
   </div>
 </div>
@@ -1024,11 +1026,12 @@ on('shPurge', 'click', function(){
 on('shWipe', 'click', function(){
   var b = el('shWipe');
   if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'SURE?'; return; }
-  try {
-    Object.keys(localStorage).forEach(function(k){
-      if (k.indexOf('effigyarcade.save') === 0) localStorage.removeItem(k);
-    });
-  } catch(e){}
+  /* THE SHELL OWNS THIS NOW. The loop that used to live here matched
+     `effigyarcade.save` only, so it left the cinema's record of every intro
+     already seen, and it left anything a machine stored under its own name -
+     Quietus's tally and intro flags among them. The note beside this button
+     promises it clears runs in progress, and it did not. */
+  A.save.clearAll();
   b.textContent = 'ERASED';
   setTimeout(function(){ location.reload(); }, 600);
 });
