@@ -35,8 +35,16 @@ var A = window.Arcade = window.Arcade || {};
    The shell loads on the launcher and on every cabinet, so a version kept here is
    readable from anywhere in the arcade. There is no package.json to hold it, and a
    second copy in a file that nothing reads is how two answers to one question start.
-   The git tag mirrors this string; a tag is a record, not a source. */
-A.version = '0.9.11';
+   The git tag mirrors this string; a tag is a record, not a source.
+
+   IT RESET TO 0.1.0 AT THE FORK, AND THE CODE DID NOT GET YOUNGER. Tiny Arcade
+   reached 0.9.11 and its number described a nearly finished arcade of nineteen
+   small machines. This product is four machines that are each meant to become a
+   full multi-scene game, and almost none of that is built - so carrying 0.9.11
+   over would have said "nearly done" about work that has barely started. The
+   version tracks THIS product. The maturity of the engine underneath it is
+   recorded in the git history, which came across whole. */
+A.version = '0.1.0';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;

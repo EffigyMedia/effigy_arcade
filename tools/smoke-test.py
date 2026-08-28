@@ -110,8 +110,14 @@ def launcher(page, base, games):
     one path with no coverage. A dead click handler on the rack sent first-time
     visitors to `/null` for weeks behind an 18/18 green run.
 
-    So: open the launcher, open a shelf, click a real cabinet, and assert where
-    the browser actually ENDED UP. Not that a handler ran; where it landed.
+    So: open the launcher, click a real cabinet, and assert where the browser
+    actually ENDED UP. Not that a handler ran; where it landed.
+
+    THE SHELF STEP IS GONE, AND IT WAS NOT REMOVED FOR TIDINESS. Tiny Arcade
+    landed on a picker of three shelves, so reaching a cabinet meant opening one
+    first. This arcade lands on the rack. The check that used to open a shelf now
+    asserts the opposite invariant - that the cabinets are reachable with NO step
+    in between - because a picker reappearing is itself a regression here.
     """
     checks = []
 
@@ -138,19 +144,16 @@ def launcher(page, base, games):
         route.continue_()
     page.route('**/games/**/*.html', slow_cabinet)
 
-    shelves = page.locator('.shelf')
-    ok(shelves.count() >= 3, 'the floor shows its shelves', f'{shelves.count()} found')
-
-    # the first shelf that actually holds machines
-    opened = False
-    for i in range(shelves.count()):
-        shelves.nth(i).click()
-        page.wait_for_timeout(250)
-        if page.locator('.cab:visible').count():
-            opened = True
-            break
-    ok(opened, 'a shelf opens onto its rack')
-    if not opened:
+    # ---- THE FLOOR IS THE LANDING PAGE ------------------------------------
+    # No shelf, no picker, no step. If a cabinet is not visible the moment the
+    # loading panel lifts, something has put a screen back in front of the rack.
+    visible = page.locator('.cab:visible')
+    ok(visible.count() == 4, 'the floor shows its four machines',
+       f'{visible.count()} visible')
+    ok(page.locator('.shelf:visible').count() == 0,
+       'and nothing stands in front of them',
+       f'{page.locator(".shelf:visible").count()} shelf buttons visible')
+    if not visible.count():
         return checks
 
     cab = page.locator('.cab:visible').first

@@ -582,23 +582,11 @@ var shelvesEl = document.getElementById('shelves');
 var rackHead = document.getElementById('rackhead');
 var rnameEl = document.getElementById('rname');
 
-SHELVES.forEach(function(sh){
-  var n = GAMES.filter(function(g){ return g.cat === sh.id; }).length;
-  var b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'shelf' + (n ? '' : ' empty');
-  b.style.setProperty('--a', sh.accent);
-  b.innerHTML = '<span class="bar"></span><span class="in">' +
-    '<span class="st"></span>' +
-    '<span class="sd"></span>' +
-    '<span class="sn"></span></span>';
-  b.querySelector('.st').textContent = sh.name;
-  b.querySelector('.sd').textContent = sh.blurb;
-  b.querySelector('.sn').textContent = n ? (n + (n === 1 ? ' machine' : ' machines'))
-                                         : 'empty \u2014 nothing built yet';
-  b.addEventListener('click', function(){ UI.open(); openShelf(sh.id, true); });
-  shelvesEl.appendChild(b);
-});
+/* The picker that used to be built here is gone with the shelves it picked
+   from. `#shelves` stays in the markup and stays empty: the loading panel hides
+   it along with the rest of the floor, and a real second shelf would put its
+   buttons back here. Building one button for one shelf and never showing it is
+   dead DOM, and dead DOM is what a later reader mistakes for a feature. */
 
 /* The shelf picker has no content to show with one shelf, so every route that
    used to lead back to it leads to the floor instead. Keeping the function
