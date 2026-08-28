@@ -99,6 +99,14 @@ def main():
         ok(tight < 9, 'the road was measured under real traffic',
            f'narrowest corridor {tight:.3f} lane units (need 0.34)')
         ok(tight >= 0.34, 'and it never went under a car width', f'{tight:.3f}')
+        # TRAFFIC THAT ONLY BRAKES IS NOT TRAFFIC. Civilians followed the car
+        # in front and never once considered the lane beside them, so the road
+        # silted up into rolling walls. A merge count of zero over a long run
+        # at speed means the decision is not being reached at all.
+        merges = page.evaluate("() => window.__road.mergesMade()")
+        ok(merges > 0, 'traffic decides to go round slower cars',
+           f'{merges} merges over the run')
+
         ok(errs == [], 'no page errors', errs[0][:100] if errs else '')
         b.close()
 

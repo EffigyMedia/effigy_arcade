@@ -3723,6 +3723,79 @@ function laneFree(z, lane, gap){
   return true;
 }
 
+/* ---- what a merging driver needs to know ---------------------------------
+   Two questions, asked about a LATERAL POSITION rather than a lane index,
+   because a lane index is an assignment and the road is a width.
+   -------------------------------------------------------------------------- */
+function nearestLane(x){
+  let best = 0, bd = 1e9;
+  for(let i = 0; i < LANE_X.length; i++){
+    const d = Math.abs(LANE_X[i] - x);
+    if(d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+
+/* Is there a hole at `tx`, and will it still be one when we arrive? The window
+   is asymmetric on purpose: a long way forward, because we are moving into
+   somebody's braking distance, and less behind, because a car back there can
+   lift. It also checks the PLAYER, who is a car like any other - traffic that
+   merges through you is worse than traffic that never merges at all. */
+function laneClear(c, tx){
+  const needF = 2600, needB = 1500;
+  for(const o of traffic){
+    if(o === c) continue;
+    if(Math.abs(o.x - tx) > (o.w + c.w)/2 + 0.05) continue;
+    const dz = o.z - c.z;
+    if(dz > -needB && dz < needF) return false;
+    /* closing fast from behind counts as occupied even when it is not yet */
+    if(dz <= -needB && dz > -6000 && o.spd > c.spd + 900) return false;
+  }
+  const pdz = (pos + PLAYER_Z) - c.z;
+  if(Math.abs(playerX - tx) < (0.26 + c.w)/2 + 0.05 && pdz > -needB && pdz < needF) return false;
+  return true;
+}
+
+/* ---- WOULD MOVING THERE CLOSE THE ROAD? ----------------------------------
+   The merge logic and the keep-a-lane-open guarantee pull against each other,
+   and the first version of merging won: adding lane changes took the narrowest
+   corridor from 0.452 down to 0.245, under the limit. A car had found a hole,
+   moved into it, and the hole was the way through.
+
+   `keepLaneOpen` would eventually re-open it, but "eventually" is not what an
+   absolute guarantee means, and undoing a merge a second after making it is
+   exactly the weaving this design set out to avoid. So the check happens
+   BEFORE the decision: a car does not take the last gap.
+   -------------------------------------------------------------------------- */
+function wouldBlock(c, tx){
+  const near = [];
+  for(const o of traffic){
+    if(o === c) continue;
+    if(Math.abs(o.z - c.z) > 1600) continue;
+    near.push(o);
+  }
+  if(!near.length) return false;
+  near.push({ x: tx, w: c.w });                 /* us, where we want to be */
+  return widestGap(near) < 0.40;                /* a margin over the 0.34 limit */
+}
+
+/* How fast this stretch of road is at `tx` - the speed of the slowest thing
+   ahead in it, or our own cruise if it is empty. This is what stops a car
+   pulling out to sit beside the one it was already following. */
+function laneSpeed(c, tx){
+  let v = c.cruise;
+  for(const o of traffic){
+    if(o === c) continue;
+    if(Math.abs(o.x - tx) > (o.w + c.w)/2 + 0.05) continue;
+    const dz = o.z - c.z;
+    if(dz <= 0 || dz > 6000) continue;
+    v = Math.min(v, o.spd);
+  }
+  const pdz = (pos + PLAYER_Z) - c.z;
+  if(Math.abs(playerX - tx) < (0.26 + c.w)/2 + 0.05 && pdz > 0 && pdz < 6000) v = Math.min(v, spd);
+  return v;
+}
+
 /* A wave never fills every lane, but cars run at different speeds, so given
    enough road a fast one drifts into the last free lane and the wall closes.
    This keeps a line open without deleting anything or slowing the road down:
@@ -3748,6 +3821,7 @@ function laneFree(z, lane, gap){
    road is looked at whole by at least one window.
    ------------------------------------------------------------------------ */
 let blockedAhead = 0;               /* windows with no way through, last pass */
+let mergesMade = 0;                 /* lane changes traffic has decided on, this run */
 /* ---- THE TIGHTEST THE ROAD GOT, not just whether it closed -----------------
    A boolean "was it ever blocked" cannot tell a working guarantee from a road
    that never crowds in the first place - and the first version of the traffic
@@ -6565,6 +6639,7 @@ function step(dt){
 
   // --- traffic follows the car in front and queues at roadblocks ---
   keepLaneOpen(dt, pz);
+  
   traffic.sort((a,b) => a.z - b.z);
   for(const c of traffic){
     const wasSpd = c.spd || 0;
@@ -6608,6 +6683,67 @@ function step(dt){
           want = Math.min(want, gapP < 420 ? 0 : spd + gapP * 0.35);
       }
     }
+
+    /* ---- AND IT CAN GO ROUND, WHICH IS THE WHOLE POINT --------------------
+       Everything above this is a car reading the road and SLOWING for it. That
+       was the entire repertoire: a civilian queued behind a slower car forever
+       and the motorway silted up into rolling walls, because nothing on it
+       ever considered the lane beside it.
+
+       A merge is a decision, not a drift. It is made once, committed to, and
+       carried out over a second or so - which is why it lives in state on the
+       car rather than being re-derived every frame. A car that re-decides at
+       60Hz weaves, and weaving reads as a bug even when every individual frame
+       is defensible.
+
+       The test for a safe lane is the one a driver actually makes: is there a
+       hole beside me, is it still going to be a hole when I get there, and is
+       the car in it closing on me. Not "is that lane index free".
+       -------------------------------------------------------------------- */
+    if(c.mergeCool > 0) c.mergeCool -= dt;
+    if(c.mergeT > 0){
+      c.mergeT -= dt;
+      /* carry it out - and if the hole closed while we were moving, abort back
+         to where we came from rather than pressing on into an occupied lane */
+      if(!laneClear(c, c.mergeX)){
+        c.mergeX = c.mergeFrom; c.mergeT = Math.min(c.mergeT, 0.9);
+      }
+      c.x += clamp(c.mergeX - c.x, -1.1*dt, 1.1*dt);
+      if(Math.abs(c.mergeX - c.x) < 0.02 || c.mergeT <= 0){
+        c.x = c.mergeX; c.mergeT = 0; c.mergeCool = rnd(2.2, 4.5);
+        c.lane = nearestLane(c.x);
+        c.drift = Math.abs(c.drift || 0.0004) * (Math.random() < 0.5 ? -1 : 1);
+      }
+      /* `!(x > 0)` rather than `x <= 0`: a freshly spawned car has no
+         `mergeCool` at all, and `undefined <= 0` is FALSE - which would have
+         meant no car ever merged until something had set the field, and
+         nothing ever would. */
+    } else if(!(c.mergeCool > 0) && !c.yielding && want < c.cruise * 0.86){
+      /* held up by something. Look for a lane worth taking - the one that is
+         both clear AND actually faster, because pulling out to sit beside the
+         car you were following is worse than staying put. */
+      const here = c.x;
+      let best = null, bestGain = 0;
+      for(const dir of [-1, 1]){
+        const tx = clamp(here + dir * 0.50, -0.86, 0.86);
+        if(!laneClear(c, tx)) continue;
+        if(wouldBlock(c, tx)) continue;          /* never take the last gap */
+        const gain = laneSpeed(c, tx) - laneSpeed(c, here);
+        if(gain > bestGain + 200){ bestGain = gain; best = tx; }
+      }
+      if(best !== null){
+        c.mergeFrom = here; c.mergeX = best; c.mergeT = 2.4;
+        mergesMade++;
+        /* an indicator, for the two seconds before it moves - the mirror and
+           the forward view both already draw brake lights, and a car that
+           moves across without warning is the thing that makes traffic feel
+           malicious rather than busy */
+        c.blink = 1.2;
+      } else {
+        c.mergeCool = rnd(0.8, 1.6);      /* nothing doing; look again shortly */
+      }
+    }
+    if(c.blink > 0) c.blink -= dt;
 
     const rate = want < c.spd ? 9000 : 2600;       // brakes beat the engine
     c.spd += clamp(want - c.spd, -rate*dt, rate*dt);
@@ -10048,6 +10184,7 @@ requestAnimationFrame(frameLoop);
   API.paintChoices = function(){ return paintChoices(); };
   API.setBar = function(v){ barOn = v; };
   API.blockedAhead = function(){ return blockedAhead; };
+  API.mergesMade = function(){ return mergesMade; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){

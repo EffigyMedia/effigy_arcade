@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-0"></a>
+## [0.9.0] — 2026-08-25
+- Added: **traffic goes round slower cars.** Civilians could only ever slow for what was ahead of
+  them, so the road silted up into rolling walls. They now decide, commit to and carry out a lane
+  change — checking a lateral position rather than a lane index, refusing to pull out unless the
+  other lane is actually faster, and never taking the last gap through
+  ([RLG-032](../fragments/RLG-032.md)).
+- Added: a car indicates for the beat before it moves across
+  ([RLG-032](../fragments/RLG-032.md)).
+
 <a id="v0-8-1"></a>
 ## [0.8.1] — 2026-08-25
 - Fixed: **traffic could still pile up into a wall.** The guarantee counted lane indices rather than
