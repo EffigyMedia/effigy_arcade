@@ -1138,18 +1138,49 @@ function controls(){
     { back: title });
 }
 
+/* ---- ERASING THE CAREER ----------------------------------------------------
+   One press arms, the second does it. No dialog: the veil IS the menu, and a
+   veil over a veil on a phone loses the player's place.
+
+   `Arcade.save.clear` does the work and knows every key this machine owns -
+   the run record, the locker, the options. The button is drawn here because
+   the shell does not know what this cabinet's buttons look like.
+
+   The label reads the store rather than assuming: with nothing saved there is
+   nothing to erase, and a button that offers to and does not is worse than one
+   that says so. */
+var eraseArmed = false;
+
+function eraseLabel(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(GAME_ID))) return 'NO SAVED DATA';
+  return eraseArmed ? 'ERASE SAVE · SURE?' : 'ERASE SAVE';
+}
+
+function eraseStep(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(GAME_ID))) return;
+  if(!eraseArmed){ eraseArmed = true; options(); return; }
+  AR.save.clear(GAME_ID);
+  eraseArmed = false;
+  /* A RELOAD, NOT A REDRAW. SV, opts and the locker choice were read at boot
+     and are in variables now; clearing the store without reloading leaves the
+     page holding what it just deleted, and the next merge writes it back. */
+  location.reload();
+}
+
 function options(){
   openVeil(
     '<h1 style="font-size:26px">OPTIONS</h1>' +
     '<div class="opt"><span>INVERT PITCH</span><b id="ov">' + (opts.invertY?'ON':'OFF') + '</b></div>' +
     '<button data-act="inv">TOGGLE INVERT</button>' +
+    '<button data-act="erase">' + eraseLabel() + '</button>' +
     '<button class="go" data-act="back">BACK</button>',
     { inv: function(){
         opts.invertY = !opts.invertY;
         if(AR && AR.save) AR.save.merge(GAME_ID + '-opts', { invertY: opts.invertY });
         document.getElementById('ov').textContent = opts.invertY ? 'ON' : 'OFF';
       },
-      back: title });
+      erase: function(){ eraseStep(); },
+      back: function(){ eraseArmed = false; title(); } });
 }
 
 function showFly(on){

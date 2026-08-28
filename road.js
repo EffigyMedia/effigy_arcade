@@ -9361,7 +9361,7 @@ function showDebug(){
   document.body.classList.add('titling');
   const state = k => k ? 'ON' : 'OFF';
   openVeil(
-    '<div class="eyebrow">HIGHWAY</div><h1>Debug</h1>' +
+    '<div class="eyebrow">' + GAME_TITLE.toUpperCase() + '</div><h1>Debug</h1>' +
     '<div class="tip">OPENS CARS FOR TESTING WITHOUT MARKING THEM UNLOCKED</div>' +
     '<div class="tmenu">' +
       '<button class="go ghost" data-act="dr">UNLOCK ALL RACERS \u00b7 <b>' +
@@ -9375,6 +9375,36 @@ function showDebug(){
       back: () => showOptions() });
 }
 
+/* ---- ERASING THIS CAR'S CAREER --------------------------------------------
+   One press arms, the second does it. There is no dialog, because a dialog is
+   a second veil over a veil on a phone and this menu is already the veil.
+
+   It is deliberately NOT a shell control. `Arcade.save.clear` is shared and
+   does the work, but the button is drawn by the game in the game's own idiom -
+   the shell does not know what a `.go ghost` looks like, and it should not.
+
+   The label reads the store rather than assuming: with nothing saved there is
+   nothing to erase, and a button that says ERASE and does nothing is worse
+   than one that says so. */
+let eraseArmed = false;
+
+function eraseLabel(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(GAME_ID))) return 'NO SAVED DATA';
+  return eraseArmed ? 'ERASE SAVE · <b>SURE?</b>' : 'ERASE SAVE';
+}
+
+function eraseStep(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(GAME_ID))) return;
+  if(!eraseArmed){ eraseArmed = true; showOptions(); return; }
+  AR.save.clear(GAME_ID);
+  eraseArmed = false;
+  /* A RELOAD, AND NOT A REDRAW. Everything this game read at boot - the
+     unlocked cars, the options, the best distance - is already in variables by
+     now. Clearing the store without reloading leaves the run holding the state
+     it just deleted, and the next save writes it all back. */
+  location.reload();
+}
+
 function showOptions(){
   /* ---- THE SAME ROWS AS THE PAUSE MENU -----------------------------------
      This used to be a signpost saying the settings were somewhere else, which
@@ -9385,14 +9415,17 @@ function showOptions(){
      ---------------------------------------------------------------------- */
   document.body.classList.add('titling');
   openVeil(
-    '<div class="eyebrow">HIGHWAY</div><h1>Options</h1>' +
+    '<div class="eyebrow">' + GAME_TITLE.toUpperCase() + '</div><h1>Options</h1>' +
     '<div class="ark-opts"></div>' +
     '<div class="tmenu">' +
       '<button class="go ghost" data-act="ctrl">CONTROLS</button>' +
       '<button class="go ghost" data-act="debug">DEBUG</button>' +
+      '<button class="go ghost" data-act="erase">' + eraseLabel() + '</button>' +
       '<button class="go" data-act="back">BACK</button>' +
     '</div>',
-    { ctrl: () => showControls(), debug: () => showDebug(), back: () => showTitle() });
+    { ctrl: () => showControls(), debug: () => showDebug(),
+      erase: () => eraseStep(),
+      back: () => { eraseArmed = false; showTitle(); } });
   if(AR && AR.options && AR.options.paint) AR.options.paint();
 }
 

@@ -6440,19 +6440,49 @@ function showTitle(){
 }
 
 /* Options, with CONTROLS reading whatever this device actually is. */
+/* ---- ERASING THE RECORD ----------------------------------------------------
+   One press arms, the second does it. No dialog: this menu is already a veil,
+   and a veil over a veil on a phone is how a player loses their place.
+
+   The shell clears - `Arcade.save.clear` knows every key a machine owns,
+   including this cabinet's own tally and its record of having shown the
+   approach. The BUTTON is drawn here, in this cabinet's idiom, because the
+   shell does not know what `.vbtn ghost` looks like and should not.
+
+   The label reads the store instead of assuming. With nothing saved there is
+   nothing to erase, and a button that offers to and does not is worse than one
+   that says so plainly. */
+let eraseArmed = false;
+
+function eraseLabel(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(SAVE_ID))) return 'NO SAVED DATA';
+  return eraseArmed ? 'ERASE SAVE · SURE?' : 'ERASE SAVE';
+}
+
+function eraseStep(){
+  if(!(AR && AR.save && AR.save.has && AR.save.has(SAVE_ID))) return;
+  if(!eraseArmed){ eraseArmed = true; showOptions(); return; }
+  AR.save.clear(SAVE_ID);
+  eraseArmed = false;
+  /* A RELOAD, NOT A REDRAW. The deepest deck, the tally and the intro flag are
+     all in variables by now. Clearing the store without reloading leaves the
+     page holding what it just deleted, and the next save writes it back. */
+  location.reload();
+}
+
 function showOptions(){
   openVeil(
     '<div class="veyebrow">QUIETUS</div>' +
     '<div class="vtitle ice">Options</div>' +
     '<div class="tmenu">' +
       '<button class="vbtn ghost" data-act="ctrl" style="margin-top:22px">CONTROLS</button>' +
-
+      '<button class="vbtn ghost" data-act="erase">' + eraseLabel() + '</button>' +
       '<button class="vbtn" data-act="back">BACK</button>' +
     '</div>',
     {
       ctrl:   ()=>{ showControls(); },
-
-      back:   ()=>{ showTitle(); }
+      erase:  ()=>{ eraseStep(); },
+      back:   ()=>{ eraseArmed = false; showTitle(); }
     });
 }
 

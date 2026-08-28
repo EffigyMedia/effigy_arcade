@@ -14,6 +14,17 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-3-0"></a>
+## [0.3.0] — 2026-08-25
+- Added: **every machine can erase its own save from its own options**, behind a two-press confirm.
+  The label reads `NO SAVED DATA` when there is nothing to erase
+  ([RLG-008](../fragments/RLG-008.md)).
+- Fixed: `road.js` hardcoded `HIGHWAY` on its Options and Debug screens — and it serves both driving
+  games, so Motorsport had been showing the other game's name above its own options
+  ([RLG-008](../fragments/RLG-008.md)).
+- Added: `smoke-test.py` now drives the erase path on every machine — arm, confirm, and check the
+  store after the reload ([RLG-008](../fragments/RLG-008.md)).
+
 <a id="v0-2-1"></a>
 ## [0.2.1] — 2026-08-25
 - Fixed: **erasing a machine did not erase it.** `Arcade.save.clear` removed the save slot only, so

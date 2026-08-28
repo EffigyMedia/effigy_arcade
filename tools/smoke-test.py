@@ -98,6 +98,32 @@ def smoke(page, base, game, seconds):
     page.wait_for_timeout(int(seconds * 1000))
     later = page.evaluate(CANVAS_SIG)
     ok(later not in (None, 0), 'the canvas has paint on it', f'signal {later}')
+
+    # ---- EVERY MACHINE CAN ERASE ITSELF, FROM ITS OWN OPTIONS -------------
+    # A static check cannot see a button. This drives the real path: seed a
+    # save so the label cannot read NO SAVED DATA, walk in through OPTIONS,
+    # arm it, confirm it, and look at the store on the far side of the reload.
+    gid = game['id']
+    try:
+        page.evaluate("id => window.Arcade.save.set(id, {best: 7})", gid)
+        page.get_by_text('OPTIONS', exact=False).first.click(timeout=4_000)
+        page.wait_for_timeout(600)
+        body = page.locator('body').inner_text()
+        ok('ERASE SAVE' in body, 'options offer ERASE SAVE',
+           '' if 'ERASE SAVE' in body else 'not in the options screen')
+        if 'ERASE SAVE' in body:
+            page.get_by_text('ERASE SAVE', exact=False).first.click()
+            page.wait_for_timeout(400)
+            armed = 'SURE?' in page.locator('body').inner_text()
+            ok(armed, 'one press arms rather than erasing')
+            if armed:
+                page.get_by_text('SURE?', exact=False).first.click()
+                page.wait_for_timeout(1_600)
+                left = page.evaluate("id => window.Arcade.save.get(id)", gid)
+                ok(left is None, 'the second press erases', f'save is {left}')
+    except Exception as e:
+        ok(False, 'the erase control is reachable', f'{type(e).__name__}: {e}')
+
     ok(errors == [], 'no page errors', errors[0][:110] if errors else '')
     return checks, first, later
 
