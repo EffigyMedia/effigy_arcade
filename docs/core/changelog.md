@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-7-0"></a>
+## [0.7.0] — 2026-08-25
+- Added: **Hardpoint's full sound pass.** Four held layers that follow the ship every frame — engine
+  (pitch on speed, level on throttle), afterburn, hull air, and separate alarms for heat and hull.
+  Every sound before this was a one-shot, so the ship had no engine
+  ([RLG-015](../fragments/RLG-015.md)).
+- Added: **the engine mechanic is audible.** Engines dark spins the engine down to silence and leaves
+  the air louder than it was under power — measured 0.128 to 0.002, air 0.035 to 0.055
+  ([RLG-015](../fragments/RLG-015.md)).
+- Added: a three-tier bed — bridge, hunted (a heartbeat on the off-beat), and boarding — plus its own
+  slower bed on the title ([RLG-015](../fragments/RLG-015.md)).
+- Added: nine events that were silent — the hunter arriving, losing him, the hull breach, being
+  repelled, dying, the relight, the airlock, and footsteps paced by distance walked
+  ([RLG-015](../fragments/RLG-015.md)).
+- Added: `tools/audio-test.py`, which reads the Web Audio graph because a sound test cannot listen
+  ([RLG-015](../fragments/RLG-015.md)).
+
 <a id="v0-6-0"></a>
 ## [0.6.0] — 2026-08-25
 - Removed: **every controls screen.** These are touch games, and a page listing gestures describes

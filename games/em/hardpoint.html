@@ -188,39 +188,254 @@ var MODE = 'title';           /* title | fly | board */
 var runT = 0, taken = 0;
 
 /* ---- sound: one bed, effects on the sfx bus, per the minimum standard --- */
+/* ===========================================================================
+   HARDPOINT — SOUND
+
+   THE THING THIS GAME WAS MISSING IS NOT MORE EFFECTS. It is that nothing was
+   CONTINUOUS. Every sound was a one-shot, so the ship had no engine: you could
+   fly a first-person sim from a bridge and hear only the shots you fired. And
+   because the engine was silent, the mechanic the whole combat model is built
+   on - engines dark, everything else destroys - could not be heard at all.
+
+   So the pass is built around four held layers that track state every frame,
+   with the one-shots sitting on top of them:
+
+     engine   pitch and cutoff follow speed; level follows the throttle
+     burn     noise, and only above 100% - the sound of the thing that
+              overheats you
+     air      hull air on the bridge, ventilation aboard a boarded ship
+     alarm    a pulse that appears with heat and with a low hull
+
+   SILENCE IS ONE OF THE SOUNDS. When the engines cut, the engine layer goes to
+   zero and only air is left. That hole is the loudest thing in the game, and it
+   is free - it costs a level change, not a new effect.
+
+   Everything is on the right bus, so the shell's mute switches actually work:
+   the bed and the drone are `music`, everything else is `sfx`.
+   =========================================================================== */
 var snd = {
-  begin: function(){
-    if(!AR) return;
+  eng:null, burn:null, air:null, alarm:null, drone:null,
+  _tier:'', _started:false, _alarmT:0,
+
+  /* ---- held layers ------------------------------------------------------ */
+  open: function(){
+    if(!AR || !AR.audio) return false;
     AR.audio.init();
-    if(!AR.audio.ctx) return;
+    if(!AR.audio.ctx) return false;
+    if(!snd.eng)   snd.eng   = AR.sfx.hold({ freq:60, type:'sawtooth', cutoff:220, q:3.0, verb:0.10 });
+    if(!snd.burn)  snd.burn  = AR.sfx.holdNoise({ freq:520, q:0.7 });
+    if(!snd.air)   snd.air   = AR.sfx.holdNoise({ freq:260, q:0.4 });
+    if(!snd.alarm) snd.alarm = AR.sfx.hold({ freq:440, type:'square', cutoff:1400, q:1.0 });
+    return true;
+  },
+
+  /* the title bed: slow, cold, and NOT the run bed. A menu that plays combat
+     music is a menu that has already spent the moment the run should open on. */
+  title: function(){
+    if(!snd.open()) return;
+    if(!snd.drone) snd.drone = AR.sfx.hold({ freq:38.9, type:'sawtooth', cutoff:190, q:2.2, verb:0.55, bus:'music' });
+    snd.drone.set(38.9, 0.10, 190, 2.4);
+    snd.air.set(180, 0.010, 1.2);
+    snd.eng.set(48, 0, 160, 1.0);
+    snd.burn.set(520, 0, 0.6);
+    snd.alarm.set(440, 0, 0.2);
+    snd._tier = 'title';
+    AR.music.start(44, 4, snd.bed);
+    snd._started = true;
+  },
+
+  begin: function(){
+    if(!snd.open()) return;
     if(!snd.drone) snd.drone = AR.sfx.hold({ freq:38.9, type:'sawtooth', cutoff:210, q:2.2, verb:0.45, bus:'music' });
     snd.drone.set(38.9, 0.13, 210, 1.6);
+    snd._tier = '';
     AR.music.start(58, 4, snd.bed);
+    snd._started = true;
   },
-  /* THE BED REACTS TO PLAY: a drone on the bridge, harder on a boarding */
+
+  /* ---- THE BED, IN THREE TIERS -----------------------------------------
+     A bed that does not know what is happening is wallpaper. This one reads
+     the game every step and changes what it plays: the bridge is sparse and
+     low, being hunted adds a heartbeat on the off-beat, and a boarding drops
+     the low end for something tighter and closer, because you are inside a
+     hull rather than flying one. */
   bed: function(step){
     if(!AR) return;
     var s = step % 32;
-    var boarding = MODE === 'board';
-    if(s % 8 === 0)
-      AR.sfx.tone({ freq: boarding ? 87.3 : 65.4, dur:0.5, type:'triangle', gain:0.035, cutoff:520, bus:'music' });
-    if(boarding && s % 4 === 2)
-      AR.sfx.noise({ freq:2400, dur:0.05, gain:0.028, q:3, bus:'music' });
-    if(!boarding && s % 16 === 8)
-      AR.sfx.tone({ freq:98, dur:0.9, type:'sine', gain:0.028, bus:'music' });
+    var tier = MODE === 'board' ? 'board' : (MODE === 'title' ? 'title' : (hunted ? 'hunted' : 'fly'));
+
+    if(tier === 'title'){
+      if(s % 16 === 0) AR.sfx.tone({ freq:49, dur:1.6, type:'sine', gain:0.030, bus:'music' });
+      if(s % 16 === 8) AR.sfx.tone({ freq:73.4, dur:1.2, type:'sine', gain:0.022, bus:'music' });
+      if(s % 32 === 20) AR.sfx.tone({ freq:196, dur:0.9, type:'triangle', gain:0.014, cutoff:900, bus:'music' });
+      return;
+    }
+    if(tier === 'board'){
+      if(s % 8 === 0) AR.sfx.tone({ freq:87.3, dur:0.5, type:'triangle', gain:0.038, cutoff:520, bus:'music' });
+      if(s % 4 === 2) AR.sfx.noise({ freq:2400, dur:0.05, gain:0.030, q:3, bus:'music' });
+      if(s % 16 === 12) AR.sfx.tone({ freq:116.5, dur:0.35, type:'square', gain:0.016, cutoff:700, bus:'music' });
+      return;
+    }
+    /* the bridge */
+    if(s % 8 === 0) AR.sfx.tone({ freq:65.4, dur:0.5, type:'triangle', gain:0.034, cutoff:520, bus:'music' });
+    if(s % 16 === 8) AR.sfx.tone({ freq:98, dur:0.9, type:'sine', gain:0.028, bus:'music' });
+    if(tier === 'hunted'){
+      /* the off-beat is the tell: nothing about the mix gets louder, something
+         is simply THERE that was not there before */
+      if(s % 4 === 2) AR.sfx.tone({ freq:55, dur:0.16, type:'sine', gain:0.045, bus:'music' });
+      if(s % 8 === 6) AR.sfx.tone({ freq:58.3, dur:0.14, type:'sine', gain:0.030, bus:'music' });
+    }
   },
-  shot:  function(){ AR && AR.sfx.tone({freq:420,to:90,dur:0.09,gain:0.10,type:'square'}); AR && AR.sfx.noise({freq:1600,dur:0.10,gain:0.13}); },
-  hit:   function(){ AR && AR.sfx.noise({freq:600,dur:0.09,gain:0.15,q:0.8}); },
-  kill:  function(){ AR && AR.sfx.tone({freq:200,to:50,dur:0.30,gain:0.12,type:'sawtooth'}); AR && AR.sfx.noise({freq:300,dur:0.26,gain:0.13}); },
-  wind:  function(){ AR && AR.sfx.tone({freq:150,to:340,dur:0.42,gain:0.07,type:'sawtooth'}); },
-  ow:    function(){ AR && AR.sfx.tone({freq:180,to:70,dur:0.20,gain:0.14,type:'triangle'}); AR && AR.sfx.noise({freq:400,dur:0.16,gain:0.12}); },
-  dry:   function(){ AR && AR.sfx.tone({freq:900,dur:0.04,gain:0.05,type:'square'}); },
-  take:  function(){ AR && AR.sfx.tone({freq:520,to:780,dur:0.10,gain:0.10}); AR && AR.sfx.tone({freq:780,to:1180,dur:0.12,gain:0.08}); },
-  laser: function(){ AR && AR.sfx.tone({freq:880,to:220,dur:0.12,gain:0.09,type:'square',cutoff:2200}); },
-  msl:   function(){ AR && AR.sfx.noise({freq:700,dur:0.5,gain:0.16,q:0.6}); },
-  boom:  function(){ AR && AR.sfx.noise({freq:180,dur:0.7,gain:0.22,q:0.5}); AR && AR.sfx.tone({freq:120,to:40,dur:0.6,gain:0.14,type:'sawtooth'}); },
-  dock:  function(){ AR && AR.sfx.tone({freq:300,to:520,dur:0.25,gain:0.10,type:'square'}); },
-  ok:    function(){ AR && AR.sfx.tone({freq:520,to:900,dur:0.20,gain:0.10}); }
+
+  /* ---- driven every frame ----------------------------------------------
+     `s` is the ship state; `board` says which room we are standing in. */
+  step: function(dt, s, board){
+    if(!snd.eng) return;
+
+    if(board){
+      snd.eng.set(52, 0.020, 200, 0.5);      /* the hull you are inside of */
+      snd.burn.set(520, 0, 0.4);
+      snd.air.set(340, 0.030, 0.6);
+      snd._alarmT += dt;
+      snd.alarm.set(440, 0, 0.3);
+      return;
+    }
+
+    var dark = s.cut > 0;
+    var t = Math.max(0, Math.min(1.1, s.thr / 100));
+    var v = Math.max(0, Math.min(1, s.spd / 320));
+
+    /* ENGINE. Pitch rides speed rather than the lever, so the ship sounds like
+       it is catching up with what you asked for - which is what it is doing.
+       The lever sets the level; the speed sets the note. */
+    snd.eng.set(46 + v * 74, dark ? 0 : 0.055 + t * 0.075, 180 + v * 900, dark ? 0.55 : 0.18);
+
+    /* BURN. Only past the gate, and it is deliberately noisy rather than
+       musical: it is the sound of something being spent. */
+    var over = Math.max(0, (s.thr - 100) / 10);
+    snd.burn.set(420 + over * 900, dark ? 0 : over * 0.075, 0.25);
+
+    /* AIR. Always there, and it is what is left when the engine stops - the
+       hole where the engine was is the point. */
+    snd.air.set(220 + v * 260, dark ? 0.055 : 0.022 + v * 0.016, 0.4);
+
+    /* ALARM. Heat first, hull second; the hull one is lower and slower,
+       because a hull warning that sounds like a heat warning teaches nothing. */
+    snd._alarmT += dt;
+    var heat = Math.max(0, (s.heat - 62) / 38);
+    var hurt = s.hull !== undefined ? Math.max(0, (34 - s.hull) / 34) : 0;
+    var lvl = 0, hz = 440;
+    if(heat > 0){
+      hz = 660 + heat * 260;
+      lvl = (Math.sin(snd._alarmT * (7 + heat * 9)) > 0.15 ? 1 : 0) * 0.035 * heat;
+    } else if(hurt > 0){
+      hz = 300;
+      lvl = (Math.sin(snd._alarmT * 4.2) > 0.3 ? 1 : 0) * 0.040 * hurt;
+    }
+    snd.alarm.set(hz, dark ? 0 : lvl, 0.02);
+  },
+
+  quiet: function(){
+    [snd.eng, snd.burn, snd.air, snd.alarm].forEach(function(l){ if(l) l.set(undefined, 0, undefined, 0.3); });
+  },
+
+  /* ---- one-shots -------------------------------------------------------- */
+
+  /* weapons */
+  laser: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:1180, to:230, dur:0.13, gain:0.085, type:'square', cutoff:2600 });
+    AR.sfx.tone({ freq:590, to:150, dur:0.10, gain:0.045, type:'sawtooth' });
+    AR.sfx.noise({ freq:3200, dur:0.05, gain:0.030, q:2 }); },
+  msl: function(){ if(!AR) return;
+    AR.sfx.noise({ freq:700, dur:0.55, gain:0.15, q:0.6 });
+    AR.sfx.tone({ freq:150, to:420, dur:0.5, gain:0.055, type:'sawtooth' }); },
+  dry: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:900, dur:0.035, gain:0.05, type:'square' });
+    AR.sfx.noise({ freq:2600, dur:0.03, gain:0.04, q:4 }); },
+
+  /* hitting things, and being hit */
+  hit:  function(){ if(!AR) return; AR.sfx.noise({ freq:600, dur:0.09, gain:0.15, q:0.8 }); },
+  /* a shield turns a hit into a ring; a hull turns it into a bang */
+  shield: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:1400, to:700, dur:0.22, gain:0.055, type:'sine' });
+    AR.sfx.noise({ freq:2200, dur:0.10, gain:0.05, q:3 }); },
+  hull: function(){ if(!AR) return;
+    AR.sfx.noise({ freq:220, dur:0.28, gain:0.17, q:0.5 });
+    AR.sfx.tone({ freq:150, to:60, dur:0.30, gain:0.10, type:'sawtooth' }); },
+  boom: function(){ if(!AR) return;
+    AR.sfx.noise({ freq:180, dur:0.75, gain:0.22, q:0.5 });
+    AR.sfx.tone({ freq:120, to:38, dur:0.65, gain:0.14, type:'sawtooth' });
+    AR.sfx.noise({ freq:60, dur:1.0, gain:0.10, q:0.4 }); },
+
+  /* THE ENGINE EVENTS - the three the game is actually about */
+  dark: function(){ if(!AR) return;         /* theirs go out: a spin-down */
+    var t = AR.audio.now();
+    AR.sfx.tone({ t:t,      freq:520, to:70,  dur:0.85, gain:0.10, type:'sawtooth', cutoff:1200 });
+    AR.sfx.tone({ t:t+0.05, freq:260, to:36,  dur:0.95, gain:0.07, type:'triangle' });
+    AR.sfx.noise({ t:t+0.5, freq:300, dur:0.6, gain:0.05, q:0.7 }); },
+  cut: function(){ if(!AR) return;          /* yours go out: harder, closer */
+    var t = AR.audio.now();
+    AR.sfx.tone({ t:t, freq:300, to:52, dur:0.7, gain:0.13, type:'sawtooth' });
+    AR.sfx.noise({ t:t, freq:900, dur:0.25, gain:0.09, q:1.4 });
+    AR.sfx.tone({ t:t+0.18, freq:120, to:60, dur:0.5, gain:0.06, type:'sine' }); },
+  relight: function(){ if(!AR) return;      /* and back on */
+    var t = AR.audio.now();
+    AR.sfx.noise({ t:t, freq:400, dur:0.30, gain:0.07, q:0.8 });
+    AR.sfx.tone({ t:t+0.06, freq:70, to:300, dur:0.45, gain:0.10, type:'sawtooth', cutoff:1400 }); },
+  burnOn: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:220, to:460, dur:0.14, gain:0.085 });
+    AR.sfx.noise({ freq:1200, dur:0.22, gain:0.06, q:0.8 }); },
+
+  /* the chase */
+  hunter: function(){ if(!AR) return;       /* somebody has come for you */
+    var t = AR.audio.now();
+    AR.sfx.tone({ t:t,      freq:180, to:96, dur:0.9, gain:0.10, type:'sawtooth', cutoff:700 });
+    AR.sfx.tone({ t:t+0.28, freq:143, to:88, dur:0.8, gain:0.075, type:'sawtooth', cutoff:600 });
+    AR.sfx.noise({ t:t+0.1, freq:140, dur:1.1, gain:0.05, q:0.5 }); },
+  lost: function(){ if(!AR) return;         /* and has lost you */
+    AR.sfx.tone({ freq:300, to:440, dur:0.5, gain:0.06, type:'sine' });
+    AR.sfx.tone({ freq:450, to:660, dur:0.6, gain:0.045, type:'sine' }); },
+
+  /* boarding */
+  dock: function(){ if(!AR) return;
+    var t = AR.audio.now();
+    AR.sfx.noise({ t:t, freq:180, dur:0.22, gain:0.13, q:0.6 });      /* clamps */
+    AR.sfx.tone({ t:t+0.10, freq:300, to:520, dur:0.25, gain:0.09, type:'square' }); },
+  airlock: function(){ if(!AR) return;      /* pressure equalising, then a seal */
+    var t = AR.audio.now();
+    AR.sfx.noise({ t:t, freq:900, dur:0.9, gain:0.10, q:0.5 });
+    AR.sfx.tone({ t:t+0.75, freq:220, to:110, dur:0.25, gain:0.10, type:'square' }); },
+  step2: function(){ if(!AR) return;        /* a boot on deck plate */
+    AR.sfx.noise({ freq:140 + Math.random()*90, dur:0.06, gain:0.035, q:1.6 }); },
+  take: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:520, to:780, dur:0.10, gain:0.10 });
+    AR.sfx.tone({ freq:780, to:1180, dur:0.12, gain:0.08 }); },
+
+  /* people */
+  kill: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:200, to:50, dur:0.30, gain:0.12, type:'sawtooth' });
+    AR.sfx.noise({ freq:300, dur:0.26, gain:0.13 }); },
+  ow: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:180, to:70, dur:0.20, gain:0.14, type:'triangle' });
+    AR.sfx.noise({ freq:400, dur:0.16, gain:0.12 }); },
+  shot: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:420, to:90, dur:0.09, gain:0.10, type:'square' });
+    AR.sfx.noise({ freq:1600, dur:0.10, gain:0.13 }); },
+  wind: function(){ if(!AR) return;
+    AR.sfx.tone({ freq:150, to:340, dur:0.42, gain:0.07, type:'sawtooth' }); },
+
+  /* endings */
+  dead: function(){ if(!AR) return;
+    var t = AR.audio.now();
+    snd.quiet();
+    AR.sfx.tone({ t:t,      freq:110, to:41, dur:1.5, gain:0.13, type:'sawtooth' });
+    AR.sfx.tone({ t:t+0.2,  freq:82,  to:36, dur:1.6, gain:0.09, type:'sine' });
+    AR.sfx.noise({ t:t+0.1, freq:120, dur:1.4, gain:0.07, q:0.4 }); },
+  repelled: function(){ if(!AR) return;
+    var t = AR.audio.now();
+    AR.sfx.tone({ t:t,     freq:330, to:494, dur:0.30, gain:0.09, type:'square' });
+    AR.sfx.tone({ t:t+0.14, freq:494, to:659, dur:0.40, gain:0.075, type:'square' }); },
+  ok: function(){ if(!AR) return; AR.sfx.tone({ freq:520, to:900, dur:0.20, gain:0.10 }); }
 };
 function say(t){ var m=document.getElementById('msg'); m.textContent=t;
   m.classList.remove('on'); void m.offsetWidth; m.classList.add('on'); }
@@ -319,7 +534,7 @@ function setThr(v, quiet){
   const was=S.thr;
   S.thr=Math.max(0,Math.min(110, v*100));
   /* the detent: it takes a deliberate push to cross 100 into afterburn */
-  if(was<=100 && S.thr>100 && !quiet){ AR&&AR.sfx.tone({freq:220,to:420,dur:0.12,gain:0.09}); window.say('AFTERBURN'); }
+  if(was<=100 && S.thr>100 && !quiet){ window.snd && window.snd.burnOn(); window.say('AFTERBURN'); }
   layoutThr();
 }
 function layoutThr(){
@@ -376,11 +591,11 @@ function stepShip(dt){
   if(S.cut > 0){
     S.cut -= dt; S.thr = 0; layoutThr();
     S.heat = Math.max(0, S.heat - dt*22);
-    if(S.cut <= 0) window.say('ENGINES RESTARTED');
+    if(S.cut <= 0){ window.snd && window.snd.relight(); window.say('ENGINES RESTARTED'); }
   } else {
     if(S.thr > 100){ S.heat += dt*(14 + (S.thr-100)*3.2); }
     else S.heat = Math.max(0, S.heat - dt*9);
-    if(S.heat >= 100){ S.heat=100; S.cut=3.2; AR&&AR.sfx.tone({freq:300,to:60,dur:0.6,gain:0.12,type:'sawtooth'}); window.say('ENGINES CUT'); }
+    if(S.heat >= 100){ S.heat=100; S.cut=3.2; window.snd && window.snd.cut(); window.say('ENGINES CUT'); }
   }
 
   const target = (S.cut>0 ? 0 : S.thr/100) * MAXV;
@@ -693,6 +908,7 @@ function resize(){
    STATE
    =========================================================================== */
 const P = { x: 2.5, y: 4.5, a: 0, hp: 100, ammo: 24, cargo: 0, kick: 0, hurt: 0 };
+let walked = 0;                 /* metres since the last footstep */
 let zbuf = new Float32Array(RW);
 let msgT = 0, dead = false, won = false;
 
@@ -1059,8 +1275,18 @@ function hud(){
       if(keys['arrowright']) P.a += 2.2*dt;
       const sp = KIT.speed*dt, dx = Math.cos(P.a), dy = Math.sin(P.a);
       const nx = P.x + (dx*fx - dy*sxv) * sp, ny = P.y + (dy*fx + dx*sxv) * sp;
+      const wasX = P.x, wasY = P.y;
       if(!solid(nx + Math.sign(nx-P.x)*0.18, P.y) && !mobAt(nx, P.y)) P.x = nx;
       if(!solid(P.x, ny + Math.sign(ny-P.y)*0.18) && !mobAt(P.x, ny)) P.y = ny;
+      /* ---- FOOTSTEPS, PACED BY DISTANCE AND NOT BY TIME -------------------
+         A step every N milliseconds keeps walking while you stand against a
+         wall pushing into it, which is the exact moment a player is listening
+         hardest. Accumulating the distance actually MOVED means a blocked
+         player is a silent one, and a player carrying a heavier kit - a slower
+         KIT.speed - takes longer strides without any of that being written
+         down twice. */
+      walked += Math.hypot(P.x - wasX, P.y - wasY);
+      if(walked > 0.62){ walked = 0; window.snd && window.snd.step2(); }
       stepMobs(dt);
     }
     P.kick = Math.max(0, P.kick - dt*6);
@@ -1586,6 +1812,7 @@ function title(){
   MODE = 'title';
   showFly(true);
   artStart();
+  snd.title();
   var started = credits !== 0 || pirate || hunter || best;
   openVeil(
     '<canvas id="hpMark"></canvas>' +
@@ -1712,6 +1939,9 @@ var offered = newContract();
 
 function station(){
   artStop();
+  /* docked: the engines are off and the room tone is the station's, so the
+     held layers have to stop pretending you are flying */
+  snd.quiet();
   MODE = 'title';
   openVeil(
     '<h1 style="font-size:26px">STATION</h1>' +
@@ -1846,7 +2076,7 @@ function launch(){
   FOOT.setKit(kitNow());
   MODE = 'fly'; runT = 0; taken = 0; dockHold = 0; phase = ''; hunted = 0; boardTimer = 9; kept = 1;
   FLY.reset(); FLY.resize(); showFly(true);
-  say('TARGET AHEAD');
+  snd.ok(); say('TARGET AHEAD');
 }
 
 /* ---- weapons: the rear cone decides where the shot lands ---------------- */
@@ -1858,7 +2088,7 @@ function fire(kind){
     if(cs.d > 900) return;
     if(cs.in){                       /* engines: the shot you want */
       if(!FLY.T.disabled){
-        FLY.T.disabled = 1; snd.ok(); say('ENGINES DARK');
+        FLY.T.disabled = 1; snd.dark(); say('ENGINES DARK');
       }
     } else if(cs.behind > -0.2){     /* hull: money burning */
       FLY.T.hull -= 6; snd.hit();
@@ -1867,7 +2097,7 @@ function fire(kind){
   } else {
     snd.msl();
     /* a missile into a hull is an overkill you paid for — §5a */
-    if(cs.in && !FLY.T.disabled){ FLY.T.disabled = 1; snd.ok(); say('ENGINES DARK'); }
+    if(cs.in && !FLY.T.disabled){ FLY.T.disabled = 1; snd.dark(); say('ENGINES DARK'); }
     else { FLY.T.hull -= 70; snd.boom(); if(FLY.T.hull <= 0) wreck(); }
   }
 }
@@ -1890,11 +2120,11 @@ function stepDock(dt){
     if(dockHold > 1.6) board();
   } else {
     dockHold = Math.max(0, dockHold - dt);
-    if(cs.d < 320 && !slow && phase !== 'slow'){ phase='slow'; say('SLOW TO DOCK'); }
+    if(cs.d < 320 && !slow && phase !== 'slow'){ phase='slow'; snd.ok(); say('SLOW TO DOCK'); }
   }
 }
 function board(){
-  MODE = 'board'; snd.dock();
+  MODE = 'board'; snd.dock(); setTimeout(function(){ snd.airlock(); }, 260);
   FOOT.reset(); FOOT.resize(); showFly(false);
   sayFoot('BOARDING');
 }
@@ -1911,7 +2141,7 @@ function backToShip(){
       /* the more of a pirate you are, the sooner they dock and the harder
          he flies. Nobody tells you this; the world just gets worse. */
       FLY.sendHunter(Math.min(3, pirate));
-      hunted = 1;
+      hunted = 1; snd.hunter();
       boardTimer = Math.max(4.5, 9 - pirate * 1.1);
       say(pirate >= 3 ? 'THEY WANT YOU BADLY' : 'BOUNTY HUNTER INBOUND');
     }, 1400);
@@ -1926,7 +2156,7 @@ function backToShip(){
    is get out of the chair. */
 function stepHunted(dt){
   if(!hunted) return;
-  if(FLY.S.hull <= 0){ hunted = 0; say('HULL BREACHED'); setTimeout(over, 1500); return; }
+  if(FLY.S.hull <= 0){ hunted = 0; snd.hull(); snd.dead(); say('HULL BREACHED'); setTimeout(over, 1500); return; }
   if(FLY.S.disabled){
     boardTimer -= dt;
     if(boardTimer <= 0){ defend(); return; }
@@ -1935,11 +2165,11 @@ function stepHunted(dt){
   }
   /* outrun him and you keep the lot */
   if(!FLY.S.disabled && FLY.hunterDist() > 2600){
-    hunted = 0; say('LOST HIM'); setTimeout(over, 1200);
+    hunted = 0; snd.lost(); say('LOST HIM'); setTimeout(over, 1200);
   }
 }
 function defend(){
-  MODE = 'board'; snd.dock();
+  MODE = 'board'; snd.dock(); setTimeout(function(){ snd.airlock(); }, 260);
   FOOT.reset('defend'); FOOT.resize(); showFly(false);
   sayFoot('THEY ARE ABOARD');
 }
@@ -2003,6 +2233,8 @@ function tick(t){
   if(MODE === 'fly'){
     runT += dt;
     FLY.step(dt); stepDock(dt); stepHunted(dt); FLY.draw();
+    /* the held layers follow the ship rather than being triggered by it */
+    snd.step(dt, FLY.S, false);
     var cs = FLY.cone();
     document.getElementById('spd').querySelector('b').textContent = Math.round(FLY.S.spd);
     var lk = document.getElementById('lock');
@@ -2024,9 +2256,10 @@ function tick(t){
   } else if(MODE === 'board'){
     runT += dt;
     FOOT.step(dt); FOOT.draw();
+    snd.step(dt, FLY.S, true);
     if(FOOT.side === 'defend'){
       if(FOOT.done){ hunted = 0; MODE='fly'; FLY.resize(); showFly(true);
-                     say('REPELLED'); setTimeout(over, 1200); }
+                     snd.repelled(); say('REPELLED'); setTimeout(over, 1200); }
       else if(FOOT.lost || FOOT.dead){ taken = 0; hunted = 0;
                      MODE='fly'; FLY.resize(); showFly(true);
                      kept = 0; say('THEY TOOK THE HOLD'); setTimeout(over, 1500); }

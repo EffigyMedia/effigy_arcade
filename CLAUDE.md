@@ -121,7 +121,11 @@ Python 3 with Playwright installed runs the two test harnesses; a browser runs e
   uv-managed Python (it refuses, by PEP 668), so the harnesses run from a project-local venv:
   `<env-root>/Runtime/bin/uv venv .venv` then
   `<env-root>/Runtime/bin/uv pip install --python .venv playwright`. `.venv/` is git-ignored.
-- `test` — `.venv/Scripts/python tools/smoke-test.py` boots all four machines and the launcher and
+- `test` — four harnesses. `smoke-test.py` is the gate; the other three cover what it cannot see:
+  `menu-test.py` (every title has the same set and OPTIONS returns to it), `isolation-test.py`
+  (each machine owns its own settings), and `audio-test.py` (Hardpoint's held sound layers still
+  follow the ship — **a sound test cannot listen, but it can read the Web Audio graph**).
+  `.venv/Scripts/python tools/smoke-test.py` boots all four machines and the launcher and
   asserts a clean console and real paint on the canvas. `.venv/Scripts/python tools/drive-test.py`
   drives Highway and Raceway for 30 seconds with an autopilot and asserts speed, laps, fuel, tires,
   damage, the HUD, and page errors. **Run both before shipping anything.**
