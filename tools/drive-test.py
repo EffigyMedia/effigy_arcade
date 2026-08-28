@@ -260,6 +260,21 @@ def no_pursuit(page):
         page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5_000)
 
 
+def revs_never_exceed_redline(page):
+    """The needle must never go past the limiter, in any gear, under any tow.
+
+    A slipstream that multiplied the GEAR ceiling as well as the aero ceiling
+    spun the engine past its own redline - reported from play. The gear ceiling
+    is the limiter expressed as a speed, so anything that scales it is moving
+    the limiter, and nothing should.
+    """
+    return page.evaluate("""() => {
+      const r = window.__probe.road;
+      if (!r || !r.revs || !r.redline) return null;
+      return { revs: r.revs(), redline: r.redline() };
+    }""")
+
+
 def drive(page, res, seconds, is_circuit):
     """Hold the throttle and watch the numbers."""
     page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5_000)
@@ -279,6 +294,35 @@ def drive(page, res, seconds, is_circuit):
     peak = page.evaluate('() => window.__probe.peakMph')
 
     res.check(peak > 150, 'speed rises above 150mph', f'peak {peak:.0f}mph')
+
+    # ---- THE NEEDLE MUST NEVER GO PAST THE LIMITER ------------------------
+    # A slipstream that scaled the GEAR ceiling as well as the aero one spun
+    # the engine past its own redline - reported from play, invisible to every
+    # gate. The gear ceiling IS the limiter expressed as a speed, so anything
+    # that scales it is moving the limiter. Sampled while still under power and
+    # in traffic, which is the only place a tow exists.
+    # FORCE THE CONDITION, DO NOT HOPE FOR IT. Three versions of this check
+    # passed with the bug present, at 97.4%, 98.6% and 96.7%, for the same
+    # reason each time: the autopilot never happened to reach the limiter in
+    # the sample window, so the ceiling was never tested. A guard that only
+    # fires when the driver happens to arrive somewhere is not a guard.
+    #
+    # The invariant is about the ceiling, so the car is put ON the ceiling:
+    # full tow, and speed pushed past anything the gearing allows. Whatever the
+    # dial reads there IS the clamp.
+    page.evaluate('() => window.__probe.road.setTow && window.__probe.road.setTow(1)')
+    worst_over = 0.0
+    for _ in range(10):
+        page.evaluate('() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD * 1.30)')
+        page.wait_for_timeout(90)
+        rr = revs_never_exceed_redline(page)
+        if not rr or not rr.get('redline'):
+            continue
+        worst_over = max(worst_over, rr['revs'] / rr['redline'])
+    page.evaluate('() => window.__probe.road.setTow && window.__probe.road.setTow(-1)')
+    res.check(worst_over <= 1.001,
+              'the revs never pass the limiter',
+              f'peak {worst_over*100:.1f}% of redline')
 
     moved = samples[-1]['pos'] - samples[0]['pos']
     res.check(moved > 0, 'the road moves under the car', f'{moved:,.0f} units')

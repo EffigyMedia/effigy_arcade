@@ -620,9 +620,23 @@ var snd = {
   },
 
   /* driven every frame from the game loop */
-  drive: function(spd, top, off, nos, copNear, decel){
+  drive: function(spd, top, off, nos, copNear, decel, slip){
     if (!snd.eng) return;
+    /* ---- PITCH IS RPM, AND NOTHING ELSE MAY MOVE IT --------------------
+       The caller used to pass a `top` that had the slipstream subtracted from
+       it - `MAX_SPD * (1 - slipT*0.22)` - so tucking into a tow lowered the
+       divisor and the engine note ROSE, while the actual revs sat pinned
+       against the limiter. An engine at the limiter is at one pitch by
+       definition; it cannot climb because the air got easier.
+
+       The intent behind that expression is in the comment at the call site,
+       and it was about the WIND: dirty air is quieter and rougher than clean
+       air. That is true and worth keeping - so `slip` arrives as its own
+       argument now and touches the wind alone. The engine ratio is against an
+       unmodulated ceiling.
+       ------------------------------------------------------------------ */
     var r = spd / top;
+    var sl = slip || 0;
     /* The note ran 62Hz to 230Hz — under two octaves for the whole rev range,
        so the top of a gear barely sounded different from the middle and an
        upshift was almost inaudible. It now spans 58Hz to 470Hz, better than
@@ -634,7 +648,9 @@ var snd = {
     var rpm = (58 + r * r * 300 + r * 112 + (nos ? 34 : 0)) * ep;
     snd.eng.set(rpm, 0.050 + r*0.042, 380 + r*2400, 0.05);
     snd.eng2.set(rpm*0.5, 0.024 + r*0.021, 280 + r*1400, 0.05);
-    snd.wind.set(600 + r*2100, (off ? 0.045 : 0.009) + r*0.016, 0.10);
+    /* the car ahead takes the blast off you: quieter, and duller with it */
+    snd.wind.set((600 + r*2100) * (1 - sl*0.18),
+                 ((off ? 0.045 : 0.009) + r*0.016) * (1 - sl*0.42), 0.10);
 
     /* thruster: present the whole time the bottle is open, and it swells a
        little with speed so it sits on top of the engine rather than under it */
@@ -4433,7 +4449,16 @@ function gearRpm(g, v){
   /* against THIS car's top speed, so every car still redlines at the top of
      each gear rather than the tall one never reaching its limiter */
   const ceiling = MAX_SPD * bodyStat('vmax') * G.to;
-  return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, redline() + 300);
+  /* ---- THE LIMITER IS THE CEILING, AND IT WAS NOT --------------------
+     This clamped to `redline() + 300`, so the needle was permitted to sit 300
+     rpm past the limiter whenever speed ran over the gear's ceiling - which is
+     what "the revs go past max" looks like on the dial, and it happened with or
+     without a slipstream.
+
+     A rev limiter is not a suggestion. The neutral path a few lines down models
+     the limiter properly, cutting in and out BELOW the line; there was no reason
+     for the geared path to be allowed above it. */
+  return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, redline());
 }
 function engineRpm(){
   if(!optManual){
@@ -4776,6 +4801,7 @@ function stepWeather(dt){
 /* snow is worse than rain, and settled snow keeps costing after it stops */
 function wetGrip(){  return 1 - wet * (snowy ? 0.52 : 0.38) - settle * 0.14; }
 function wetBrake(){ return 1 - wet * (snowy ? 0.46 : 0.32) - settle * 0.12; }
+let towOverride = -1;               /* -1 = off; a harness may force a tow */
 let horning = false, hornCool = 0, bustT = 0, behindT = 2, slowFor = 0, audioTick = 0, bendT = 0, skySmooth = 0, pushK = 0;
 
 /* ---- rubber on the road --------------------------------------------------
@@ -6251,7 +6277,16 @@ function step(dt){
      not otherwise make and not enough to be a free ride.
      ---------------------------------------------------------------------- */
   let tow = 0;
-  if(spd > MAX_SPD * 0.55){
+  /* ---- A TEST CAN ASK FOR A TOW ------------------------------------------
+     The slipstream only exists when you are tucked behind something, which a
+     harness cannot arrange reliably - and a guard that only fires when the
+     autopilot happens to end up in a wake is a guard that passes with the bug
+     present. It did exactly that once. `API.setTow` forces the value so the
+     invariant can be tested rather than hoped for; it sits with `setWet`,
+     `setSpd` and `setBody`, which exist for the same reason. */
+  if(towOverride >= 0){
+    tow = towOverride;
+  } else if(spd > MAX_SPD * 0.55){
     /* `pz` is not declared until much further down this function, so the tow
        computes its own — it is the same expression, and taking the value early
        is cheaper than moving three hundred lines */
@@ -6290,7 +6325,18 @@ function step(dt){
                   acceleration rate below, at 2.6x. The car's own `vmax` is the
                   only thing that decides how fast it will ultimately go. */
                : nosOn  ? carTop
-               : Math.min(carTop * slip, gearCap * slip));
+               /* ---- THE TOW RAISES THE AERO CEILING, NOT THE GEAR ------
+                  `gearCap * slip` let the slipstream lift the speed at which
+                  the CURRENT GEAR tops out, and that gear's ceiling is its rev
+                  limiter expressed as a speed - so a tow spun the engine past
+                  its own redline and the needle went off the dial.
+
+                  A tow is less air to push. It raises how fast the car can go
+                  against drag, which is `carTop`. It does not change the
+                  gearing and it does not move the limiter: in a given gear the
+                  engine still runs out of revs at exactly the same rpm. So the
+                  slip applies to one of these two and not the other. */
+               : Math.min(carTop * slip, gearCap));
   /* ---- BRAKING IS A STAT NOW -------------------------------------------
      It was a flat 9000 for every vehicle — a lorry stopped as hard as a formula
      car. On a straight road nobody noticed; on a circuit, braking is half the
@@ -7123,8 +7169,8 @@ function step(dt){
      car ahead takes the blast off you */
   /* once the run is over the car makes no noise — see `coasting` */
   if(coasting){ snd.quiet(); }
-  else snd.drive(revFrac * MAX_SPD, MAX_SPD * (1 - (slipT||0)*0.22), offRoad, nosOn, near,
-            Math.max(decel, pScrub * 0.9));
+  else snd.drive(revFrac * MAX_SPD, MAX_SPD, offRoad, nosOn, near,
+            Math.max(decel, pScrub * 0.9), slipT || 0);
 
   /* ---- stopping with the law behind you --------------------------------
      Braking to a halt is free on an empty road and fatal in a pursuit. A
@@ -10198,6 +10244,7 @@ requestAnimationFrame(frameLoop);
   API.blockedAhead = function(){ return blockedAhead; };
   API.mergesMade = function(){ return mergesMade; };
   API.trafficCount = function(){ return traffic.length; };
+  API.setTow = function(v){ towOverride = (v === undefined || v < 0) ? -1 : v; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){

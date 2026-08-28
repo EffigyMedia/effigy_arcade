@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-2"></a>
+## [0.9.2] — 2026-08-25
+- Fixed: **the revs could pass the limiter, from three separate causes.** The slipstream scaled the
+  GEAR ceiling as well as the aero one; `gearRpm` clamped to `redline() + 300`; and the engine note
+  was computed against a slip-reduced divisor, so a tow raised the PITCH while the revs sat pinned
+  ([RLG-034](../fragments/RLG-034.md)).
+- Changed: a tow now quiets and dulls the **wind** — which was the original intent — and leaves the
+  engine note alone ([RLG-034](../fragments/RLG-034.md)).
+- Added: a limiter check in `drive-test.py` that puts the car ON the ceiling rather than driving
+  toward it; three earlier versions passed with the bug present
+  ([RLG-034](../fragments/RLG-034.md)).
+
 <a id="v0-9-1"></a>
 ## [0.9.1] — 2026-08-25
 - Fixed: **slowing down on the Motorsport circuit conjured civilian traffic behind you.**
