@@ -221,7 +221,7 @@ for(const g of games){
   need(/(Arcade|A|AR)\.save\.(merge|set)/, "does not record a best score");
   need(/bus\s*:\s*[\x27"]music[\x27"]/, "music not routed to bus:\x27music\x27");
   /* the shell API: six methods and no others. Qualified calls only —
-     matching a bare `pad.` flagged a local `const pad = ...` in Derelict
+     matching a bare `pad.` flagged a local `const pad = ...` in Quietus
      that has nothing to do with the gamepad. */
   for(const m of [...text.matchAll(/\b(?:Arcade|AR|A)\.pad\.([a-zA-Z_$][\w$]*)\s*\(/g)]){
     if(!PAD_API.includes(m[1])) bad.push(g.id+": calls Arcade.pad."+m[1]+"(), which does not exist");

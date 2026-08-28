@@ -1,17 +1,17 @@
 /* ===========================================================================
    ROAD — the shared driving engine
 
-   Highway and Raceway were 96.5% identical: 9,100 lines the same, 332
+   Interstate and Motorsport were 96.5% identical: 9,100 lines the same, 332
    different. Every fix had to be applied twice by hand, and the two were
    already drifting — ROADSTER and per-car grip existed in one and not the
    other.
 
    This is that shared 96.5%, as one factory. A game calls `ROAD(CFG)` and
    supplies only what makes it different. The engine asks CFG at four seams
-   and behaves normally when they are absent, so Highway passes almost nothing.
+   and behaves normally when they are absent, so Interstate passes almost nothing.
 
    THE SEAMS
-     CFG.id          save namespace     'highway' | 'raceway'
+     CFG.id          save namespace     'interstate' | 'motorsport'
      CFG.title       the <h1>
      CFG.curvature   (z, fallback) => k        a circuit answers, a road does not
      CFG.grade       (z, fallback) => g
@@ -26,8 +26,8 @@
    =========================================================================== */
 window.ROAD = function(CFG){
   CFG = CFG || {};
-  var GAME_ID    = CFG.id    || 'highway';
-  var GAME_TITLE = CFG.title || 'Highway';
+  var GAME_ID    = CFG.id    || 'interstate';
+  var GAME_TITLE = CFG.title || 'Interstate';
 
   /* ---- THE SURFACE, BEFORE ANY SEAM FIRES -----------------------------
      `onReset` runs during setup, long before this function returns, so a fork
@@ -821,7 +821,7 @@ function updateViewShift(){
    EVERY car carries the stat now. It was set on the three sports cars only,
    and the other eleven silently defaulted to 1.0 — which meant a formula car
    and a lorry cornered identically, and the only reason nobody noticed is that
-   Highway has no corners worth the name.
+   Interstate has no corners worth the name.
    ------------------------------------------------------------------------ */
 const CORNER_G_BASE = 0.42, CORNER_LAG = 1.8;
 function cornerG(){
@@ -926,7 +926,7 @@ function rebuildBend(){
   /* ---- THE ROAD WAS DRAWN STRAIGHT ON EVERY CIRCUIT --------------------
      `span` is how far ahead the bend is integrated, and it was measured from
      `curveSegs` — the ENDLESS road's segment list, which a circuit never
-     fills. So on Raceway the span was one step, the bend cache held a single
+     fills. So on Motorsport the span was one step, the bend cache held a single
      entry, and the road rendered dead straight.
 
      The map was right, the physics was right, the car was being pushed
@@ -4497,8 +4497,8 @@ let slipT = 0, coasting = false, runSeconds = 0, slideX = 0;
    BIOMES
 
    The ground, the skyline and the WEATHER ODDS all come from one record, so a
-   desert cannot snow and a tundra is rarely dry. Shared, because Highway
-   drives through them and Raceway builds a circuit in one.
+   desert cannot snow and a tundra is rarely dry. Shared, because Interstate
+   drives through them and Motorsport builds a circuit in one.
 
      rain / snow   the chance a front is that kind. They need not sum to 1 —
                    what is left over is clear weather.
@@ -6351,7 +6351,7 @@ function step(dt){
   }
   nextCopT -= dt; nextBlockT -= dt; nextCrateT -= dt;
   /* ---- A CIRCUIT IS NOT A HIGHWAY --------------------------------------
-     Raceway was running Highway's whole world — civilian traffic, police,
+     Motorsport was running Interstate's whole world — civilian traffic, police,
      roadblocks, repair crates — on top of its circuit. A closed track with a
      lorry on it is not a race, and it is why the game still felt like the
      highway with a map drawn on the corner.
@@ -6767,7 +6767,7 @@ function step(dt){
         snd.threaded();
         /* ---- NO SCORE IN THIS GAME ---------------------------------------
            These labels advertised points that do not exist — there is no score
-           variable anywhere in the file, and nothing accumulates. Highway is
+           variable anywhere in the file, and nothing accumulates. Interstate is
            scored in MILES and in where you finish; a floating "+1500" promises
            a number the player will never see again. The event still gets its
            shout, without the fiction. */
@@ -7597,7 +7597,7 @@ function emitBucket(n){
          turns far enough to put a rival side-on — and the corner cap below
          means it never does.
 
-         Highway made into a circuit racer. That was the whole idea, and the
+         Interstate made into a circuit racer. That was the whole idea, and the
          angled views were solving a problem the design did not have to have.
          ------------------------------------------------------------- */
       const box = drawSprite(RIVAL_SP[(r.body||'MATADOR')+'|'+r.paint] || SP.player,
@@ -8774,7 +8774,7 @@ function frameLoop(now){
   /* ---- CFG.overlay(ctx) — the LAST thing on the frame -------------------
      `afterDraw` runs inside the world transform, before the mirror, the bust
      card and the HUD, which is right for a minimap but wrong for anything
-     that has to REPLACE the view: Raceway's pit box painted a full-screen
+     that has to REPLACE the view: Motorsport's pit box painted a full-screen
      garage and the rear-view mirror still floated over it, a strip of road
      hanging in mid-air indoors. This hook fires after everything, in plain
      CSS pixels, for a fork that owns the whole screen for a moment. */
@@ -8937,7 +8937,7 @@ function showGarage(){
           (timedRun ? 'ON' : 'OFF') + '</b></button>') +
       '<button class="go ghost" data-act="chase">HOT PURSUIT \u00B7 <b>' +
         (optEasy ? 'OFF' : 'ON') + '</b></button>' +
-      /* a fork can put its own buttons here — Raceway adds QUALIFY */
+      /* a fork can put its own buttons here — Motorsport adds QUALIFY */
       (CFG.garageButtons ? CFG.garageButtons() : '') +
       '<button class="go" data-act="drive">DRIVE</button>' +
       '<button class="go ghost" data-act="back">BACK</button>' +
@@ -9057,10 +9057,10 @@ let titleCv = null, titleT = 0;
 /* the alphabet and the shell treatment are shared — see Arcade.wordmark */
 function drawLogo(g, cx, cy, size){
   /* ---- THE WORDMARK IS THE GAME'S OWN ---------------------------------
-     'HIGHWAY' was hardcoded, so Raceway drew a circuit under Highway's name.
+     'HIGHWAY' was hardcoded, so Motorsport drew a circuit under Interstate's name.
      The title comes from CFG, and a fork can bring its own palette — warm
      chrome for a sunset road, cold green for a floodlit circuit. */
-  AR.wordmark(g, (GAME_TITLE || 'Highway').toUpperCase(), cx, cy, size, {
+  AR.wordmark(g, (GAME_TITLE || 'Interstate').toUpperCase(), cx, cy, size, {
     maxW: titleCv.clientWidth * 0.88,
     cool: (CFG.logoCool || ['#f6f8ff','#9fb2d8','#e9eefc']),
     hot:  (CFG.logoHot  || ['#ffd27a','#ff8a2b','#c93c1f'])
@@ -9079,7 +9079,7 @@ function drawTitleArt(){
   g.setTransform(dpr,0,0,dpr,0,0);
   const hz = h * 0.52;
   /* ---- A FORK CAN PAINT ITS OWN ---------------------------------------
-     Raceway was showing Highway's sunset because the title art was hardcoded.
+     Motorsport was showing Interstate's sunset because the title art was hardcoded.
      `CFG.titleArt` gets the context and the geometry and returns true if it
      drew everything; anything it does not draw falls through to the highway
      scene below, so a fork can replace the whole picture or none of it. */
@@ -9749,7 +9749,7 @@ requestAnimationFrame(frameLoop);
     dmg:      { get: function(){ return dmg; } },
     /* the cars in front. Read-only, and here for the same reason as the two
        above: a test driver that cannot see traffic drives into it, and a
-       Highway run that spends thirty seconds wrecked proves nothing about
+       Interstate run that spends thirty seconds wrecked proves nothing about
        the engine. */
     traffic:  { get: function(){ return traffic; } },
     state:    { get: function(){ return state; } },

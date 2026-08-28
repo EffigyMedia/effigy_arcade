@@ -44,7 +44,7 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.1.2';
+A.version = '0.2.0';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;
@@ -142,7 +142,7 @@ A.options = {
 
      Arcade.cinema.play([
        { art: (g,w,h) => {...}, text: 'One line over the frame.' }
-     ], { key:'derelict.intro', onDone: start, overlay: myOpenVeil });
+     ], { key:'quietus.intro', onDone: start, overlay: myOpenVeil });
 
    `overlay` is how a game renders a panel — it is handed HTML and a callback,
    because every cabinet already has its own veil and its own typeface, and the
@@ -258,7 +258,7 @@ A.cinema = (function(){
   }
 
   /* NO VISUAL TREATMENT LIVES HERE. An earlier pass put grain, scanlines and a
-     red recording dot in the shell, which is Derelict's suit-cam look rather
+     red recording dot in the shell, which is Quietus's suit-cam look rather
      than a mechanism — Penboy would have inherited horror-film grain over a
      ballpoint drawing. A game passes its own `filter` and gets exactly the
      look it chose. The shell only decides WHEN it runs. */
@@ -498,7 +498,7 @@ function uiScale(){
    gradient split at the midline — cool above, hot below — so the horizon runs
    through the word the way it runs through the art behind it.
 
-   A game passes its own two colour ramps, so Highway is chrome-and-amber and
+   A game passes its own two colour ramps, so Redline Interstate is chrome-and-amber and
    Deep is ice-and-abyss, but the construction is common.
    =========================================================================== */
 var GLYPH = {
@@ -540,7 +540,7 @@ var GLYPH = {
    with a horizon, or anything else.
 
    Sharing the treatment would have made seventeen marquees that all look like
-   Highway's, which is the exact problem a drawn logo is meant to solve.
+   Redline Interstate's, which is the exact problem a drawn logo is meant to solve.
 
    paint(g, pass, i, n)  — pass is 'shell' then 'face'; i is the letter index.
 

@@ -11,10 +11,10 @@ full screen, and works with no signal after the first visit.
 
 | Machine | What it is |
 |---|---|
-| **Derelict** | A dead ship. Nothing aboard is alive; plenty of it still moves. |
-| **Privateer** | Space, first person. Engines disable, everything else destroys. |
-| **Highway** | An endless road. |
-| **Raceway** | A circuit racer. |
+| **Quietus** | A dead ship. Nothing aboard is alive; plenty of it still moves. |
+| **Hardpoint** | A small-scope FPS SIMcade RPG. Fly it, leave the chair, board, fight. Pirate or bounty hunter. |
+| **Redline Interstate** | The endless road. |
+| **Redline Motorsport** | The circuit. |
 
 Each one is being built out into a full multi-scene game rather than filled in.
 

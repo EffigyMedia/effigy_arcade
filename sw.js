@@ -24,14 +24,14 @@
 /* v20: v19 shipped with an EMPTY asset list. Any device that installed it is
    holding a worker that caches no cabinets, and it will keep serving that
    worker until the name changes. */
-const CORE    = 'effigy-arcade-core-v25';
+const CORE    = 'effigy-arcade-core-v26';
 /* ---- ONE VERSION, NOT TWO ----------------------------------------------
    CORE went to v20 and RUNTIME stayed at v19, so a device kept a runtime cache
    from the broken build alongside a fresh core. They are bumped together from
    here: two names, one version number, so a stale half can never survive an
    update.
    ---------------------------------------------------------------------- */
-const RUNTIME = 'effigy-arcade-runtime-v25';
+const RUNTIME = 'effigy-arcade-runtime-v26';
 /* ---- HARD EVICTION -----------------------------------------------------
    A half-updated cache is worse than no cache: a device holding the previous
    game HTML beside the current shared scripts gets a black screen, because the
@@ -69,10 +69,10 @@ const CORE_FILES = [
    so it cannot drift out of step with the catalogue.
    --------------------------------------------------------------------------- */
 const ALL_FILES = [
-  "./games/em/derelict.html",
-  "./games/em/privateer.html",
-  "./games/sw/highway.html",
-  "./games/sw/raceway.html",
+  "./games/em/hardpoint.html",
+  "./games/em/quietus.html",
+  "./games/sw/interstate.html",
+  "./games/sw/motorsport.html",
   "./fonts/archivo-var.woff2",
   "./fonts/bricolagegrotesque-var.woff2",
   "./fonts/dmmono-400.woff2",

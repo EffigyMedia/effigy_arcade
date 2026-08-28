@@ -5,7 +5,7 @@ DRIVE TEST — the harness that actually plays the game.
 pack.sh proves the files parse. This proves the car moves.
 
     python3 tools/drive-test.py                 both games
-    python3 tools/drive-test.py highway         one game
+    python3 tools/drive-test.py interstate      one game
     python3 tools/drive-test.py --seconds 45    drive longer
     python3 tools/drive-test.py --headed        watch it
 
@@ -34,8 +34,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MPH = 200 / 15333          # MAX_SPD is 200mph, road.js:80
 
 GAMES = {
-    'highway': 'games/sw/highway.html',
-    'raceway': 'games/sw/raceway.html',
+    'interstate': 'games/sw/interstate.html',
+    'motorsport': 'games/sw/motorsport.html',
 }
 
 # Every car the garage must offer from a clean save. Both classes are
@@ -260,7 +260,7 @@ def no_pursuit(page):
         page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5_000)
 
 
-def drive(page, res, seconds, is_raceway):
+def drive(page, res, seconds, is_circuit):
     """Hold the throttle and watch the numbers."""
     page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5_000)
     no_pursuit(page)
@@ -286,7 +286,7 @@ def drive(page, res, seconds, is_raceway):
     on_road = sum(1 for s in samples if abs(s['x']) < 1.0) / len(samples)
     res.check(on_road > 0.9, 'stays on the road', f'{on_road*100:.0f}% of samples')
 
-    # A wreck is not "damage got high" — Highway is a game about traffic and
+    # A wreck is not "damage got high" — Redline Interstate is a game about traffic and
     # a scrape is part of it. It is the RESPAWN: damage reaching the top and
     # dropping back to nothing. Watch for the reset, not the number.
     worst = max(s['dmg'] for s in samples)
@@ -300,7 +300,7 @@ def drive(page, res, seconds, is_raceway):
     res.check(hud_after != hud_before, 'the HUD changes',
               f'{hud_before!r} -> {hud_after!r}')
 
-    if is_raceway:
+    if is_circuit:
         lap_len = page.evaluate('() => circuit && circuit.len') or 0
         laps_driven = (moved / lap_len) if lap_len else 0
 
@@ -369,7 +369,7 @@ def run_game(browser, base, game, seconds, res):
         res.check(not missing, 'the garage lists the expected cars',
                   ', '.join(cars) if not missing else 'missing ' + ', '.join(missing))
 
-        drive(page, res, seconds, game == 'raceway')
+        drive(page, res, seconds, game == 'motorsport')
 
         errors += page.evaluate('() => window.__probe.errors')
         res.check(not errors, 'no page errors',

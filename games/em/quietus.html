@@ -18,9 +18,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#06080a">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Derelict</title>
-  <meta name="arcade-home" content="../../index.html#em">
-  <meta name="arcade-title" content="Derelict">
+<title>Quietus</title>
+  <meta name="arcade-home" content="../../index.html">
+  <meta name="arcade-title" content="Quietus">
 <meta name="arcade-accent" content="#7fd8ff">
 <script src="../../audio.js"></script>
 <script src="../../arcade.js"></script>
@@ -428,7 +428,7 @@ body.titling #veil h1{display:none}
 "use strict";
 
 /* ================================================================
-   DERELICT — a one-screen puzzle crawler.
+   QUIETUS — a one-screen puzzle crawler.
    Compartments, sealed doors, and an apex sitting on the only
    piece of salvage worth having. Combat is fully deterministic.
    ================================================================ */
@@ -1301,7 +1301,7 @@ function cineTunnel(g, W, H, vpx, vpy, warm){
   }
 }
 /* The recovered-footage look belongs to THIS cabinet, not to the shell. Grain,
-   scanlines and a recording dot are Derelict's fiction; another game passes its
+   scanlines and a recording dot are Quietus's fiction; another game passes its
    own treatment, or none. */
 function cineGrade(g, W, H, label, stamp){
   const v=g.createRadialGradient(W/2,H*0.5,H*0.16,W/2,H*0.5,H*0.98);
@@ -4224,7 +4224,7 @@ function walk(path){
       setTimeout(tick, 70);
     } catch(err){
       busy = false; scanTally = null;
-      if(window.console && console.error) console.error('derelict: walk aborted', err);
+      if(window.console && console.error) console.error('quietus: walk aborted', err);
       say('\u2014 something jammed. You stop where you are.');
       try { render(); } catch(e2){}
     }
@@ -4391,12 +4391,12 @@ function deckInfo(){
    SAVING — a run is a lot of state, but all of it is plain data.
    Cores hold functions, so they travel by name and are re-linked.
    ================================================================ */
-const SAVE_ID = 'derelict';
+const SAVE_ID = 'quietus';
 
 /* Who has killed whom, kept across every run. A species you have put down forty
    times reads differently from the one that has ended three of your runs, and
    the death screen is the only place that comparison lands. */
-const TALLY_KEY = 'effigyarcade.derelict.tally.v1';
+const TALLY_KEY = 'effigyarcade.quietus.tally.v1';
 function tally(){
   try { return JSON.parse(localStorage.getItem(TALLY_KEY) || '{}'); } catch(e){ return {}; }
 }
@@ -5854,15 +5854,15 @@ const INTRO = [
     text:'You are being paid to find out what happened. The seal is intact. ' +
          '<b>Nothing has left this ship.</b>' }
 ];
-const INTRO_KEY = 'effigyarcade.derelict.intro.v1';
+const INTRO_KEY = 'effigyarcade.quietus.intro.v1';
 
-/* The approach is Derelict's own sequence, paced and worded for this cabinet.
+/* The approach is Quietus's own sequence, paced and worded for this cabinet.
    The shell only remembers whether it has been watched and hands back a canvas
    at the right pixel ratio. */
 function playIntro(from, done){
   const i = from || 0;
   if(i >= INTRO.length){
-    if(AR && AR.cinema) AR.cinema.mark('derelict.intro');
+    if(AR && AR.cinema) AR.cinema.mark('quietus.intro');
     if(done) done();
     return;
   }
@@ -5871,7 +5871,7 @@ function playIntro(from, done){
   const h = Math.round(w * 0.60);
   const finish = () => {
     veil.classList.add('hidden');
-    if(AR && AR.cinema) AR.cinema.mark('derelict.intro');
+    if(AR && AR.cinema) AR.cinema.mark('quietus.intro');
     if(done) done();
   };
   openVeil(
@@ -5890,7 +5890,7 @@ function playIntro(from, done){
 }
 
 function introSeen(){
-  return !!(AR && AR.cinema && AR.cinema.seen('derelict.intro'));
+  return !!(AR && AR.cinema && AR.cinema.seen('quietus.intro'));
 }
 
 function showShard(doc){
@@ -6278,7 +6278,7 @@ function drawTitleArt(){
 
   /* three passes: the finger went over it more than once */
   for(let pass2=0; pass2<3; pass2++){
-    AR.wordmark(g, 'DERELICT',
+    AR.wordmark(g, 'QUIETUS',
       wallMid + (jit(pass2)*2.2 - 1.1), wy + (jit(pass2+40)*2.0 - 1.0), wsz, {
       glyphs: BG, widths: BGW, gap: 0.30, maxW: wallW, rake: -0.04,
       passes: ['s'],
@@ -6421,7 +6421,7 @@ function showTitle(){
     {
       play:   ()=>{
         /* ---- THE TITLE ART HAS TO COME DOWN --------------------------------
-           `body.titling` was only cleared in one branch, and Derelict's PLAY
+           `body.titling` was only cleared in one branch, and Quietus's PLAY
            does not go through it — so the title canvas stayed on top of the
            game at z-index 29 and the run was unreachable. Clearing it here,
            where the title is definitively being left. */
@@ -6442,7 +6442,7 @@ function showTitle(){
 /* Options, with CONTROLS reading whatever this device actually is. */
 function showOptions(){
   openVeil(
-    '<div class="veyebrow">DERELICT</div>' +
+    '<div class="veyebrow">QUIETUS</div>' +
     '<div class="vtitle ice">Options</div>' +
     '<div class="tmenu">' +
       '<button class="vbtn ghost" data-act="ctrl" style="margin-top:22px">CONTROLS</button>' +

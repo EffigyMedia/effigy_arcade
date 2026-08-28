@@ -16,12 +16,23 @@ control is designed for a thumb, and a feature that needs a keyboard is not buil
 
 The four machines:
 
-| Machine | Shelf id | What it is |
+| Machine | id | What it is |
 |---|---|---|
-| **Derelict** | `em` | A dead ship. Nothing aboard is alive; plenty of it still moves. |
-| **Privateer** | `em` | Space, first person. Engines disable, everything else destroys. |
-| **Highway** | `sw` | An endless road. |
-| **Raceway** | `sw` | A circuit racer. |
+| **Quietus** | `quietus` | A dead ship. Nothing aboard is alive; plenty of it still moves. |
+| **Hardpoint** | `hardpoint` | A small-scope FPS SIMcade RPG. Fly it, leave the chair, board, fight. Pirate or bounty hunter, your choice. |
+| **Redline Interstate** | `interstate` | The endless road. |
+| **Redline Motorsport** | `motorsport` | The circuit. |
+
+**REDLINE is a marque, not decoration.** Interstate and Motorsport are one engine - `road.js` - with
+the same six cars in the same garage, separated by a `CFG` seam. Two disciplines, one parent.
+
+**Quietus supersedes the owner's parked project of that name** (`Projects/Parked/Quietus`) when it
+goes standalone. That project is the same fiction as a menu-only terminal game, it is **already
+Godot 4.7 targeting iOS and Android**, and it holds the repository `quietus-dev`. See
+`docs/fragments/RLG-005.md` before assuming anything about which repository the standalone takes.
+
+**`docs/reference/PRIVATEER.md` is Hardpoint's design document.** It keeps its original filename
+because it is a frozen record written before the rename; the in-code citations to it are correct.
 
 **This is not a version of Tiny Arcade.** That project is nineteen small machines sorted onto three
 shelves, and it is **parked, complete, and still playable** at
@@ -135,7 +146,9 @@ Python 3 with Playwright installed runs the two test harnesses; a browser runs e
   **must not** know what a game is.
 - **`road.js`** — the shared driving engine, 9,849 lines, serving Highway and Raceway; **must not**
   know which of its two games is running, except through a `CFG` seam.
-- **`games/<cat>/<id>.html`** — one machine, whole; **must not** reach into another machine, or
+- **`games/<cat>/<id>.html`** — one machine, whole. The `cat` folders `em` and `sw` are inherited
+  from Tiny Arcade's shelves and now mean nothing: the floor shows every cabinet regardless. They
+  are kept only because renaming paths churns both cache lists and every save key. A machine **must not** reach into another machine, or
   define `--stage-h` or `--safe-top`.
 - **`sw.js`** / **`assets.js`** — the cache policy, and the generated cache list. `assets.js` is
   generated; **never edit it by hand.**

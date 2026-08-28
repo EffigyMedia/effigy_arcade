@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#04070f">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Privateer</title>
-  <meta name="arcade-home" content="../../index.html#em">
-  <meta name="arcade-title" content="Privateer">
+<title>Hardpoint</title>
+  <meta name="arcade-home" content="../../index.html">
+  <meta name="arcade-title" content="Hardpoint">
 <meta name="arcade-accent" content="#ffb454">
 <script src="../../audio.js"></script>
 <script src="../../arcade.js"></script>
@@ -138,7 +138,7 @@ canvas{display:block;width:100%;height:100%}
 
 <script>
 /* ===========================================================================
-   PRIVATEER — Effigy original
+   HARDPOINT — Effigy original
 
    Hunt a ship. Cripple it. Board it. Take everything.
 
@@ -152,7 +152,7 @@ canvas{display:block;width:100%;height:100%}
    you get a bug that only appears in one of them.
    =========================================================================== */
 var AR = window.Arcade;
-var GAME_ID = 'privateer';
+var GAME_ID = 'hardpoint';
 var SV = (AR && AR.save) ? AR.save.get(GAME_ID) : null;
 var best = (SV && SV.bestRun) || 0;
 var opts = ((AR && AR.save) ? AR.save.get(GAME_ID + '-opts') : null) || { invertY:false };
@@ -1106,7 +1106,7 @@ function title(){
   MODE = 'title';
   showFly(true);
   openVeil(
-    '<h1>Privateer</h1><div class="sub">HUNT &middot; CRIPPLE &middot; BOARD</div>' +
+    '<h1>Hardpoint</h1><div class="sub">HUNT &middot; CRIPPLE &middot; BOARD</div>' +
     '<button class="go" data-act="play">PLAY</button>' +
     '<button data-act="controls">CONTROLS</button>' +
     '<button data-act="options">OPTIONS</button>' +
@@ -1201,7 +1201,7 @@ function saveEcon(){
 function standingLabel(){
   if(pirate >= hunter + 3) return 'PIRATE';
   if(hunter >= pirate + 3) return 'BOUNTY HUNTER';
-  return 'PRIVATEER';
+  return 'HARDPOINT';
 }
 /* a name to hunt, so a contract is a person and not a checkbox */
 var NAMES = ['VARDEN','KOSS','ILEX','MARROW','TASH','BRENNAN','OKONKWO','SELVA'];

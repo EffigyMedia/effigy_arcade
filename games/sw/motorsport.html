@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#120a24">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Raceway</title>
-  <meta name="arcade-home" content="../../index.html#sw">
-  <meta name="arcade-title" content="Raceway">
+<title>Redline Motorsport</title>
+  <meta name="arcade-home" content="../../index.html">
+  <meta name="arcade-title" content="Redline Motorsport">
 <meta name="arcade-accent" content="#ff8a3d">
 <script src="../../audio.js"></script>
 <script src="../../arcade.js"></script>
@@ -736,8 +736,8 @@ body.titling #veil h1{display:none}
 </div></div>
 
 <script>
-/* ---- RACEWAY --------------------------------------------------------------
-   Everything this game shares with Highway is in road.js. What is left here is
+/* ---- MOTORSPORT --------------------------------------------------------------
+   Everything this game shares with Interstate is in road.js. What is left here is
    only what makes it a CIRCUIT racer: a finite road that wraps, lap counting,
    and the minimap. 300 lines against the engine's 8,400.
 
@@ -753,7 +753,7 @@ let circuit = null, lap = 0, lapsTotal = 5, lapStart = 0,
    moment the first seam runs. */
 /* no civilian traffic, no police, no roadblocks, no crates — a circuit is
    not a highway */
-const CFG = { id:'raceway', title:'Raceway', circuitOnly:true };
+const CFG = { id:'motorsport', title:'Redline Motorsport', circuitOnly:true };
 const R = new Proxy({}, { get: (_, k) => CFG.api && CFG.api[k] });
 
 /* ===========================================================================
@@ -920,7 +920,7 @@ function fmtLap(t){
 
 /* ---- THE SCALE CONSTANT ---------------------------------------------------
    `k = turn / (len * K)`, so K converts geometry into the curvature the
-   driving code feels. At Highway's 0.00028 a corner tight enough to slow a
+   driving code feels. At Interstate's 0.00028 a corner tight enough to slow a
    formula car had a radius of ~320 units — crossed in 0.07 seconds, far too
    short to brake for, so the car was flung off rather than slowed.
 
@@ -935,7 +935,7 @@ function fmtLap(t){
        0.000016    —      15.6     80mph   2.05s
 
    A hairpin at 94mph that takes nearly two seconds is a corner you brake for
-   and drive through. Highway is untouched — this constant is Raceway's.
+   and drive through. Interstate is untouched — this constant is Motorsport's.
    -------------------------------------------------------------------------- */
 var CURVE_K = 0.000040;
 var fuel = 100, tyre = 100, inPit = false, pitTime = 0, stops = 0;
@@ -993,7 +993,7 @@ function stepPit(dt){
      40% a lap, so a set is good for two and a half. SOFT (×1.70) forces a
      second stop, HARD (×0.62) makes one comfortable and costs pace once
      COMPOUNDS.grip is finally wired into cornerG. Re-measure with
-     `python3 tools/drive-test.py raceway` after any change to pace.
+     `python3 tools/drive-test.py motorsport` after any change to pace.
      ------------------------------------------------------------------- */
   tyre = Math.max(0, tyre - dt * (k * v * v) * 0.155 * COMPOUNDS[compound].wear);
 
@@ -1059,7 +1059,7 @@ var PIT_LUG_N = 5;
    drawn a single frame. Read the shell off `window` here, lazily, because
    arcade.js may not have run when this line does. */
 function pitAR(){ return window.Arcade || null; }
-(function(){ const A = pitAR(); const sv = A && A.save ? A.save.get('raceway') : null;
+(function(){ const A = pitAR(); const sv = A && A.save ? A.save.get('motorsport') : null;
              if(sv && sv.bestPit) PIT.best = sv.bestPit; })();
 
 function pitReset(){
@@ -1179,7 +1179,7 @@ function pitRelease(bailed){
   PIT.shownCol = bailed ? 'yellow' : pitColour(t);
   if(!bailed && (!PIT.best || t < PIT.best)){
     PIT.best = t;
-    const A2 = pitAR(); if(A2 && A2.save) A2.save.merge('raceway', { bestPit:+t.toFixed(2) });
+    const A2 = pitAR(); if(A2 && A2.save) A2.save.merge('motorsport', { bestPit:+t.toFixed(2) });
   }
   PIT.released = 4.2;                /* how long the readout stays up */
   R.snd.checkpoint();
@@ -1443,7 +1443,7 @@ function drawPitTime(g){
 /* ===========================================================================
    THE CIRCUIT
 
-   Highway's road is INFINITE: `pushCurve` adds segments at the front and old
+   Interstate's road is INFINITE: `pushCurve` adds segments at the front and old
    ones are shifted off the back. A circuit is the same generator with one
    difference — it is FINITE and it wraps. Build N segments once, then answer
    "what is the curvature at z" with `z % trackLength`.
@@ -1582,7 +1582,7 @@ function buildCircuit(league, seed){
          A corner is only a corner if the curvature is big enough to push you
          wide. Scaled to give laps in the 90k-150k range, which is where the
          same 2\u03c0 produces k values of 1 to 4 — the band the cornering force was
-         tuned against in Highway.
+         tuned against in Interstate.
          -------------------------------------------------------------- */
       /* ---- WHAT THE RESEARCH SAYS ---------------------------------------
          I had FORMULA as the smoothest league — fewest tight corners — and that
@@ -1857,7 +1857,7 @@ function buildCircuit(league, seed){
   }
 
   return { segs, hills, len, corners, path2: P,
-           name: (league === 'gp' ? 'CIRCUIT ' : league === 'gt' ? 'PARK ' : 'RACEWAY ')
+           name: (league === 'gp' ? 'CIRCUIT ' : league === 'gt' ? 'PARK ' : 'MOTORSPORT ')
                  + (1000 + ((seed || srnd()*9000)|0) % 9000) };
 }
 
@@ -2084,8 +2084,8 @@ ROAD(Object.assign(CFG, {
   },
 
   /* a fresh track every run: that is what procgen is for */
-  /* ---- RACEWAY'S OWN TITLE --------------------------------------------
-     Highway's title is a sunset at the end of an endless road, which is the
+  /* ---- MOTORSPORT'S OWN TITLE --------------------------------------------
+     Interstate's title is a sunset at the end of an endless road, which is the
      wrong promise for a circuit racer. This is a track seen from ABOVE — the
      minimap idiom the game already uses, drawn large, with a car running a
      lap on it and the pit straight picked out in red.
@@ -2093,9 +2093,9 @@ ROAD(Object.assign(CFG, {
      It uses the real generator, so the title screen is showing a circuit the
      game could actually deal you.
      ------------------------------------------------------------------- */
-  /* cold chrome and track green, against Highway's sunset chrome */
+  /* cold chrome and track green, against Interstate's sunset chrome */
   /* ---- A PLACEHOLDER, AND SAID SO --------------------------------------
-     The wordmark is still Highway's warm chrome on a floodlit night scene,
+     The wordmark is still Interstate's warm chrome on a floodlit night scene,
      which is wrong — sunset metal against stadium light. Cool steel and a
      racing red are closer to the grid it now sits over, but this is a holding
      value, not a design. It wants proper lettering when there is time.
@@ -2119,7 +2119,7 @@ ROAD(Object.assign(CFG, {
        side, floodlights above.
 
        It is the one image that is unmistakably a circuit racer and could not
-       be mistaken for Highway — there is no horizon to drive toward, only the
+       be mistaken for Interstate — there is no horizon to drive toward, only the
        moment before it starts.
        ------------------------------------------------------------------- */
     const hz = h * 0.40;

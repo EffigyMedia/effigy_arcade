@@ -25,20 +25,20 @@
    ===================================================================== */
 window.EFFIGY_ARCADE = [
   {
-    file:  'games/em/derelict.html',
-    id:    'derelict',
+    file:  'games/em/quietus.html',
+    id:    'quietus',
     cat:   'em',
-    name:  'Derelict',
+    name:  'Quietus',
     accent:'#7fd8ff',
     genre: 'ROGUELIKE \u00B7 TURN-BASED',
     hook:  'Nothing aboard is alive. Plenty of it still moves.',
     attract:'grid'
   },
   {
-    file:  'games/sw/highway.html',
-    id:    'highway',
+    file:  'games/sw/interstate.html',
+    id:    'interstate',
     cat:   'sw',
-    name:  'Highway',
+    name:  'Redline Interstate',
     accent:'#ff8a3d',
     /* The genre line says what KIND of game this is — three words, the way
        every other card reads, not a list of menu items. The hook had been
@@ -49,22 +49,22 @@ window.EFFIGY_ARCADE = [
     attract:'road'
   },
   {
-    file:  'games/sw/raceway.html',
-    id:    'raceway',
+    file:  'games/sw/motorsport.html',
+    id:    'motorsport',
     cat:   'sw',
-    name:  'Raceway',
+    name:  'Redline Motorsport',
     accent:'#4dd6a0',
     /* the fork: the same car and the same road engine, on a CIRCUIT. What
-       Highway measures in miles survived, this measures in laps. */
+       Redline Interstate measures in miles survived, this measures in laps. */
     genre: 'RACING \u00B7 CIRCUIT \u00B7 LAPS',
     hook:  'Procedural circuits in three leagues, and a pit lane that decides it.',
     attract:'road'
   },
   {
-    file:  'games/em/privateer.html',
-    id:    'privateer',
+    file:  'games/em/hardpoint.html',
+    id:    'hardpoint',
     cat:   'em',
-    name:  'Privateer',
+    name:  'Hardpoint',
     accent:'#ffb454',
     genre: 'SPACE \u00B7 FIRST PERSON',
     hook:  'Engines disable. Everything else destroys, and a wreck has no cargo.',

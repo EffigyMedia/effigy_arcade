@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-2-0"></a>
+## [0.2.0] — 2026-08-25
+- Changed: **the four machines are renamed**, in one unit — Derelict to **Quietus**, Privateer to
+  **Hardpoint**, Highway to **Redline Interstate**, Raceway to **Redline Motorsport**. Ids, file
+  paths, the catalogue, the engine's default, the drive harness and the save keys all moved together
+  ([RLG-006](../fragments/RLG-006.md)).
+- Changed: the cache generation is v26. Every cabinet filename changed, so a worker holding the old
+  list would ask the server for four files that no longer exist
+  ([RLG-006](../fragments/RLG-006.md)).
+- Removed: the `#em` / `#sw` shelf hash from each cabinet's `arcade-home`, which addressed a picker
+  that no longer exists ([RLG-006](../fragments/RLG-006.md)).
+
 <a id="v0-1-2"></a>
 ## [0.1.2] — 2026-08-25
 - Added: the icon is built from the **Effigy Media symbol** in the arcade's palette, pixelated, and
