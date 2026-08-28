@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-6"></a>
+## [0.9.6] — 2026-08-28
+- Changed: **the police cars are won in the tournament now, under pursuit.** A gold in a sports car
+  with HOT PURSUIT on also unlocks the CRUISER; a gold in a supercar unlocks the SUPERCRUISER. The
+  old TEST DRIVE triggers — 20 miles on the clock, and the same 20 at a 180mph average — are removed
+  completely rather than kept alongside ([RLG-049](../fragments/RLG-049.md)).
+- Fixed: **the trophy screen announced "FORMULA UNLOCKED" for every gold**, and its button offered a
+  FORMULA, even for a sports gold that actually pays the iridescent paint. The prize is computed
+  from the class now, and a gold with pursuit off is told what it missed
+  ([RLG-049](../fragments/RLG-049.md)).
+- Fixed: the CRUISER's unlock card still described the TEST DRIVE trigger that no longer exists, and
+  the SUPERCRUISER's card described nothing at all ([RLG-049](../fragments/RLG-049.md)).
+- Known: **the new unlock branch is not executed by any harness.** A tournament is four races of 10,
+  12, 16 and 24 miles with no debug route to a finish, so this shipped on a static parse plus the
+  standing regression suite. A debug jump to a tournament finish is tracked
+  ([RLG-050](../fragments/RLG-050.md)).
+
 <a id="v0-9-5"></a>
 ## [0.9.5] — 2026-08-28
 - Fixed: **the rubber band's tow did nothing at all.** A rival held two miles behind ran 179.0mph

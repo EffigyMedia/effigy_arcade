@@ -4264,7 +4264,7 @@ function reset(){
   dist=0; score=0; combo=0; comboTime=0; heat=1; heatT=0; runTopMph=0;
   clock = CLOCK_START; nextCP = 1; cpGantries = []; lastBeep = -1; wreckWait = 0;
   /* if you are driving one, the force matches you; otherwise the night decides */
-  barOn = false; wonCruiser = false; wonTraffic = false; coasting = false; runSeconds = 0;
+  barOn = false; wonTraffic = false; coasting = false;
   if(hornBtn) hornBtn.classList.remove('on');
   copLivery = (optBody === 'CRUISER')
     ? (optPaint === 'BLACK' ? 'BLACK' : 'WHITE')
@@ -4709,7 +4709,7 @@ function autoGear(dt){
 }
 
 let brakeLamp = 0;
-let slipT = 0, coasting = false, runSeconds = 0, slideX = 0;
+let slipT = 0, coasting = false, slideX = 0;
 
 /* ===========================================================================
    WEATHER
@@ -5434,6 +5434,21 @@ function stepRacers(dt){
             AR.save.merge((GAME_ID + '-opts'), { formula:true });
           if(st === 1 && classOf(optBody) === 'sports')
             AR.save.merge((GAME_ID + '-opts'), { iridescent:true });
+          /* ---- AND THE POLICE CAR OF YOUR OWN CLASS, IF YOU RAN IT HOT ----
+             Owner's ruling: a gold with HOT PURSUIT on also hands you the
+             force's version of what you were driving. The sports ladder pays
+             the CRUISER, the supercar ladder the SUPERCRUISER — which is the
+             same class rule the cars themselves are held to, that a cruiser is
+             comparable to the sports class and a super cruiser to the supers.
+
+             `optEasy` is pursuit OFF, so `!optEasy` is the switch being on. It
+             is an EXTRA condition on the same gold rather than a change to what
+             gold already pays: turning pursuit off still wins you the formula
+             car or the paint, it just does not win you a police car. */
+          if(st === 1 && !optEasy && classOf(optBody) === 'sports')
+            AR.save.merge((GAME_ID + '-opts'), { cruiser:true });
+          if(st === 1 && !optEasy && classOf(optBody) === 'super')
+            AR.save.merge((GAME_ID + '-opts'), { supercruiser:true });
           if(st <= 2)  AR.save.merge((GAME_ID + '-opts'), { tuner:true });
           if(st <= 3)  AR.save.merge((GAME_ID + '-opts'), { muscle:true });
         }
@@ -5461,7 +5476,7 @@ function ordinal(n){
    interceptor has.
    ------------------------------------------------------------------------- */
 let barOn = false;
-let wonCruiser = false, wonTraffic = false;
+let wonTraffic = false;
 /* ---- ANY FORCE CAR, NOT JUST THE CRUISER ------------------------------
    This named one body, so the SUPER CRUISER had lights on its sprite and no
    way to switch them on: no latch, no siren, no wash, no scatter. `force` is
@@ -6574,7 +6589,7 @@ function step(dt){
     return;
   }
 
-  if(state === 'driving') runSeconds += dt;
+  /* `runSeconds` was removed with the TEST DRIVE unlock triggers (RLG-049): the 180mph average was its only reader. */
   stepBiome(dt);
   stepWeather(dt);
   if(CFG.onStep) CFG.onStep(dt);
@@ -6635,26 +6650,16 @@ function step(dt){
     snd.checkpoint();
     flashWarn('TRAFFIC UNLOCKED');
   }
-  /* ---- THE SUPER CRUISER IS EARNED HARDER ------------------------------
-     The cruiser asks for 20 miles on the clock under pursuit. The SUPER
-     cruiser asks for the same twenty miles at a **180mph average** — not a
-     peak, an average, so it cannot be done by sprinting and coasting.
-     ------------------------------------------------------------------- */
-  if(mode !== 'race' && timedRun && !optEasy && dist >= 20 && !unlocked('supercruiser')){
-    const avg = dist / Math.max(0.0001, (runSeconds / 3600));
-    if(avg >= 180){
-      if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { supercruiser:true });
-      wonCruiser = true; snd.checkpoint(); flashWarn('INTERCEPTOR UNLOCKED');
-    }
-  }
-  if(mode !== 'race' && timedRun && !optEasy && dist >= 20 && !unlocked('cruiser')){
-    if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { cruiser:true });
-    /* flagged now, SHOWN when the run ends — a reward screen mid-run would be
-       taking the wheel away from you at 190mph */
-    wonCruiser = true;
-    snd.checkpoint();
-    flashWarn('CRUISER UNLOCKED');
-  }
+  /* ---- THE POLICE CARS ARE NOT WON OUT HERE ANY MORE ---------------------
+     Both used to be earned on TEST DRIVE: twenty miles on the clock under
+     pursuit for the CRUISER, and the same twenty at a 180mph average for the
+     SUPERCRUISER. Both triggers are gone, by the owner's ruling, and they were
+     REMOVED rather than left in alongside the new ones — two ways to win the
+     same car is two things to keep working and two things to explain.
+
+     They are won in the tournament now, under pursuit, alongside the gold that
+     the class already pays out. See `tourScore`'s finish branch and RLG-049.
+     ---------------------------------------------------------------------- */
 
   updateViewShift();
   /* the road only needs re-integrating as you consume it, not every frame */
@@ -10201,8 +10206,14 @@ function showUnlock(key){
       '<div class="gc"><span>REDLINE</span><b>' + ((B.redline||12000)/1000) + 'K</b></div>' +
       '<div class="gc"><span>0\u201360 MPH</span><b>' + zeroSixty(key).toFixed(1) + 's</b></div>' +
     '</div>' +
+    /* How it was won. This said "20 MILES \u00B7 ON THE CLOCK \u00B7 UNDER PURSUIT" for
+       the CRUISER, which was the TEST DRIVE trigger RLG-049 removed, and it
+       said nothing at all for the SUPERCRUISER. Both are tournament prizes
+       now, and each names the ladder that pays it. */
     (key === 'CRUISER'
-      ? '<div class="gnote">20 MILES \u00B7 ON THE CLOCK \u00B7 UNDER PURSUIT</div>'
+      ? '<div class="gnote">GOLD \u00B7 SPORTS TOURNAMENT \u00B7 UNDER PURSUIT</div>'
+      : key === 'SUPERCRUISER'
+      ? '<div class="gnote">GOLD \u00B7 SUPERCAR TOURNAMENT \u00B7 UNDER PURSUIT</div>'
       : '') +
     '<div class="gstack">' +
       '<button class="go" data-act="drive">DRIVE IT</button>' +
@@ -10219,6 +10230,25 @@ function showTrophy(st){
   document.body.classList.add('trophying');
   requestAnimationFrame(drawTrophyArt);
   const NAME = st === 1 ? 'GOLD' : st === 2 ? 'SILVER' : st === 3 ? 'BRONZE' : 'P' + st;
+  /* ---- WHAT A GOLD ACTUALLY PAID -----------------------------------------
+     This screen said FORMULA UNLOCKED for every gold and offered to show you a
+     FORMULA. That was already wrong before RLG-049: gold pays out BY CLASS, so
+     a sports ladder has been handing out the iridescent paint and announcing an
+     open-wheeler the player did not win. Adding a second prize made the screen
+     wrong in a second way, so it is computed here instead of asserted.
+
+     `sports` reads the class of the car the tournament was run in, and
+     `!optEasy` is hot pursuit having been on. Both are still in scope: the save
+     merges happen at the finish, and nothing resets them before the trophy. */
+  const sports = classOf(optBody) === 'sports';
+  const goldCar = sports ? null : 'FORMULA';
+  const copCar  = (st === 1 && !optEasy) ? (sports ? 'CRUISER' : 'SUPERCRUISER') : null;
+  /* the headline prize of the ladder you ran, in the words the player will
+     recognise from the garage */
+  const goldNote = sports ? 'IRIDESCENT PAINT UNLOCKED' : 'FORMULA UNLOCKED · NO COMPROMISE';
+  /* the button opens the most interesting NEW car. A police car beats paint,
+     and beats a formula the player may already have from a previous gold. */
+  const showCar = copCar || goldCar || (st === 2 ? 'TUNER' : st === 3 ? 'MUSCLE' : null);
   /* the four races, and where the points came from */
   const rows = tourField.slice().sort((a,b)=>b.pts-a.pts).slice(0,3);
   openVeil(
@@ -10229,16 +10259,21 @@ function showTrophy(st){
       '<div class="gc"><span>PLACE</span><b>P' + st + '</b></div>' +
     '</div>' +
     (st === 1
-      ? '<div class="gnote">FORMULA UNLOCKED \u00b7 FORMULA \u00b7 NO COMPROMISE</div>'
+      ? '<div class="gnote">' + goldNote + '</div>' +
+        (copCar
+          ? '<div class="gnote">' + copCar + ' UNLOCKED \u00b7 WON UNDER PURSUIT</div>'
+          /* say what was missed, so the condition is discoverable from the one
+             screen where the player is looking at the result of meeting it */
+          : '<div class="tip">A GOLD WITH HOT PURSUIT ON ALSO WINS THE POLICE CAR</div>')
       : '<div class="tip">A GOLD UNLOCKS THE FOURTH CAR</div>') +
     '<div class="gstack">' +
-      (st <= 3 ? '<button class="go" data-act="unlock">SEE YOUR NEW CAR</button>' : '') +
-      '<button class="go' + (st <= 3 ? ' ghost' : '') + '" data-act="again">NEW TOURNAMENT</button>' +
+      (showCar ? '<button class="go" data-act="unlock">SEE YOUR NEW CAR</button>' : '') +
+      '<button class="go' + (showCar ? ' ghost' : '') + '" data-act="again">NEW TOURNAMENT</button>' +
       '<button class="go ghost" data-act="menu">MAIN MENU</button>' +
     '</div>',
     { again: () => { document.body.classList.remove('trophying');
                      tourReset(); showGarage(); },
-      unlock: () => showUnlock(st === 1 ? 'FORMULA' : st === 2 ? 'TUNER' : 'MUSCLE'),
+      unlock: () => { if(showCar) showUnlock(showCar); },
       menu:  () => { document.body.classList.remove('trophying');
                      tourOn = false; showTitle(); } });
 }
