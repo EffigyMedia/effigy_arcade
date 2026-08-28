@@ -44,7 +44,7 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.9.3';
+A.version = '0.9.4';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;

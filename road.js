@@ -78,6 +78,29 @@ const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 
+/* ---- NOTHING ARRIVES IN VIEW --------------------------------------------
+   The road is drawn to `DRAW * SEG` - 30,000 units. Anything placed nearer
+   than that appears out of nothing in front of the player, which is
+   indistinguishable from a rendering pop and was reported as one.
+
+   Traps were spawning at `pos + rnd(26000, 52000)`: the near end of that range
+   is four thousand units INSIDE the drawn road. Crates sat exactly on the
+   horizon at 30,000, which is the same fault with no margin at all.
+
+   `OUT_OF_SIGHT` is the draw distance plus enough room that a car placed there
+   is still over the horizon on the frame it appears, even at full speed. Every
+   spawner measures from this rather than from a number chosen by eye.
+   ------------------------------------------------------------------------- */
+const OUT_OF_SIGHT = DRAW * SEG + 5000;      /* 35,000 */
+/* the closest anything has been placed this run, relative to the player. A
+   harness reads it: if this ever drops under the draw distance, something is
+   arriving in view again. */
+let nearestSpawn = 1e9;
+function noteSpawn(z){
+  const dz = z - pos;
+  if(dz < nearestSpawn) nearestSpawn = dz;
+}
+
 const MAX_SPD = 15333;   /* 200 mph at the top of fourth */
 /* NOS no longer raises the ceiling. With a real gearbox the limiter is the
    limiter — a bottle of nitrous cannot make fourth gear turn faster than it
@@ -3791,10 +3814,21 @@ function laneClear(c, tx, urgency){
    BEFORE the decision: a car does not take the last gap.
    -------------------------------------------------------------------------- */
 function wouldBlock(c, tx){
+  /* ---- IT MUST BE JUDGED BY THE SAME WINDOWS THAT WILL JUDGE IT ----------
+     This gathered cars within +/-1600 of the mover - one window's width,
+     centred on the car. But `keepLaneOpen` measures windows 1600 wide stepped
+     every 800, so a car sitting near a window boundary could pass its own
+     centred check and still close the window NEXT to it, which is the one that
+     reports the road blocked.
+
+     Reaching a full window's width either side means every window that will
+     later judge this car is contained in what is checked now. Reproduced by
+     leaning on the horn: the corridor went to 0.242 with the narrower reach.
+     --------------------------------------------------------------------- */
   const near = [];
   for(const o of traffic){
     if(o === c) continue;
-    if(Math.abs(o.z - c.z) > 1600) continue;
+    if(Math.abs(o.z - c.z) > 2400) continue;
     near.push(o);
   }
   if(!near.length) return false;
@@ -3986,6 +4020,7 @@ function spawnBehind(){
    -------------------------------------------------------------------------- */
 let openLane = 1, openFor = 0;
 function spawnWave(z){
+  noteSpawn(z);
   if(--openFor <= 0){
     openLane = clamp(openLane + (Math.random() < 0.5 ? -1 : 1), 0, LANES-1);
     openFor = rint(3, 6);
@@ -4068,7 +4103,7 @@ function spawnTrap(){
   cops.push({
     /* far enough ahead to be a surprise, near enough that the watch sees it
        before it is culled */
-    z: pos + rnd(26000, 52000),
+    z: (function(){ const zz = pos + rnd(OUT_OF_SIGHT, 52000); noteSpawn(zz); return zz; })(),
     x: side * 1.16,                    /* on the grass, clear of the road */
     spd: 0, wreck:0, ang:0, grace:0, cool:0, side,
     w:0.27, len:400, phase: Math.random()*6.28,
@@ -4161,7 +4196,8 @@ function spawnRoadblock(){
   const HIT  = (SEG + 0.26)/2;             // centre distance that blocks the car
   const SLACK = 0.15;                      // wiggle room inside the opening
   const gx = clamp(LANE_X[rint(0,3)], -0.58, 0.58);
-  const b = { z: pos + 34000, gapX: gx, hit:false, parts:[] };
+  noteSpawn(pos + Math.max(34000, OUT_OF_SIGHT));
+  const b = { z: pos + Math.max(34000, OUT_OF_SIGHT), gapX: gx, hit:false, parts:[] };
 
   for(let x = gx - (HIT + SLACK); x > -1.12; x -= SEG) b.parts.push({ x, w:SEG });
   for(let x = gx + (HIT + SLACK); x <  1.12; x += SEG) b.parts.push({ x, w:SEG });
@@ -4239,6 +4275,12 @@ function reset(){
   acc=0;
   if(!CFG.circuitOnly)
     for(let z=9000; z<52000; z+=rnd(5200,8600)) spawnWave(z);
+    /* THE SEED IS NOT A SPAWN. This lays traffic down the road at reset so the
+       first mile is not empty, and it is placed while `pos` is 0 - so some of
+       it is inside the drawn road by definition. Nothing pops, because it is
+       there on the first frame rather than arriving on a later one. The
+       measurement is about what appears DURING a drive, so it starts here. */
+    nearestSpawn = 1e9;
   nextWaveZ = 52000;
   nextCopT = 9; nextBlockT = 30; nextCrateT = 16;
 }
@@ -6724,7 +6766,8 @@ function step(dt){
   if(roadFurniture && nextCrateT <= 0){
     // parked on the shoulder, so taking one means leaving the road
     const side = Math.random() < 0.5 ? -1 : 1;
-    crates.push({ z: pos + 30000, x: side * rnd(0.86, 1.02), got:false });
+    noteSpawn(pos + OUT_OF_SIGHT);
+    crates.push({ z: pos + OUT_OF_SIGHT, x: side * rnd(0.86, 1.02), got:false });
     nextCrateT = rnd(20, 34);
   }
   /* ---- TRAPS REPLACE THE HEAT SPAWN ------------------------------------
@@ -6758,7 +6801,8 @@ function step(dt){
      more than 40 times in a frame whatever happens. */
   let waveGuard = 0;
   while(nextWaveZ < pos + 62000 && waveGuard++ < 40){
-    if(roadFurniture) spawnWave(nextWaveZ);
+    /* a floor, in case a reset ever leaves nextWaveZ behind the player */
+    if(roadFurniture) spawnWave(Math.max(nextWaveZ, pos + OUT_OF_SIGHT));
     /* 900 was less than three car lengths. Even at full heat the road has to
        stay driveable — the floor is 3200, about eight lengths. */
     nextWaveZ += Math.max(3200, rnd(4600,8200) - heat*140);
@@ -10319,6 +10363,8 @@ requestAnimationFrame(frameLoop);
   API.mergesMade = function(){ return mergesMade; };
   API.trafficCount = function(){ return traffic.length; };
   API.scattered = function(){ return scattered; };
+  API.nearestSpawn = function(){ return Math.round(nearestSpawn); };
+  API.drawDistance = function(){ return DRAW * SEG; };
   API.setTow = function(v){ towOverride = (v === undefined || v < 0) ? -1 : v; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };

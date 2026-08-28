@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-4"></a>
+## [0.9.4] — 2026-08-25
+- Fixed: **things spawned inside the drawn road.** Traps and cruisers were placed as close as 26,000
+  into a 30,000 draw, so they appeared out of nothing in front of the player — which is what a
+  rendering pop looks like. Every spawner measures from the draw distance now; nearest spawn 35,000
+  ([RLG-031](../fragments/RLG-031.md)).
+- Changed: a merge is judged by every corridor window that will later judge it, not just the one
+  centred on it — measurably better, **not yet a guarantee**
+  ([RLG-037](../fragments/RLG-037.md)).
+- Changed: `traffic-test` reports the horn's effect rather than asserting it. Whether a car is in
+  front of you is stochastic, and a check that fails one run in three teaches people to ignore it
+  ([RLG-035](../fragments/RLG-035.md)).
+
 <a id="v0-9-3"></a>
 ## [0.9.3] — 2026-08-25
 - Fixed: **the horn and siren had no effect on traffic**, from three separate faults — a lane INDEX
