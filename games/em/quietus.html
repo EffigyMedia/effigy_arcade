@@ -6182,6 +6182,19 @@ function drawTitleArt(){
      their mass is on one side, and the round letters get a fraction more room
      than the flat ones because a curve needs air to read.
      ------------------------------------------------------------------------ */
+  /* ---- Q, U AND S WERE ADDED WITH THE RENAME, AND HAD TO BE -------------
+     This alphabet was hand-drawn for DERELICT, so it held C D E I L R T and
+     nothing else. `Arcade.wordmark` renders an unknown character as `[]` -
+     no strokes, no error - so QUIETUS came out as `  IE  T `, which reads
+     "IET" on the wall. **The build passed and the smoke test passed**, because
+     a canvas with three letters on it has paint on it exactly like a canvas
+     with seven.
+
+     D, R, L and C are kept although nothing spells with them now. They are
+     hand-authored letterforms and this is the only copy; a later title, a
+     level name or an ending card may want them, and deleting art to tidy a
+     map is not a trade worth making.
+     ---------------------------------------------------------------------- */
   const BG = {
     D:[[[0,0],[0,14]],[[0,0],[6,0],[9,4],[9,10],[6,14],[0,14]]],
     E:[[[8,0],[0,0],[0,14],[8,14]],[[0,7],[5.5,7]]],
@@ -6189,10 +6202,19 @@ function drawTitleArt(){
     I:[[[1.5,0],[1.5,14]]],
     L:[[[0,0],[0,14],[7.5,14]]],
     C:[[[8.5,2],[5.5,0],[3,0],[0,3],[0,11],[3,14],[5.5,14],[8.5,12]]],
-    T:[[[0,0],[8,0]],[[4,0],[4,14]]]
+    T:[[[0,0],[8,0]],[[4,0],[4,14]]],
+    /* a bowl with the tail struck through it, the way a hand writes it fast */
+    Q:[[[6,0],[3,0],[0,3.5],[0,10.5],[3,14],[6,14],[9,10.5],[9,3.5],[6,0]],
+       [[5.5,9.5],[10,14.5]]],
+    /* open at the top, weight in the turn at the bottom */
+    U:[[[0,0],[0,10],[3,14],[6,14],[9,10],[9,0]]],
+    /* two reversed curves - the join in the middle is where the brush lifts */
+    S:[[[8.5,2],[6,0],[3,0],[0,2.5],[0,5],[2.5,7],[6.5,7],[9,9],[9,11.5],
+        [6,14],[3,14],[0.5,12]]]
   };
   /* advance widths, in the same units as the glyphs */
-  const BGW = { D:9.4, E:8.4, R:9.4, I:3.4, L:7.9, C:8.9, T:8.4 };
+  const BGW = { D:9.4, E:8.4, R:9.4, I:3.4, L:7.9, C:8.9, T:8.4,
+                Q:9.8, U:9.4, S:9.0 };
   /* the writing sits in the upper third, clear of the panel; the eyes go in
      the band between it and the buttons, which is the only dark left */
   /* ---- IT HAS TO FIT ON THE WALL -----------------------------------------

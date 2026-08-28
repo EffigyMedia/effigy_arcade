@@ -14,6 +14,15 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-5-1"></a>
+## [0.5.1] — 2026-08-25
+- Fixed: **Quietus drew its title as `IET`.** Its hand-painted blood alphabet was authored for
+  DERELICT and had no Q, U or S, and an unknown character draws nothing and reports nothing. The
+  three letters are drawn ([RLG-013](../fragments/RLG-013.md)).
+- Added: `Arcade.wordmark` reports a missing glyph on the console, once per word, naming the
+  characters — and `smoke-test.py` now fails a cabinet on console errors, so a machine that quietly
+  fails to draw its own name is a failing gate ([RLG-013](../fragments/RLG-013.md)).
+
 <a id="v0-5-0"></a>
 ## [0.5.0] — 2026-08-25
 - Added: **Hardpoint's title is an animated chase** — two ships, the hunter firing on the runner,

@@ -44,7 +44,7 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.5.0';
+A.version = '0.5.1';
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;
@@ -657,6 +657,30 @@ function wordmark(g, word, cx, cy, size, opt){
   g.scale(k, k);
   g.transform(1, 0, rake, 1, 0, 0);
   g.translate(-total/2, -size/2);
+
+  /* ---- A CHARACTER WITH NO GLYPH IS SILENT, AND THAT IS THE PROBLEM -------
+     `G[ch] || []` draws nothing and reports nothing, so a word set in a
+     cabinet's own alphabet loses whatever letters that alphabet happens not to
+     have. Quietus was drawn as `IET` for a whole release: its hand-painted
+     blood letters were authored for DERELICT and had no Q, U or S. The build
+     passed, and so did the harness - a canvas with three letters on it has
+     paint on it exactly like a canvas with seven.
+
+     So the shell says so. Once per word, loudly, naming what is missing. The
+     smoke test fails on a console error, which turns a silent art bug into a
+     gate for every cabinet. */
+  if (opt.glyphs) {
+    var gone = '';
+    for (var gi = 0; gi < word.length; gi++) {
+      var gch = word[gi];
+      if (gch !== ' ' && !G[gch] && gone.indexOf(gch) < 0) gone += gch;
+    }
+    if (gone && typeof console !== 'undefined' && console.error) {
+      console.error('Arcade.wordmark: "' + word + '" needs ' + gone.split('').join(', ') +
+                    ' and this alphabet has no glyph for ' +
+                    (gone.length > 1 ? 'them' : 'it') + ' - they will not draw.');
+    }
+  }
 
   var passes = opt.passes || ["shell", "face"];
   passes.forEach(function(pass){

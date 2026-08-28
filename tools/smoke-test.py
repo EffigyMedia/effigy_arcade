@@ -75,6 +75,12 @@ CANVAS_SIG = """() => {
 def smoke(page, base, game, seconds):
     errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
+    # CONSOLE ERRORS COUNT TOO. A cabinet that draws a word in its own alphabet
+    # loses any letter that alphabet lacks, silently - Quietus shipped as "IET"
+    # for a release that way. The shell reports it on the console now, so the
+    # console has to be part of what "clean" means.
+    page.on('console', lambda m: errors.append('console: ' + m.text)
+            if m.type == 'error' else None)
     page.goto(f'{base}/{game["file"]}', wait_until='load')
     try:
         page.wait_for_function(
