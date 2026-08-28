@@ -139,6 +139,24 @@ const CLOCK_START = 60, CLOCK_BONUS = 20, CP_MILES = 2;
 let timedRun = true;
 /* stripes are paint, not a body — any car can wear them */
 let optStripes = false;
+/* ---- WHAT TIME YOU SET OFF ------------------------------------------------
+   The day cycle has always existed and always started wherever the last run
+   left it. This picks the phase a run BEGINS at; the four minutes then run on
+   exactly as before, so dusk still becomes night and night still becomes dawn.
+   The owner ruled starting-phase over pinning: nothing in the renderer has ever
+   run with `phase()` held constant, and a race that never changes light is a
+   different feature from a race that starts in the dark.
+
+   The four values are the four the cycle already names at road.js:7391, so this
+   introduces no new lighting - only a starting point. DUSK is first and is the
+   default, because it is where the game has always begun. */
+const TIMES = [
+  { key:'DUSK',     p:0.00 },
+  { key:'MIDNIGHT', p:0.25 },
+  { key:'DAWN',     p:0.50 },
+  { key:'MIDDAY',   p:0.75 }
+];
+let optTime = 0;
 /* debug only — never saved, never treated as an unlock */
 let dbgRacers = false, dbgTraffic = false;
 /* ---- ONE LIVERY PER RUN --------------------------------------------------
@@ -4269,7 +4287,16 @@ function reset(){
   copLivery = (optBody === 'CRUISER')
     ? (optPaint === 'BLACK' ? 'BLACK' : 'WHITE')
     : (Math.random() < 0.5 ? 'BLACK' : 'WHITE');
-  /* dayClock deliberately NOT reset: the sky keeps its own time across runs */
+  /* ---- THE SKY NO LONGER KEEPS ITS OWN TIME ----------------------------
+     This line used to read "dayClock deliberately NOT reset: the sky keeps its
+     own time across runs", and that was a real decision rather than an
+     oversight - a run picked up the light where the last one left it.
+
+     RLG-051 supersedes it. The owner asked for a time of day in the garage, and
+     a setting the player chooses that the game then ignores because the
+     previous run ended at 3am is not a setting. The continuity is worth less
+     than the control, so the run starts where the player said. */
+  dayClock = TIMES[optTime].p * DAY_SECONDS;
   traffic=[]; cops=[]; blocks=[]; crates=[]; fx=[];
   shake=0; hitFlash=0; sirenPhase=0; lastKmh=0; iframe=0;
   acc=0;
@@ -9491,6 +9518,10 @@ function showGarage(){
       '<button class="go ghost" data-act="mode">MODE \u00B7 <b>' +
         (mode === 'race' ? (tourOn ? 'TOURNAMENT' : 'SINGLE RACE') : 'TEST DRIVE') +
         '</b></button>' +
+      /* what time you set off. The cycle still runs from there - this picks the
+         start, not a fixed light (RLG-051). */
+      '<button class="go ghost" data-act="time">TIME \u00B7 <b>' +
+        TIMES[optTime].key + '</b></button>' +
       (mode === 'race' && tourOn
         ? '<div class="gnote">ROUND ' + (tourRound+1) + ' OF 4 \u00B7 ' +
           TOUR_MILES[tourRound] + ' MI' +
@@ -9524,6 +9555,9 @@ function showGarage(){
         else { mode = 'endless'; tourOn = false; }
         showGarage();
       },
+      time:  () => { optTime = (optTime + 1) % TIMES.length;
+                     if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { time:optTime });
+                     showGarage(); },
       timed: () => { timedRun = !timedRun;
                      if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { timed:timedRun });
                      showGarage(); },
@@ -10358,6 +10392,10 @@ if (AR && AR.options) AR.options.define([
     if(typeof g0.manual === 'boolean') optManual = g0.manual;
     if(typeof g0.timed === 'boolean') timedRun = g0.timed;
     if(typeof g0.stripes === 'boolean') optStripes = g0.stripes;
+    /* range-checked rather than trusted: a save written by a future build with
+       more times in it must not index past the end of this build's table */
+    if(typeof g0.time === 'number' && g0.time >= 0 && g0.time < TIMES.length)
+      optTime = g0.time | 0;
   }
   buildSprites();
 })();
@@ -10404,6 +10442,12 @@ requestAnimationFrame(frameLoop);
   API.snowy = function(){ return snowy; };
   API.settle = function(){ return +settle.toFixed(3); };
   API.biome = function(){ return biome; };
+  /* where the day cycle is, 0 to 1: 0 dusk, 0.25 night, 0.5 dawn, 0.75 midday.
+     It sits with `wet`, `snowy`, `settle` and `biome` because it is the same
+     kind of thing - what the world looks like right now - and a fork drawing
+     its own sky needs it. It is also the only way to test that the garage's
+     TIME control does anything: a button label proves a button changed. */
+  API.phase = function(){ return +phase().toFixed(4); };
   API.throttle = function(){ return (gas||nosOn) ? 1 : 0; };
   API.revs = function(){ return engineRpm(); };
   API.redline = function(){ return redline(); };

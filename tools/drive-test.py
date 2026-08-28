@@ -246,6 +246,43 @@ def garage_cars(page):
     return names
 
 
+def time_of_day(page, res):
+    """The garage's TIME control offers four times, and the run starts at the one chosen.
+
+    Two assertions, and the second is the one that matters. A button whose label cycles has
+    proved only that a button cycles - this project has shipped a control that changed a label
+    and nothing else before. `API.phase()` is the effect: where the day cycle actually is.
+
+    MIDNIGHT is chosen rather than DUSK because DUSK is phase 0, and 0 is also what an
+    uninitialised clock reads. A test that passes when the feature does nothing is not a test.
+    """
+    labels = []
+    for _ in range(5):
+        el = page.query_selector('[data-act="time"] b')
+        if not el:
+            res.check(False, 'the garage offers a TIME control')
+            return
+        labels.append(el.inner_text().strip())
+        page.click('[data-act="time"]')
+        page.wait_for_timeout(60)
+    cycle, wrapped = labels[:4], labels[4]
+    res.check(cycle == ['DUSK', 'MIDNIGHT', 'DAWN', 'MIDDAY'] and wrapped == 'DUSK',
+              'TIME offers four times and wraps', ' → '.join(labels))
+    # leave it on MIDNIGHT, then drive and see where the sky actually is
+    while page.eval_on_selector('[data-act="time"] b', 'el => el.textContent').strip() != 'MIDNIGHT':
+        page.click('[data-act="time"]')
+        page.wait_for_timeout(60)
+
+
+def time_of_day_took(page, res):
+    """Read the phase just after the run starts. Called by `drive`, once the car is moving."""
+    p = page.evaluate('() => window.__probe.road.phase()')
+    # the cycle runs on from the start point, so allow for the seconds already elapsed:
+    # DAY_SECONDS is 240, and the check happens within a few seconds of the start
+    res.check(0.25 <= p <= 0.30, 'the run starts at the time the garage was set to',
+              f'MIDNIGHT is 0.25, phase read {p}')
+
+
 def no_pursuit(page):
     """Switch HOT PURSUIT off if the fork offers it.
 
@@ -279,12 +316,16 @@ def drive(page, res, seconds, is_circuit):
     """Hold the throttle and watch the numbers."""
     page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5_000)
     no_pursuit(page)
+    if not is_circuit:
+        time_of_day(page, res)          # leaves the control on MIDNIGHT
     page.click('[data-act="drive"]')
     page.wait_for_timeout(400)
 
     state = page.evaluate('() => window.__probe.road.state')
     res.check(state not in ('title', 'garage'), 'leaves the menus on DRIVE',
               f'state={state!r}')
+    if not is_circuit:
+        time_of_day_took(page, res)
 
     hud_before = page.eval_on_selector('#score', 'el => el.textContent')
 

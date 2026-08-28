@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-7"></a>
+## [0.9.7] — 2026-08-28
+- Added: **a TIME control in the garage** — DUSK, MIDNIGHT, DAWN, MIDDAY. It sets where the day
+  cycle *starts*; the four minutes then run on as before, so dusk still becomes night. The four are
+  the four phase points the cycle already named, so no new lighting was written
+  ([RLG-051](../fragments/RLG-051.md)).
+- Changed: **a run no longer inherits the sky from the last one.** `dayClock` was deliberately never
+  reset so the light carried across runs. A setting the player picks that the game then ignores is
+  not a setting, so the choice now wins ([RLG-051](../fragments/RLG-051.md)).
+- Added: `API.phase()` on the fork seam, beside `wet`, `snowy`, `settle` and `biome` — and the only
+  way to test the TIME control by its effect rather than by its label
+  ([RLG-051](../fragments/RLG-051.md)).
+- Added: `drive-test` asserts that the run starts at the time the garage was set to. With the
+  feature disabled the label check still passed and this one failed, which is why it exists
+  ([RLG-051](../fragments/RLG-051.md)).
+
 <a id="v0-9-6"></a>
 ## [0.9.6] — 2026-08-28
 - Changed: **the police cars are won in the tournament now, under pursuit.** A gold in a sports car
