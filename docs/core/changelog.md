@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-8-1"></a>
+## [0.8.1] — 2026-08-25
+- Fixed: **traffic could still pile up into a wall.** The guarantee counted lane indices rather than
+  occupied width, and bucketed by `round(z/1500)` — so a wall straddling a bucket boundary looked
+  passable from both sides. It measures the real corridor in a sliding window now, and starts opening
+  the road before it closes rather than after ([RLG-025](../fragments/RLG-025.md)).
+- Added: `tightestAhead` reports the narrowest corridor seen, and `tools/traffic-test.py` asserts it
+  never goes under a car width — measured 0.452 against a 0.34 limit
+  ([RLG-025](../fragments/RLG-025.md)).
+
 <a id="v0-8-0"></a>
 ## [0.8.0] — 2026-08-25
 - Fixed: **a car partly hidden by a crest vanished entirely.** The partial-clip path existed but was

@@ -3726,28 +3726,114 @@ function laneFree(z, lane, gap){
 /* A wave never fills every lane, but cars run at different speeds, so given
    enough road a fast one drifts into the last free lane and the wall closes.
    This keeps a line open without deleting anything or slowing the road down:
-   the car furthest from you in a blocked band eases off until it falls out of
-   that band. You still have to find the gap; there is simply always one. */
-function keepLaneOpen(dt, pz){
-  const BAND = 1500;
-  const bands = new Map();
-  for(const c of traffic){
-    if(c.z < pz - 2000 || c.z > pz + 26000) continue;   // only the road ahead
-    const k = Math.round(c.z / BAND);
-    if(!bands.has(k)) bands.set(k, []);
-    bands.get(k).push(c);
+   the car furthest from you in a blocked stretch eases off, and leans toward
+   the verge, until a car-width corridor exists again. You still have to find
+   the gap; there is simply always one.
+
+   ---- IT WAS ASKING THE WRONG QUESTION, IN THE WRONG PLACES ---------------
+   The first version counted distinct LANE INDICES inside buckets keyed by
+   `Math.round(z / 1500)`. Both halves let a wall through.
+
+   Counting lane indices is not the same as measuring the road. Cars drift
+   inside their lane, and a shunt moves one bodily sideways while its `lane`
+   field still says where it was assigned - so four cars could report four
+   different lanes and still leave no opening a car could fit through. What
+   blocks a road is OCCUPIED WIDTH, so that is what is measured now: the
+   widest free corridor between the occupied intervals, in lane units.
+
+   And a fixed bucket splits a wall that straddles its boundary. Cars at 1,499
+   and 1,501 land in different buckets, each of which then looks passable on
+   its own, and the wall between them was never examined by either. The sweep
+   is a SLIDING window now, stepped at half its own width, so every stretch of
+   road is looked at whole by at least one window.
+   ------------------------------------------------------------------------ */
+let blockedAhead = 0;               /* windows with no way through, last pass */
+/* ---- THE TIGHTEST THE ROAD GOT, not just whether it closed -----------------
+   A boolean "was it ever blocked" cannot tell a working guarantee from a road
+   that never crowds in the first place - and the first version of the traffic
+   test proved exactly that by passing with the fixer switched off. The
+   narrowest corridor seen is the measurement that discriminates: with the
+   guarantee working it should sit near the threshold and never under it, and
+   with the guarantee off it should go under.
+   -------------------------------------------------------------------------- */
+let tightestAhead = 9;
+
+/* the widest gap between cars, in lane units, across the usable road */
+function widestGap(list){
+  const iv = [];
+  for(const c of list){
+    const half = ((c.w || 0.30) / 2) + 0.03;      /* a little air on each side */
+    iv.push([c.x - half, c.x + half]);
   }
-  for(const [, group] of bands){
-    const lanes = new Set(group.map(c => c.lane));
-    if(lanes.size < LANES) continue;                    // a way through already
+  iv.sort((a, b) => a[0] - b[0]);
+  const L = -1.0, R = 1.0;                         /* the drivable road */
+  let best = 0, cursor = L;
+  for(const [a, b] of iv){
+    if(a > cursor) best = Math.max(best, a - cursor);
+    if(b > cursor) cursor = b;
+  }
+  return Math.max(best, R - cursor);
+}
+
+function keepLaneOpen(dt, pz){
+  const WIN = 1600, STEP = WIN / 2;                /* overlapping, so no seam */
+  const NEED = 0.34;                               /* the player is 0.26 wide */
+  /* ---- IT HAS TO ACT BEFORE THE ROAD CLOSES, NOT WHEN IT HAS -------------
+     Correcting only once the corridor is already under a car width is too
+     late: opening a gap takes a second or two of a car easing off and moving
+     over, and the player covers a lot of road in that time. Measured, the
+     bang-bang version let the corridor reach 0.306 - under the limit - before
+     it did anything.
+
+     So the response starts at WARN and scales with how close the corridor is
+     to NEED. At the top of the band it is a nudge nobody notices; at the
+     bottom it is a car getting out of the way with intent. The road then never
+     arrives at the limit, which is the only way an absolute guarantee can hold.
+     ---------------------------------------------------------------------- */
+  const WARN = 0.62;
+  const ahead = traffic.filter(c => c.z > pz - 2000 && c.z < pz + 26000);
+  blockedAhead = 0;
+  tightestAhead = 9;
+  for(let z = pz; z < pz + 26000; z += STEP){
+    const group = ahead.filter(c => c.z >= z && c.z < z + WIN);
+    if(group.length < 2) continue;
+    const gap = widestGap(group);
+    if(gap < tightestAhead) tightestAhead = gap;
+    if(gap < NEED) blockedAhead++;                  /* the contract, for the record */
+    if(gap >= WARN) continue;                       // plenty of room
+    /* 0 at the warning line, 1 at the limit - how hard to open it */
+    const urge = clamp((WARN - gap) / (WARN - NEED), 0, 1);
+
+    /* the car furthest from you gives way - it has the most room to do it in
+       and you are least likely to be watching it */
     let worst = null, wd = -1;
     for(const c of group){
       const d = c.z - pz;
       if(d > wd){ wd = d; worst = c; }
     }
     if(worst){
-      worst.cruise = Math.max(0.24 * MAX_SPD, worst.cruise - MAX_SPD * 0.55 * dt);
+      worst.cruise = Math.max(0.24 * MAX_SPD,
+                             worst.cruise - MAX_SPD * (0.20 + 0.70*urge) * dt);
       worst.yielding = true;
+      /* AND IT MOVES OVER. Slowing alone only opens the wall once the car has
+         fallen out of the window, which at a small speed difference is a long
+         way down the road - long enough for the player to arrive first. Leaning
+         it toward the nearer verge opens a corridor in the same second. */
+      const side = worst.x >= 0 ? 1 : -1;
+      worst.x = clamp(worst.x + side * (0.25 + 0.85*urge) * dt, -0.92, 0.92);
+      /* Its lane is a lie once it has been moved bodily, and the drift logic
+         would otherwise haul it straight back into the wall it just left. So
+         the lane is REASSIGNED to whichever one it is now nearest, rather than
+         cleared: `laneFree` matches on the lane index when deciding where to
+         spawn, and a car carrying -1 matches nothing - which would let a new
+         car drop straight on top of the one that just moved over. */
+      worst.drift = Math.abs(worst.drift || 0) * side;
+      let bestLane = worst.lane, bd = 1e9;
+      for(let li = 0; li < LANE_X.length; li++){
+        const d2 = Math.abs(LANE_X[li] - worst.x);
+        if(d2 < bd){ bd = d2; bestLane = li; }
+      }
+      worst.lane = bestLane;
     }
   }
 }
@@ -9961,6 +10047,8 @@ requestAnimationFrame(frameLoop);
   API.inCruiser = function(){ return inCruiser(); };
   API.paintChoices = function(){ return paintChoices(); };
   API.setBar = function(v){ barOn = v; };
+  API.blockedAhead = function(){ return blockedAhead; };
+  API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){
     const pp = proj(0, pos + dz);
