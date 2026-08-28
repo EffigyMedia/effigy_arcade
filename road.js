@@ -7269,23 +7269,31 @@ function hiddenBehindHill(worldZ){
   return roadY[idx] === undefined;
 }
 function crestY(worldZ){
-  /* ---- DISABLED, deliberately ------------------------------------------
-     This test was wrong in both directions at once. On a normal road y
-     DECREASES with distance, so `hillClip[n]` — the minimum before n — is
-     always larger than the sprite's own y, and everything far away was being
-     culled. Meanwhile things genuinely behind a crest were not, because the
-     running minimum had already passed them.
+  /* ---- RE-ENABLED, AND THE SIGN IS THE WHOLE STORY ----------------------
+     This was disabled because it was wrong in both directions at once, and
+     the note left behind said the real answer was to interleave sprites with
+     the road slices. **That interleave has since been built** - sprites are
+     emitted during the road pass now - so the reason for switching it off is
+     gone, and what is left is the part that was never right: which side of
+     the line is hidden.
 
-     I patched the comparison three times without stepping back to ask whether
-     a single scalar per segment can express "is this hidden", and it cannot:
-     occlusion here needs sprites INTERLEAVED with the road slices, far to
-     near, so the road paints over what is behind it the same way it paints
-     over itself. That is a restructure of the draw loop, not a condition.
+     In this projection further away is HIGHER on screen, so a smaller y. A
+     crest between you and a car covers the car FROM THE BOTTOM UP, and what
+     survives is the roof. So the visible band is ABOVE the crest line, and the
+     old code clipped to `rect(0, brow, W, H - brow)` - everything below it.
+     That is exactly inverted, which is why it hid the wrong half and why
+     flipping the comparison never fixed it.
 
-     Until then: no clip. Distant things drawing over a hill is a smaller
-     wrong than cars vanishing as they come toward you.
+     `hillClip[n]` is the highest the road reached BEFORE n, which is the
+     silhouette of the nearest crest between here and there. On a flat road it
+     sits just above every sprite's own base, so nothing is clipped, which is
+     the behaviour that broke last time.
      -------------------------------------------------------------------- */
-  return null;
+  if(!hillClip.length) return null;
+  const n = Math.floor((worldZ - pos)/SEG);
+  if(n < 2 || n >= hillClip.length) return null;
+  const v = hillClip[n];
+  return (v === undefined || v >= H) ? null : v;
 }
 function overBrow(worldZ, screenY){
   return false;   /* see crestY: the whole test was inverted */
@@ -7310,6 +7318,7 @@ function overBrow(worldZ, screenY){
 let roadY = [], spriteBuckets = {}, emitted = {};
 function drawRoad(){
   buildHillClip();
+  spriteStats = { drawn:0, culled:0, clipped:0 };
   roadY = []; emitted = {};
   let groundMax = -1e9;
   const lamp = lampsOn();
@@ -7528,6 +7537,17 @@ function quad(ax,ay,bx,by,cx,cy,dx,dy){
    scales read as ghosts beside the solid ones. */
 
 
+/* ---- WHAT THE SPRITE PASS ACTUALLY DID, PER FRAME ------------------------
+   Occlusion here has been wrong twice, and both times it was invisible to
+   every gate: the road still drove, the console stayed clean, and the only
+   symptom was that things stopped being on it. A count of drawn against culled
+   is the difference between "cars are missing" and "cars are hidden", and no
+   screenshot answers that reliably.
+
+   Reset by `drawRoad`, read through `API.spriteStats()`.
+   -------------------------------------------------------------------------- */
+let spriteStats = { drawn:0, culled:0, clipped:0 };
+
 function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   if(worldZ - pos < 430) return null;
   const p = proj(worldX*ROAD, worldZ);
@@ -7548,11 +7568,22 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      leftover test could only ever take away things that were correct.
      ------------------------------------------------------------------ */
 
+  /* ---- PARTIAL, NOT ALL-OR-NOTHING ------------------------------------
+     A car straddling a crest used to be gone the moment any of it was
+     covered, which reads as a rendering fault. A car cut off at the waist
+     reads as a hill - and it is information, because how much of it you can
+     see tells you how far over the brow it is.
+
+     Three cases: entirely under the silhouette, entirely above it, or across
+     it. Only the last one costs a clip.
+     ------------------------------------------------------------------- */
   const brow = crestY(worldZ);
-  if(brow !== null && p.y < brow - H*0.012) return null;
-  if(brow !== null && p.y - h < brow){
+  /* even the roof is under the crest - genuinely out of sight */
+  if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; return null; }
+  if(brow !== null && p.y > brow){
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, brow, W, H - brow); ctx.clip();
+    /* keep what is ABOVE the crest line; the ground in front covers the rest */
+    ctx.beginPath(); ctx.rect(0, 0, W, brow); ctx.clip();
     if(alpha!==undefined){ ctx.globalAlpha=alpha; }
     if(flip){
     /* a left-hand corner is a right-hand one seen from the other side — one
@@ -7567,11 +7598,13 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   }
     ctx.globalAlpha=1;
     ctx.restore();
+    spriteStats.clipped++;
     return {x:p.x, y:p.y, w, h};
   }
   if(alpha!==undefined){ ctx.globalAlpha=alpha; }
   ctx.drawImage(img, p.x - w/2, p.y - h, w, h);
   ctx.globalAlpha=1;
+  spriteStats.drawn++;
   return {x:p.x, y:p.y, w, h};
 }
 
@@ -9928,6 +9961,7 @@ requestAnimationFrame(frameLoop);
   API.inCruiser = function(){ return inCruiser(); };
   API.paintChoices = function(){ return paintChoices(); };
   API.setBar = function(v){ barOn = v; };
+  API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){
     const pp = proj(0, pos + dz);
     if(!pp.ok) return null;
@@ -9997,6 +10031,13 @@ requestAnimationFrame(frameLoop);
     optBody=keep; optPaint=keepP; optStripes=keepS; buildSprites();
     return c.toDataURL("image/png");
   };
+  /* ---- THE ENGINE, REACHABLE FROM OUTSIDE ------------------------------
+     Both cabinets call `ROAD(CFG)` and throw the return value away, so
+     everything the engine knows about itself was unreachable to a harness -
+     which is why occlusion could be wrong twice without any gate noticing.
+     One page runs one engine, so a single well-known handle is enough.
+     -------------------------------------------------------------------- */
+  window.__road = API;
   return API;
 
 };

@@ -14,6 +14,15 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-8-0"></a>
+## [0.8.0] — 2026-08-25
+- Fixed: **a car partly hidden by a crest vanished entirely.** The partial-clip path existed but was
+  unreachable, and it clipped the wrong half — in this projection a crest covers a car from the
+  bottom up, so the visible band is ABOVE the silhouette ([RLG-021](../fragments/RLG-021.md)).
+- Added: `spriteStats` counts drawn, clipped and culled per frame; `ROAD()` publishes its API as
+  `window.__road`; `tools/occlusion-test.py` proves cars are hidden rather than missing
+  ([RLG-021](../fragments/RLG-021.md)).
+
 <a id="v0-7-5"></a>
 ## [0.7.5] — 2026-08-25
 - Fixed: **cars popped to a different texture in the rearview.** The mirror switched from a drawn
