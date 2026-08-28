@@ -255,7 +255,14 @@ if [ "$MODE" = "build" ] && [ -z "$STANDALONE" ]; then
        recreation, and the staging copy `cp fonts/*` does not carry it - so the
        service worker asked for a file the archive did not hold, and one 404
        fails the whole precache. */
-    const fonts=fs.readdirSync("fonts").filter(f=>f[0]!==".").sort().map(f=>"./fonts/"+f);
+    /* .woff2 ONLY. The glob used to take everything in the folder, so
+       fonts/LICENSES.md was precached on every first visit - a document that
+       no running game ever asks for. Dotfiles are excluded for the same reason
+       the staging area refuses them: `fonts/.gitkeep` reached both cache lists
+       once, the staging copy does not carry it, and one 404 fails the whole
+       precache. */
+    const fonts=fs.readdirSync("fonts").filter(f=>f[0]!=="."&&f.endsWith(".woff2"))
+                  .sort().map(f=>"./fonts/"+f);
     const list=games.sort().concat(fonts);
     const body=JSON.stringify(list,null,2).replace(/^/gm,"").replace(/\[\n/,"[\n").slice(0,-1)+"];";
     /* assets.js */

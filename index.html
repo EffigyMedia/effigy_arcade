@@ -2236,7 +2236,7 @@ onScroll();
   if(!window.caches || !files.length){ finish('READY'); return; }
 
   (function(){
-    var done = 0, total = files.length;
+    var done = 0, fetched = 0, total = files.length;
     ct.textContent = '0 / ' + total;
     /* ---- ONE PLACE FOR THE CACHE NAME --------------------------------
        This was hardcoded here AND in sw.js, and the two had to agree. When
@@ -2256,6 +2256,7 @@ onScroll();
         if(f === undefined) return Promise.resolve();
         return cache.match(f).then(function(hit){
           if(hit) return;                       /* already have it */
+          fetched++;
           return fetch(f, { cache:'reload' }).then(function(res){
             if(res && res.ok) return cache.put(f, res.clone());
           }).catch(function(){});
@@ -2263,7 +2264,9 @@ onScroll();
           done++;
           var pc = done/total;
           fill.style.width = (pc*100) + '%';
-          ct.textContent = done + ' / ' + total;
+          /* only name a count while something is actually being pulled */
+          ct.textContent = fetched ? (fetched + ' NEW \u00B7 ' + done + ' / ' + total)
+                                   : 'CHECKING \u00B7 ' + done + ' / ' + total;
           return next();
         });
       }
@@ -2271,7 +2274,14 @@ onScroll();
       for(var i=0;i<4;i++) lanes.push(next());
       return Promise.all(lanes);
     }).then(function(){
-      finish('READY \u00B7 OFFLINE');
+      /* THE COUNTER USED TO CLIMB TO N/N ON EVERY VISIT, warm or cold, because
+         `done` counts files CHECKED, not files fetched. A returning player
+         watched what looked like a full download of the whole arcade every
+         time they opened it. It was never downloading - `cache.match` short-
+         circuits each one - but a bar that fills the same way either way is a
+         bar that reports the wrong thing. `fetched` is the honest number. */
+      if(fetched === 0) return finish('READY \u00B7 OFFLINE');
+      finish('READY \u00B7 OFFLINE \u00B7 ' + fetched + ' NEW');
     }).catch(function(){ finish('READY'); });
   })();
 
