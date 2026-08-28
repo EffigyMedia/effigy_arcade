@@ -6516,9 +6516,21 @@ function step(dt){
      under the slowest cruising speed out there and resets the moment you are
      not, so it measures a genuine hold-up rather than an instant.
      -------------------------------------------------------------------------- */
+  /* ---- AND NOT ON A CIRCUIT -----------------------------------------------
+     `CFG.circuitOnly` switches off civilian traffic, police, roadblocks and
+     crates - but the block below was outside that gate, so **slowing down on
+     the circuit conjured civilian traffic up behind you**. Reported from play,
+     and it is the only one of these spawners that was missed, because the
+     others are all grouped together further down where the gate is obvious and
+     this one sits up here with the speed logic.
+
+     `CFG.circuitOnly` is read directly rather than through `roadFurniture`:
+     that constant is declared further down this same function, so naming it
+     here is a temporal dead zone and throws every frame.
+     ------------------------------------------------------------------------ */
   const FLOW = MAX_SPD * 0.42;          /* the slowest thing on the road */
   if(spd < FLOW) slowFor += dt; else slowFor = 0;
-  if(slowFor > 2){
+  if(!CFG.circuitOnly && slowFor > 2){
     behindT -= dt;
     if(behindT <= 0){
       /* the further below the flow you are, the more of it arrives */
@@ -10185,6 +10197,7 @@ requestAnimationFrame(frameLoop);
   API.setBar = function(v){ barOn = v; };
   API.blockedAhead = function(){ return blockedAhead; };
   API.mergesMade = function(){ return mergesMade; };
+  API.trafficCount = function(){ return traffic.length; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){

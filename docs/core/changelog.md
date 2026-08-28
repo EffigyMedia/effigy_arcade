@@ -14,6 +14,15 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-1"></a>
+## [0.9.1] — 2026-08-25
+- Fixed: **slowing down on the Motorsport circuit conjured civilian traffic behind you.**
+  `CFG.circuitOnly` gates four of the five spawners; the fifth lives with the speed logic rather than
+  with the others and was outside it ([RLG-036](../fragments/RLG-036.md)).
+- Added: `tools/circuit-test.py` — no existing harness could catch this, because `drive-test` holds
+  the throttle down and this only happens when you stop
+  ([RLG-036](../fragments/RLG-036.md)).
+
 <a id="v0-9-0"></a>
 ## [0.9.0] — 2026-08-25
 - Added: **traffic goes round slower cars.** Civilians could only ever slow for what was ahead of
