@@ -92,6 +92,17 @@ canvas{display:block;width:100%;height:100%}
 .ctrls{text-align:left;font-size:12px;line-height:1.9;letter-spacing:.06em}
 .ctrls b{color:var(--gold)}
 .legal{margin-top:16px;font-size:8px;letter-spacing:.14em;color:rgba(255,255,255,.26)}
+#hpMark{display:block;width:100%;margin:0 auto 2px}
+/* the career, read back on the way in - three columns so it scans as a row of
+   facts rather than a paragraph */
+.career{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 20px;
+  padding:12px 6px;border-top:1px solid rgba(139,151,168,.22);
+  border-bottom:1px solid rgba(139,151,168,.22)}
+.career div{display:flex;flex-direction:column;gap:4px}
+.career b{font-family:var(--mono);font-size:13px;color:var(--gold);letter-spacing:.06em}
+.career span{font-size:8px;letter-spacing:.18em;color:rgba(205,214,226,.42)}
+/* one line under the primary button, saying where it goes */
+.hint{font-size:9px;letter-spacing:.18em;color:rgba(205,214,226,.36);margin:-4px 0 14px}
 </style>
 </head>
 <body>
@@ -1102,19 +1113,75 @@ function openVeil(html, acts){
 }
 function closeVeil(){ veil.classList.add('hidden'); }
 
+/* ---- THE TITLE ------------------------------------------------------------
+   This was a plain <h1> and four buttons, which is a placeholder rather than a
+   front door. Three things were wrong with it and each is fixed here.
+
+   IT DID NOT SAY WHO YOU ARE. Every other cabinet shows the player their own
+   record on the way in. This one has a career - credits, a pirate and hunter
+   standing, a locker - and showed a best time only. The strip below reads that
+   career back, and it is drawn ONLY when there is one, so a first launch is
+   not a wall of zeroes.
+
+   ITS FIRST BUTTON LIED. `startRun` opens the STATION: you always begin
+   docked, and PLAY landing on a station screen is a small confusion the player
+   has to resolve themselves. The button now says what happens, and says
+   CONTINUE once there is something to continue.
+
+   QUIT HARDCODED A PATH, AND A DEAD ONE. It went to `../../index.html#em`,
+   naming a shelf that no longer exists, while `Arcade.home()` exists precisely
+   so that one place decides where home is - it reads the cabinet's own meta
+   tag. Every other machine already used it.
+   -------------------------------------------------------------------------- */
+
+/* the wordmark is drawn, not typeset - the same painter every cabinet uses, so
+   HARDPOINT is set in the arcade's hand rather than in a web font */
+function paintTitleMark(){
+  var c = document.getElementById('hpMark');
+  if(!c || !(AR && AR.wordmark)) return;
+  var d = Math.min(2, window.devicePixelRatio || 1);
+  var w = c.parentNode.getBoundingClientRect().width || 340;
+  c.width = Math.round(w * d); c.height = Math.round(w * 0.30 * d);
+  c.style.width = '100%'; c.style.height = Math.round(w * 0.30) + 'px';
+  var g = c.getContext('2d');
+  g.setTransform(d, 0, 0, d, 0, 0);
+  g.clearRect(0, 0, w, w * 0.30);
+  AR.wordmark(g, 'HARDPOINT', w / 2, w * 0.16, w * 0.115, {
+    maxW: w * 0.94,
+    /* warm brass over cold steel: the cabinet's gold, against the hull grey
+       the rest of this game is painted in */
+    hot:  ['#ffd9a0', '#f0a03a', '#8a4a12'],
+    cool: ['#dfe7f2', '#8b97a8', '#e7edf5']
+  });
+}
+
+function careerStrip(){
+  var started = credits !== 0 || pirate || hunter || best;
+  if(!started) return '';
+  return '<div class="career">' +
+    '<div><b>' + standingLabel() + '</b><span>STANDING</span></div>' +
+    '<div><b>' + credits + '</b><span>CREDITS</span></div>' +
+    '<div><b>' + (best ? best.toFixed(1) + 's' : '—') + '</b><span>BEST RUN</span></div>' +
+  '</div>';
+}
+
 function title(){
   MODE = 'title';
   showFly(true);
+  var started = credits !== 0 || pirate || hunter || best;
   openVeil(
-    '<h1>Hardpoint</h1><div class="sub">HUNT &middot; CRIPPLE &middot; BOARD</div>' +
-    '<button class="go" data-act="play">PLAY</button>' +
+    '<canvas id="hpMark"></canvas>' +
+    '<div class="sub">HUNT &middot; CRIPPLE &middot; BOARD</div>' +
+    careerStrip() +
+    '<button class="go" data-act="play">' + (started ? 'CONTINUE' : 'BEGIN') + '</button>' +
+    '<div class="hint">' + (started ? 'BACK TO THE STATION' : 'YOU START DOCKED') + '</div>' +
     '<button data-act="controls">CONTROLS</button>' +
     '<button data-act="options">OPTIONS</button>' +
     '<button data-act="quit">QUIT</button>' +
-    (best ? '<div class="sub" style="margin-top:18px">BEST RUN ' + best.toFixed(1) + 's</div>' : '') +
     '<div class="legal">&copy; 2026 EFFIGY MEDIA</div>',
     { play: startRun, controls: controls, options: options,
-      quit: function(){ location.href = '../../index.html#em'; } });
+      quit: function(){ if(AR && AR.home) AR.home(); } });
+  paintTitleMark();
 }
 
 function controls(){

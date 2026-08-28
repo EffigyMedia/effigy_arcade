@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-3-1"></a>
+## [0.3.1] — 2026-08-25
+- Added: **Hardpoint has a proper title** — a drawn wordmark, the career read back as STANDING,
+  CREDITS and BEST RUN, and a first button that says `BEGIN` or `CONTINUE` rather than a `PLAY` that
+  opened a station screen ([RLG-009](../fragments/RLG-009.md)).
+- Fixed: Hardpoint's QUIT hardcoded `../../index.html#em`, naming a shelf that no longer exists. It
+  uses `Arcade.home()` like every other machine ([RLG-009](../fragments/RLG-009.md)).
+
 <a id="v0-3-0"></a>
 ## [0.3.0] — 2026-08-25
 - Added: **every machine can erase its own save from its own options**, behind a two-press confirm.
