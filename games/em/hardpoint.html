@@ -1137,25 +1137,144 @@ function closeVeil(){ veil.classList.add('hidden'); }
    tag. Every other machine already used it.
    -------------------------------------------------------------------------- */
 
-/* the wordmark is drawn, not typeset - the same painter every cabinet uses, so
-   HARDPOINT is set in the arcade's hand rather than in a web font */
+/* ---- THE WORDMARK IS CUT FROM HULL PLATE ----------------------------------
+   The letters are not coloured in. They are a MASK, and the material is painted
+   through it: `Arcade.wordmark` lays the shapes into an offscreen canvas, then
+   `source-in` clips everything after it to those shapes.
+
+   That indirection is the whole technique, and it is worth the extra canvas.
+   The painter's own `paint` hook is stroke-based - it hands you the points of
+   one stroke at a time - which is right for a smear or a drip and wrong for a
+   material, because brushed grain, panel seams and rivets have to run ACROSS
+   the letters as if the word were cut from one sheet. Painted per stroke they
+   would restart at every letter and read as texture-on-letters rather than
+   letters-cut-from-plate.
+
+   Built bottom to top: a plate gradient, machine grain along it, seams where
+   two panels butt together with rivets down them, scuffs, then a rim light on
+   the top edge and a warm bounce underneath from the engine glow the rest of
+   this cabinet is lit by.
+   -------------------------------------------------------------------------- */
+function hullPlate(g, w, h){
+  /* rolled steel, lit from above: bright along the top third, falling to a
+     shadowed lower edge with one bounce in it */
+  var base = g.createLinearGradient(0, 0, 0, h);
+  base.addColorStop(0.00, '#8e99a8');
+  base.addColorStop(0.22, '#d3dbe6');
+  base.addColorStop(0.42, '#7c8695');
+  base.addColorStop(0.60, '#3f4854');
+  base.addColorStop(0.84, '#6d7280');
+  base.addColorStop(1.00, '#262c35');
+  g.fillStyle = base; g.fillRect(0, 0, w, h);
+
+  /* MACHINE GRAIN, not noise. Brushed metal is directional - the streaks run
+     the length of the sheet - and a random speckle reads as dirt instead. */
+  for(var y = 0; y < h; y += 1){
+    var n = Math.sin(y * 12.9898) * 43758.5453;
+    n = n - Math.floor(n);
+    g.fillStyle = 'rgba(255,255,255,' + (n * 0.032) + ')';
+    g.fillRect(0, y, w, 1);
+    if(n > 0.90){ g.fillStyle = 'rgba(10,14,20,0.08)'; g.fillRect(0, y, w, 1); }
+  }
+
+  /* PANEL SEAMS. A hull is plates bolted together, so the seams cross the word
+     wherever they fall rather than politely between letters. */
+  var seams = [0.19, 0.46, 0.78];
+  seams.forEach(function(f, i){
+    var x = Math.round(w * f);
+    g.fillStyle = 'rgba(12,16,22,0.55)'; g.fillRect(x, 0, 2, h);
+    g.fillStyle = 'rgba(255,255,255,0.16)'; g.fillRect(x + 2, 0, 1, h);
+    /* rivets down the seam, tucked to the shadowed side */
+    for(var ry = h * 0.14; ry < h * 0.94; ry += h * 0.22){
+      g.beginPath(); g.arc(x + 1, ry + (i % 2) * 3, Math.max(1, h * 0.022), 0, 6.284);
+      g.fillStyle = 'rgba(14,18,25,0.62)'; g.fill();
+      g.beginPath(); g.arc(x + 0.6, ry - 0.6 + (i % 2) * 3, Math.max(0.6, h * 0.012), 0, 6.284);
+      g.fillStyle = 'rgba(226,234,244,0.42)'; g.fill();
+    }
+  });
+  /* one horizontal seam, high, where the upper plate laps the lower */
+  var sy = Math.round(h * 0.34);
+  g.fillStyle = 'rgba(12,16,22,0.38)'; g.fillRect(0, sy, w, 1.5);
+  g.fillStyle = 'rgba(255,255,255,0.13)'; g.fillRect(0, sy + 1.5, w, 1);
+
+  /* scuffs - shallow, angled, and few. Scratches are what stop a gradient
+     reading as plastic. */
+  g.save(); g.globalAlpha = 0.20;
+  for(var s = 0; s < 7; s++){
+    var sx = (s * 137.5) % w, len = w * (0.05 + (s % 3) * 0.04);
+    g.strokeStyle = s % 2 ? 'rgba(238,245,255,0.9)' : 'rgba(18,22,30,0.9)';
+    g.lineWidth = 0.8;
+    g.beginPath();
+    g.moveTo(sx, h * (0.2 + (s % 4) * 0.18));
+    g.lineTo(sx + len, h * (0.2 + (s % 4) * 0.18) - h * 0.05);
+    g.stroke();
+  }
+  g.restore();
+
+  /* the rim light on top, and the engine bounce underneath - the same warm
+     gold this cabinet lights everything else with */
+  var rim = g.createLinearGradient(0, 0, 0, h * 0.16);
+  rim.addColorStop(0, 'rgba(247,251,255,0.85)');
+  rim.addColorStop(1, 'rgba(247,251,255,0)');
+  g.fillStyle = rim; g.fillRect(0, 0, w, h * 0.16);
+
+  var bounce = g.createLinearGradient(0, h, 0, h * 0.68);
+  bounce.addColorStop(0, 'rgba(255,166,66,0.78)');
+  bounce.addColorStop(1, 'rgba(255,166,66,0)');
+  g.fillStyle = bounce; g.fillRect(0, h * 0.68, w, h * 0.32);
+}
+
 function paintTitleMark(){
   var c = document.getElementById('hpMark');
   if(!c || !(AR && AR.wordmark)) return;
   var d = Math.min(2, window.devicePixelRatio || 1);
   var w = c.parentNode.getBoundingClientRect().width || 340;
-  c.width = Math.round(w * d); c.height = Math.round(w * 0.30 * d);
-  c.style.width = '100%'; c.style.height = Math.round(w * 0.30) + 'px';
+  var h = w * 0.30;
+  c.width = Math.round(w * d); c.height = Math.round(h * d);
+  c.style.width = '100%'; c.style.height = Math.round(h) + 'px';
   var g = c.getContext('2d');
   g.setTransform(d, 0, 0, d, 0, 0);
-  g.clearRect(0, 0, w, w * 0.30);
-  AR.wordmark(g, 'HARDPOINT', w / 2, w * 0.16, w * 0.115, {
-    maxW: w * 0.94,
-    /* warm brass over cold steel: the cabinet's gold, against the hull grey
-       the rest of this game is painted in */
-    hot:  ['#ffd9a0', '#f0a03a', '#8a4a12'],
-    cool: ['#dfe7f2', '#8b97a8', '#e7edf5']
+  g.clearRect(0, 0, w, h);
+
+  var SIZE = w * 0.115, CX = w / 2, CY = h * 0.54;
+
+  /* 1. the dark shell first, straight onto the page, so the word still has an
+        edge where the plate meets the background */
+  AR.wordmark(g, 'HARDPOINT', CX, CY, SIZE, {
+    maxW: w * 0.94, passes: ['shell'],
+    cool: ['#05070b','#05070b','#05070b'], hot: ['#05070b','#05070b','#05070b']
   });
+
+  /* 2. the mask: the same word again, flat and opaque, on its own canvas */
+  var m = document.createElement('canvas');
+  m.width = c.width; m.height = c.height;
+  var mg = m.getContext('2d');
+  mg.setTransform(d, 0, 0, d, 0, 0);
+  AR.wordmark(mg, 'HARDPOINT', CX, CY, SIZE, {
+    maxW: w * 0.94, passes: ['face'],
+    paint: function(gg, pass, i, n, pts){
+      gg.strokeStyle = '#fff'; gg.lineWidth = 3.4; gg.stroke();
+      return true;                       /* handled - flat, so it is a stencil */
+    }
+  });
+
+  /* 3. the material is built WHOLE on its own canvas, then composited in ONE
+        draw. `source-in` keeps the source where the destination is opaque and
+        CLEARS THE DESTINATION EVERYWHERE ELSE - so painting the plate directly
+        into the mask with the mode left on meant every partial fill after the
+        first erased what the one before it had kept. The grain loop alone is
+        one fillRect per row, and the mark came out almost black because only
+        the last few rows survived. One composite, one draw. */
+  var mat = document.createElement('canvas');
+  mat.width = m.width; mat.height = m.height;
+  hullPlate(mat.getContext('2d'), mat.width, mat.height);
+
+  mg.setTransform(1, 0, 0, 1, 0, 0);
+  mg.globalCompositeOperation = 'source-in';
+  mg.drawImage(mat, 0, 0);
+  mg.globalCompositeOperation = 'source-over';
+
+  g.drawImage(m, 0, 0, w, h);
 }
 
 function careerStrip(){

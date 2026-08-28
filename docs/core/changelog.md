@@ -14,6 +14,15 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-4-1"></a>
+## [0.4.1] — 2026-08-25
+- Changed: the driving wordmark is a **marque lockup** — REDLINE small above, INTERSTATE or
+  MOTORSPORT large beneath. Set as one line it read as a single long name and shrank the half that
+  actually names the game ([RLG-011](../fragments/RLG-011.md)).
+- Changed: **HARDPOINT is cut from hull plate** — brushed steel, panel seams with rivets, scuffs, a
+  rim light and a warm engine bounce, clipped to the letters so the material runs across the whole
+  word ([RLG-011](../fragments/RLG-011.md)).
+
 <a id="v0-4-0"></a>
 ## [0.4.0] — 2026-08-25
 - Changed: **every machine owns everything it stores.** The shell's options, the audio settings and

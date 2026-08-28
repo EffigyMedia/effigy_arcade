@@ -9059,11 +9059,40 @@ function drawLogo(g, cx, cy, size){
   /* ---- THE WORDMARK IS THE GAME'S OWN ---------------------------------
      'HIGHWAY' was hardcoded, so Motorsport drew a circuit under Interstate's name.
      The title comes from CFG, and a fork can bring its own palette — warm
-     chrome for a sunset road, cold green for a floodlit circuit. */
-  AR.wordmark(g, (GAME_TITLE || 'Interstate').toUpperCase(), cx, cy, size, {
-    maxW: titleCv.clientWidth * 0.88,
-    cool: (CFG.logoCool || ['#f6f8ff','#9fb2d8','#e9eefc']),
-    hot:  (CFG.logoHot  || ['#ffd27a','#ff8a2b','#c93c1f'])
+     chrome for a sunset road, cold green for a floodlit circuit.
+
+     ---- AND IT IS A LOCKUP, NOT A SENTENCE -----------------------------
+     Set as one line, 'REDLINE INTERSTATE' filled the frame edge to edge and
+     read as a single long name. It is not one: REDLINE is the marque both
+     driving games share - one engine, one garage, six cars - and INTERSTATE is
+     which of the two you are about to drive. A lockup says that. A line of
+     eighteen characters says the opposite, and shrinks the half that actually
+     names the game to fit the half that does not.
+
+     So: the marque small and letterspaced above, the discipline large beneath.
+     A single-word title falls through to the old behaviour untouched, which is
+     what a fork bringing its own name gets. */
+  const full = (GAME_TITLE || 'Interstate').toUpperCase();
+  const cool = (CFG.logoCool || ['#f6f8ff','#9fb2d8','#e9eefc']);
+  const hot  = (CFG.logoHot  || ['#ffd27a','#ff8a2b','#c93c1f']);
+  const cut  = full.indexOf(' ');
+
+  if(cut < 0){
+    AR.wordmark(g, full, cx, cy, size, { maxW: titleCv.clientWidth * 0.88, cool, hot });
+    return;
+  }
+
+  const marque = full.slice(0, cut), disc = full.slice(cut + 1);
+  /* the marque is small enough to read as a parent rather than a first word,
+     and dimmed to the cool ramp only - the hot pass is the game's own name */
+  AR.wordmark(g, marque, cx, cy - size * 0.70, size * 0.30, {
+    maxW: titleCv.clientWidth * 0.44, gap: 0.62,
+    cool, hot: cool
+  });
+  /* the discipline gets the room the pair used to share, so it is BIGGER than
+     the one-line version was rather than smaller */
+  AR.wordmark(g, disc, cx, cy + size * 0.26, size * 1.10, {
+    maxW: titleCv.clientWidth * 0.84, cool, hot
   });
 }
 
