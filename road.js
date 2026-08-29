@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.23';
+window.ROAD_BUILD = '0.9.24';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2147,20 +2147,27 @@ function paintRig(kind, o){
       for(const hy of [0.22,0.46,0.70]) g.fillRect(w*0.045, top+(bot-top)*hy, w*0.03, h*0.02);
       g.fillStyle='#2a2c31';
       g.fillRect(w*0.46, top+(bot-top)*0.46, w*0.08, h*0.03);
-      /* roof marker lamps */
-      g.fillStyle=P.lamp2||'#ffb066';
-      for(const mx of [0.16,0.34,0.5,0.66,0.84]) rr(g, w*mx-w*0.018, top-h*0.014, w*0.036, h*0.016, 2), g.fill();
+      /* roof marker lamps - see the tail declaration below: owner's ruling of
+         2026-08-29 is that these light with the brakes as well, so they are
+         part of the same lamp rather than decoration painted once. */
       /* rear underrun bar and mud flaps */
       g.fillStyle='#23252a';
       rr(g, w*0.08, cy-h*0.115, w*0.84, h*0.028, 2); g.fill();
       g.fillStyle='#15161a';
       g.fillRect(w*0.05, cy-h*0.10, w*0.13, h*0.085);
       g.fillRect(w*0.82, cy-h*0.10, w*0.13, h*0.085);
-      /* lamps low on the frame */
+      /* the low lamps on the frame AND the row of markers along the roof.
+         Owner, 2026-08-29: the running lights illuminate as brake lights too -
+         which is what a lorry does, and it is the thing you actually see of one
+         at night when it slows in front of you. */
       decl(g, lamps, 'tail', (gg, on) => {
         gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#b8371f');
         rr(gg, w*0.10, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
         rr(gg, w*0.74, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
+        gg.fillStyle = on ? '#ffd9a2' : (P.lamp2 || '#ffb066');
+        for(const mx of [0.16,0.34,0.5,0.66,0.84]){
+          rr(gg, w*mx-w*0.018, top-h*0.014, w*0.036, h*0.016, 2); gg.fill();
+        }
       });
       /* a lorry indicates from the outer end of the same cluster */
       decl(g, lamps, 'turn.l', turnBulb(w*0.055, cy-h*0.155, w*0.040, h*0.032));
@@ -2196,9 +2203,10 @@ function paintRig(kind, o){
         rr(gg, w*0.07, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
         rr(gg, w*0.855, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
       });
-      /* the amber sits UNDER each corner cluster, where a van carries it */
-      decl(g, lamps, 'turn.l', turnBulb(w*0.07, bot-h*0.018, w*0.075, h*0.030));
-      decl(g, lamps, 'turn.r', turnBulb(w*0.855, bot-h*0.018, w*0.075, h*0.030));
+      /* Owner, 2026-08-29: ABOVE the brake lights, and only there. A van's
+         corner cluster stacks upward and that is where the amber sits. */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.07, bot-h*0.175, w*0.075, h*0.034));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.855, bot-h*0.175, w*0.075, h*0.034));
       g.fillStyle='rgba(255,190,120,.85)';
       rr(g, w*0.07, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
       rr(g, w*0.855, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
@@ -2375,19 +2383,26 @@ function paintRig(kind, o){
         g.fillStyle = 'rgba(16,14,16,.85)';
         rr(g, w*lx, ly-h*0.008, w*0.26, lh+h*0.016, 2); g.fill();
       }
+      /* Owner, 2026-08-29: FOUR boxes a side, and the outermost box is the
+         indicator - the same idea as MATADOR's outermost chevron, so a signal
+         is part of the cluster rather than a shape stuck beside it. */
+      const box4 = (gg, lx, k, c0, c1) => {
+        gg.fillStyle = c0; gg.fillRect(w*(lx+k), ly, w*0.050, lh);
+        gg.fillStyle = c1; gg.fillRect(w*(lx+k), ly, w*0.050, lh*0.28);
+      };
+      const BOXK = [0.010, 0.075, 0.140, 0.205];
       decl(g, lamps, 'tail', (gg, on) => {
-        for(const lx of [0.075, 0.665]){
-          for(const k of [0.020, 0.100, 0.180]){
-            gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
-            gg.fillRect(w*(lx+k), ly, w*0.060, lh);
-            gg.fillStyle = on ? 'rgba(255,214,206,.8)' : 'rgba(255,120,110,.45)';
-            gg.fillRect(w*(lx+k), ly, w*0.060, lh*0.28);
-          }
-        }
+        const c0 = on ? '#ff3a34' : (P.lamp || '#c8102e');
+        const c1 = on ? 'rgba(255,214,206,.8)' : 'rgba(255,120,110,.45)';
+        /* the outermost box of each cluster belongs to the indicator, so the
+           left cluster keeps the inner three and the right cluster the other */
+        for(const k of BOXK.slice(1)) box4(gg, 0.075, k, c0, c1);
+        for(const k of BOXK.slice(0, 3)) box4(gg, 0.665, k, c0, c1);
       });
-      /* a muscle car indicates through the outermost bar of the cluster */
-      decl(g, lamps, 'turn.l', turnBulb(w*0.020, ly, w*0.050, lh));
-      decl(g, lamps, 'turn.r', turnBulb(w*0.930, ly, w*0.050, lh));
+      decl(g, lamps, 'turn.l', (gg, on) =>
+        box4(gg, 0.075, BOXK[0], on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
+      decl(g, lamps, 'turn.r', (gg, on) =>
+        box4(gg, 0.665, BOXK[3], on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
     } else {
     decl(g, lamps, 'tail', (gg, on) => {
       gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
@@ -3520,14 +3535,22 @@ function paintCar(o){
         gg.strokeStyle = c1; gg.lineWidth = Math.max(0.6, th*0.13);
         gg.beginPath(); gg.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); gg.stroke();
       };
+      /* Owner, 2026-08-29, correcting the first attempt: ALL FOUR RINGS are
+         brake lights. The indicator is the DOT INSIDE the outer two - which is
+         how a four-ring tail actually carries it, and it leaves the signature
+         intact whether the car is lit or dark. */
       decl(g, lamps, 'tail', (gg, on) => {
-        for(const cx0 of [w*0.275, w*0.725])
+        for(const cx0 of [w*0.145, w*0.275, w*0.725, w*0.855])
           ring(gg, cx0, on ? '#ff2f3e' : lamp0, on ? '#ffe0da' : lamp1);
       });
-      decl(g, lamps, 'turn.l', (gg, on) =>
-        ring(gg, w*0.145, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
-      decl(g, lamps, 'turn.r', (gg, on) =>
-        ring(gg, w*0.855, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
+      const dot = (cx0) => (gg, on) => {
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        gg.beginPath(); gg.arc(cx0, ty + th*0.45, th*0.22, 0, 6.2832); gg.fill();
+        gg.fillStyle = on ? AMBER_ON_HI : AMBER_OFF_HI;
+        gg.beginPath(); gg.arc(cx0, ty + th*0.40, th*0.10, 0, 6.2832); gg.fill();
+      };
+      decl(g, lamps, 'turn.l', dot(w*0.145));
+      decl(g, lamps, 'turn.r', dot(w*0.855));
     } else {
       /* ---- THE FIRST VEHICLE CONVERTED TO RLG-053 -------------------------
          MATADOR's tail, and only MATADOR's. CREST and STALLION above still

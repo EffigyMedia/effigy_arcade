@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-24"></a>
+## [0.9.24] - 2026-08-29
+- Changed: **STALLION keeps all four rings as brake lights**, and the indicator is the dot inside the
+  outer two - the first attempt made the outer rings themselves amber, which changed what the brake
+  light is ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **MUSCLE has four boxes a side**, the outermost one the indicator, matching MATADOR's
+  outermost chevron ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the VAN indicates above its brake lights**, and only there
+  ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the LORRY's roof running lights brake as well** - they are part of the tail declaration
+  now, which is what you actually see of a lorry slowing at night
+  ([RLG-053](../fragments/RLG-053.md)).
+- Changed: `fleet-sheet` prints each row's painter, so two rows that look alike in white can be told
+  apart rather than read as duplicates ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-23"></a>
 ## [0.9.23] - 2026-08-29
 - Added: **the whole fleet declares its lamps** - 84 lamps across 26 vehicles, each a single drawing

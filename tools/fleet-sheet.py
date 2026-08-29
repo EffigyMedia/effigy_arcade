@@ -54,7 +54,7 @@ SHEET = r"""() => {
   const rows = [];
   const by = {};
   for (const v of fleet) {
-    if (by[v.sig] === undefined) { by[v.sig] = rows.length; rows.push({ spr: v.spr, who: [v.name] }); }
+    if (by[v.sig] === undefined) { by[v.sig] = rows.length; rows.push({ spr: v.spr, who: [v.name], sig: v.sig }); }
     else rows[by[v.sig]].who.push(v.name);
   }
 
@@ -110,6 +110,10 @@ SHEET = r"""() => {
     g.fillStyle = '#8d93a8';
     g.font = '500 12px system-ui, sans-serif';
     if (r.who.length > 1) g.fillText('also ' + r.who.slice(1).join(', '), PAD, y + CELL/2 + 8);
+    /* the painter, so two rows that look alike in white can be told apart */
+    g.fillStyle = '#4a4f60';
+    g.font = '500 10px system-ui, sans-serif';
+    g.fillText(r.sig, PAD, y + CELL/2 + 40);
     g.fillStyle = '#5f6579';
     g.font = '500 11px system-ui, sans-serif';
     g.fillText(Object.keys(L).join('  '), PAD, y + CELL/2 + 26);
