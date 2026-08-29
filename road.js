@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.40';
+window.ROAD_BUILD = '0.9.42';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -11219,10 +11219,17 @@ function drawGarageCar(){
       let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
       for(let y = 0; y < c.height; y++){
         for(let x = 0; x < c.width; x++){
-          /* 24 rather than 0: a sprite's shadow fades to nothing at its edge,
-             and counting the last transparent pixel of it as the car puts the
-             floor line somewhere no part of the car reaches */
-          if(d[(y*c.width + x)*4 + 3] > 24){
+          /* ---- THE CAR, NOT ITS SHADOW ---------------------------------
+             This counted anything above alpha 24, which includes the soft
+             ground shadow - and the two painters draw different shadows, so
+             the two ends were aligned on their shadows while their TYRES sat
+             at different heights. That is what the owner saw as still
+             misaligned after the boxes were made to agree.
+
+             170 is above any shadow and below nothing solid: bodywork is drawn
+             at full opacity, so what this finds is where the car actually
+             meets the road. */
+          if(d[(y*c.width + x)*4 + 3] > 170){
             if(x < x0) x0 = x; if(x > x1) x1 = x;
             if(y < y0) y0 = y; if(y > y1) y1 = y;
           }
@@ -11234,14 +11241,29 @@ function drawGarageCar(){
     return bx;
   };
 
+  /* ---- ONE CAR IS ONE WIDTH ---------------------------------------------
+     Drawing both ends at a SINGLE scale still looked wrong, and the owner was
+     right about it twice. The two painters do not draw the car at the same
+     size inside their own canvases: at one scale the front came out about nine
+     per cent wider and taller than the back, which reads as two different cars
+     rather than as two views of one.
+
+     A car is the same WIDTH from either end - that is the one dimension both
+     views share, and the one a person checks. So each end gets its own scale,
+     chosen so their solid bodywork comes out the same width, and the pair is
+     then sized so the taller of the two still fits the card. Height is left to
+     differ, because a front view genuinely is taller: it has a windscreen and
+     a roofline where the back has a boot lid.
+     ------------------------------------------------------------------- */
   const FLOOR = 124, HALF = 150, PAD = 12;
   const pair = front ? [back, front] : [back];
   const boxes = pair.map(bounds);
-  const maxW = Math.max.apply(null, boxes.map(b => b.w));
-  const maxH = Math.max.apply(null, boxes.map(b => b.h));
-  const sc = Math.min((HALF - PAD*2) / maxW, (FLOOR - 8) / maxH);
+  /* the widest the pair can be drawn with the tallest of them still fitting */
+  let targetW = HALF - PAD*2;
+  for(const bx of boxes) targetW = Math.min(targetW, (FLOOR - 8) * (bx.w / bx.h));
   const put = (img, box, cx) => {
     if(!img) return;
+    const sc = targetW / box.w;
     /* place the CONTENT: its centre on cx, its bottom on the floor */
     const dx = cx - (box.x + box.w/2)*sc;
     const dy = FLOOR - (box.y + box.h)*sc;

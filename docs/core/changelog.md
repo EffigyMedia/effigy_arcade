@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-42"></a>
+## [0.9.42] - 2026-08-29
+- Fixed: **the garage's two views are the same car.** Aligning their sprite boxes was not enough and
+  neither was one shared scale: the two painters draw the car at different sizes inside their own
+  canvases, so the front came out about nine per cent bigger. Each end is now scaled so their solid
+  bodywork is the same WIDTH - the one dimension both views share - and the floor line is read from
+  the tyres rather than from the soft shadow under them ([RLG-072](../fragments/RLG-072.md)).
+
 <a id="v0-9-41"></a>
 ## [0.9.41] - 2026-08-29
 - Fixed: **every vehicle in the mirror is the real car.** The police were still drawn as the
