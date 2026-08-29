@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.54';
+window.ROAD_BUILD = '0.9.55';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -10793,11 +10793,54 @@ function drawRain(){
     for(let i = 0; i < 90; i++)
       rainDrops.push({ x:Math.random(), y:Math.random(), v:0.5+Math.random(), l:0.5+Math.random() });
   }
-  /* the road goes dark and reflective */
   ctx.save();
-  ctx.fillStyle = snowy > 0.5 ? 'rgba(210,225,245,' + (wet*0.16 + settle*0.22) + ')'
-                              : 'rgba(12,18,30,' + (wet*0.26) + ')';
-  ctx.fillRect(0, horizon, W, H - horizon);
+  if(snowy > 0.5){
+    /* ---- SETTLED SNOW IS TWO LAYERS, NOT ONE SLAB (RLG-057) -------------
+       Owner, 2026-08-29: the cover looked wrong because it was ONE overlay
+       filling everything from the horizon to the bottom of the screen at a
+       single strength. Snow does not lie like that. What you see from a car is
+       two different things:
+
+         THE FAR FIELD, a bright band under the horizon where the ground is
+         nearly edge-on and every flake you can see is stacked into one
+         surface. It is the brightest part of a snowy landscape and it fades
+         DOWNWARD as the ground turns to face you.
+
+         THE GROUND IN FRONT OF YOU, which is seen from above at a shallow
+         angle, so the snow on it reads as a wash rather than as a wall. It is
+         strongest at the bottom of the screen and fades UPWARD.
+
+       The two fade into each other across the middle of the ground plane,
+       which is where the eye expects the change and is exactly what the single
+       rectangle could not do.
+
+       The verge itself is already whitened per segment where the road is
+       drawn - that part follows the geometry and was always right. These two
+       are the atmosphere over it.
+       ------------------------------------------------------------------ */
+    /* THEY OVERLAP ACROSS MOST OF THE PLANE. The first attempt had the far
+       band stop where the near one started, and the join was a visible line
+       across the grass - the exact fault the single slab had, moved down the
+       screen. Each now runs well into the other's half and reaches zero inside
+       it, so there is nowhere for an edge to be. */
+    const gh = H - horizon;
+    const far = ctx.createLinearGradient(0, horizon, 0, horizon + gh*0.62);
+    far.addColorStop(0,   'rgba(228,238,252,' + (settle*0.34 + wet*0.10) + ')');
+    far.addColorStop(0.34,'rgba(228,238,252,' + (settle*0.15 + wet*0.05) + ')');
+    far.addColorStop(1,   'rgba(228,238,252,0)');
+    ctx.fillStyle = far;
+    ctx.fillRect(0, horizon, W, gh*0.62 + 1);
+    const near = ctx.createLinearGradient(0, H, 0, horizon + gh*0.14);
+    near.addColorStop(0,   'rgba(236,243,255,' + (settle*0.20 + wet*0.06) + ')');
+    near.addColorStop(0.62,'rgba(236,243,255,' + (settle*0.07 + wet*0.02) + ')');
+    near.addColorStop(1,   'rgba(236,243,255,0)');
+    ctx.fillStyle = near;
+    ctx.fillRect(0, horizon + gh*0.14, W, gh*0.86);
+  } else {
+    /* the road goes dark and reflective */
+    ctx.fillStyle = 'rgba(12,18,30,' + (wet*0.26) + ')';
+    ctx.fillRect(0, horizon, W, H - horizon);
+  }
   ctx.globalCompositeOperation = 'lighter';
   const sheen = ctx.createLinearGradient(0, horizon, 0, H);
   sheen.addColorStop(0, 'rgba(150,180,220,' + (wet*0.10) + ')');
@@ -12854,6 +12897,9 @@ requestAnimationFrame(frameLoop);
   API.sky = function(){ return { cloud:+cloud.toFixed(3), storm:+storm.toFixed(3),
                                  bolt:+boltFlash().toFixed(3) }; };
   API.setSky = function(c, st){ cloud = cloudTarget = c; if(st !== undefined) storm = st; };
+  /* snow and how much of it has settled, so the two-layer cover can be
+     photographed rather than driven to */
+  API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };
   API.strike = function(m){ boltMag = m === undefined ? 0.9 : m; boltT = 0.42; return boltT; };
   API.hp = function(){ return bodyHp(); };
   /* the two derived stats, so a harness reads what the car HAS rather than
