@@ -104,7 +104,18 @@ window.__probe.drive = function(){
      ahead the faster you are going. */
   var LANE_X = [-0.75, -0.25, 0.25, 0.75];
   var aim = function(){
-    var cars = R.traffic || [], me = R.playerX;
+    /* ---- RIVALS ARE CARS TOO -------------------------------------------
+       This read R.traffic alone, so the driver was blind to every racer on
+       the road. It survived only because the old rivals wandered: they were
+       a lateral PRESSURE that drifted out of the way by accident. RLG-033
+       part 2 made them hold a lane, and the driver started ploughing into
+       cars it could not see - one run in five ended with 91% damage, a
+       respawn, and a peak of 127mph, which reads as the ENGINE failing a
+       speed assertion.
+
+       A harness that cannot see half the cars on the road is not measuring
+       the game. */
+    var cars = (R.traffic || []).concat(R.racers || []), me = R.playerX;
     var horizon = 9000 + R.spd * 2.4;      /* ~1.8s of road at 190mph */
     var blocked = [0, 0, 0, 0];
     for(var i = 0; i < cars.length; i++){

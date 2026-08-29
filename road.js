@@ -5244,7 +5244,11 @@ function buildField(){
       num: FIELD - rank,
       /* the same sports car as yours, in whichever paints you did not take */
       paint: null,
-      wreck: 0, ang: 0, dodgeT: 0, w: 0.265, len: 390
+      wreck: 0, ang: 0, w: 0.265, len: 390,
+      /* lane-change state: where it came from, how long since it arrived, and
+         when it may next think. `dodgeT` was set and decremented here and read
+         by nothing - it went with the pressure model it belonged to. */
+      fromLane: undefined, settleT: 0, thinkT: 0
     });
   }
   /* ---- the grid ----------------------------------------------------------
@@ -5291,6 +5295,54 @@ function buildField(){
   place = 12; finished = false;
 }
 
+/* ---- HOW A RIVAL CHANGES LANE -------------------------------------------
+   Measured before any of this was written (RLG-033 part 1, EVD-007): the old
+   steering was worth four to five times the overtakes, and left rivals off a
+   lane centre 59-61% of the time against 0% with it removed. It was a per-frame
+   lateral PRESSURE that lasted exactly as long as something was in front, and
+   when the pressure went the car was pulled back toward `LANE_X[r.lane]` - a
+   lane index nothing ever updated. So a rival leaned out, got far enough across
+   to unblock its own scan, stopped leaning, and returned to the lane it started
+   in. It never arrived anywhere and never finished a move.
+
+   A lane change is a DECISION now: pick a target lane, commit, arrive. The
+   numbers are in LANES and lane widths, never in absolute distance across the
+   road, because RLG-040 requires full merging to survive RLG-024 widening it.
+   ------------------------------------------------------------------------- */
+const LANE_W      = Math.abs(LANE_X[1] - LANE_X[0]);
+const LANE_RATE   = 2.2;          /* lanes per second while changing */
+const LANE_HOME   = 0.12;         /* within this fraction of a lane = arrived */
+const LANE_SETTLE = 0.45;         /* seconds held after arriving, before deciding again */
+const LANE_GAIN   = 0.04;         /* a lane must beat this one by this much of base */
+const LANE_THINK  = 0.12;         /* seconds between decisions - not every frame */
+const SIDE_BY     = 560;          /* z-distance counted as alongside: do not merge into it */
+
+/* What every lane looks like from this car: is it safe to occupy, and how fast
+   can it be driven. `reach` is how far ahead to care about. */
+function laneView(r, reach){
+  const out = [];
+  for(let l = 0; l < LANES; l++) out.push({ safe: true, speed: r.base });
+  const look = (o, ox, oz, ospd) => {
+    const gap = oz - r.z;
+    if(gap < -SIDE_BY || gap > reach) return;
+    for(let l = 0; l < LANES; l++){
+      if(Math.abs(ox - LANE_X[l]) > LANE_W * 0.7) continue;
+      if(gap < SIDE_BY) out[l].safe = false;
+      if(gap >= 0) out[l].speed = Math.min(out[l].speed, ospd);
+    }
+  };
+  for(const o of traffic) look(o, o.x, o.z, o.spd || o.cruise || 0);
+  for(const o of racers) if(o !== r && !(o.wreck > 0)) look(o, o.x, o.z, o.spd || 0);
+  if(!optEasy) for(const o of cops) if(!(o.wreck > 0)) look(o, o.x, o.z, o.spd || 0);
+  /* THE PLAYER IS A CAR. Rivals scanned traffic, each other and the police and
+     were blind to the one car the player is sitting in - the same omission that
+     let them drive straight through you before they were made solid. A rival
+     that merges into the player's lane because it cannot see the player is that
+     bug again, wearing a lane change. */
+  look(null, playerX, pos + PLAYER_Z, spd);
+  return out;
+}
+
 function stepRacers(dt){
   const k = Math.min(2.4, dt*60);
   for(const r of racers){
@@ -5298,41 +5350,74 @@ function stepRacers(dt){
       r.wreck -= dt; r.spd *= (1 - 1.6*dt); r.ang += dt*6; r.z += r.spd*dt;
       continue;
     }
-    /* --- look ahead and pick a line, same idea as the cruisers --- */
-    let want = r.base, dodge = 0;
-    const scan = (list, isCop) => {
+    /* --- how fast this car can go, given whatever is directly in front --- */
+    let want = r.base;
+    const ahead = (list, isCop) => {
       for(const o of list){
         if(o === r) continue;
         if(isCop && o.wreck > 0) continue;
         const gap = o.z - r.z;
         if(gap < -120 || gap > 3600) continue;
         if(Math.abs(o.x - r.x) > 0.30) continue;
-        /* something in the way: slow a little and lean off it */
         want = Math.min(want, (o.spd || o.cruise || 0) * 0.98);
-        dodge += (r.x < o.x ? -1 : 1) * (1 - gap/3600);
       }
     };
-    scan(traffic, false);
-    scan(racers, false);
-    if(!optEasy) scan(cops, true);
+    ahead(traffic, false);
+    ahead(racers, false);
+    if(!optEasy) ahead(cops, true);
 
-    /* roadblocks: aim for the gap rather than the barrier */
+    /* --- DECIDE, THEN COMMIT ------------------------------------------------
+       Only when standing in a lane, and only every LANE_THINK seconds - a car
+       that reconsiders every frame dithers between two lanes and commits to
+       neither, which is what the old pressure model did in effect. */
+    const homeX = LANE_X[r.lane];
+    const arrived = Math.abs(r.x - homeX) < LANE_W * LANE_HOME;
+    r.thinkT = (r.thinkT || 0) - dt;
+    if(arrived){
+      r.settleT = Math.max(0, (r.settleT || 0) - dt);
+      if(r.settleT <= 0 && r.thinkT <= 0){
+        r.thinkT = LANE_THINK;
+        const view = laneView(r, 3600 + r.spd * 0.6);
+        /* only worth moving if this lane is actually costing us pace */
+        if(view[r.lane].speed < r.base * 0.97){
+          let best = r.lane, bestSpd = view[r.lane].speed;
+          /* one lane at a time, so every move is a move that can be finished */
+          for(const d of [-1, 1]){
+            const l = r.lane + d;
+            if(l < 0 || l >= LANES) continue;
+            if(!view[l].safe) continue;
+            if(view[l].speed > bestSpd + r.base * LANE_GAIN){ best = l; bestSpd = view[l].speed; }
+          }
+          if(best !== r.lane){ r.fromLane = r.lane; r.lane = best; r.settleT = LANE_SETTLE; }
+        }
+      }
+    } else if(r.thinkT <= 0){
+      /* MID-MOVE. The only thing that stops it is the target going bad - a car
+         arriving alongside in the lane being merged into. Then go back, rather
+         than stopping half way across, which is the fault being fixed. */
+      r.thinkT = LANE_THINK;
+      const view = laneView(r, 2600);
+      if(!view[r.lane].safe && r.fromLane !== undefined && view[r.fromLane].safe){
+        const back = r.fromLane; r.fromLane = r.lane; r.lane = back;
+      }
+    }
+
+    /* roadblocks override the choice: aim for the LANE the gap is in, and
+       commit to it, so the car arrives in the gap rather than leaning at it */
     for(const b of blocks){
       const gap = b.z - r.z;
       if(gap < 0 || gap > 5200) continue;
-      dodge += (b.gapX - r.x) * 2.4 * (1 - gap/5200);
+      let bl = 0;
+      for(let l = 1; l < LANES; l++)
+        if(Math.abs(LANE_X[l] - b.gapX) < Math.abs(LANE_X[bl] - b.gapX)) bl = l;
+      if(bl !== r.lane){ r.fromLane = r.lane; r.lane = bl; }
+      r.settleT = LANE_SETTLE;
       want = Math.min(want, MAX_SPD*0.82);
     }
 
-    if(dodge !== 0){
-      r.dodgeT = 0.35;
-      r.x = clamp(r.x + clamp(dodge, -1, 1) * 1.5 * dt, -1.05, 1.05);
-    } else {
-      /* drift back toward a lane centre when nothing is pressing */
-      const home = LANE_X[r.lane];
-      r.x += (home - r.x) * Math.min(1, dt*1.4);
-      r.dodgeT = Math.max(0, r.dodgeT - dt);
-    }
+    /* --- and steer, at a rate measured in lanes rather than in road width --- */
+    const step = LANE_RATE * LANE_W * dt;
+    r.x = clamp(r.x + clamp(LANE_X[r.lane] - r.x, -step, step), -1.05, 1.05);
     r.ang = clamp((r.x - (r.px===undefined?r.x:r.px)) * 26, -0.3, 0.3);
     r.px = r.x;
 

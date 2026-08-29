@@ -15,9 +15,10 @@ WHAT IS MEASURED
                same lane. Stated in seconds of travel rather than in the engine's own 3600 units,
                deliberately: a harness that measures with the engine's constants is testing the
                engine's arithmetic against itself.
-  off-centre   the share of samples more than 0.06 lanes from the nearest lane centre. A car that
-               is overtaking is between lanes; a car that never leaves a lane centre is not
-               overtaking at all.
+  off-centre   the share of samples more than 0.06 lanes from the nearest lane centre. A car
+               mid-move is between lanes, so some of this is wanted - but a car that is between
+               lanes MOST of the time is not overtaking, it is wandering. That is the number
+               RLG-033 part 2 was built to move: it read 59-61% under the old pressure model.
   lateral      mean lateral speed in lanes per second - how much steering is happening.
 
 THE CONTROL ARM
@@ -25,15 +26,13 @@ THE CONTROL ARM
 The same discipline as `band-test.py`, and for the same reason: a number with nothing to compare it
 against cannot tell you whether the mechanism you are looking at is the one producing it.
 
-  dodge on     road.js exactly as it ships
-  dodge off    road.js with the rivals' lateral term forced to zero, rewritten IN THE SERVER, in
-               memory, no file touched on disk
+  changes on    road.js exactly as it ships
+  changes off   road.js with the rival's choice of a new lane neutralised, rewritten IN THE SERVER,
+                in memory, no file touched on disk
 
-`dodge` is the entire steering intelligence a rival has: it leans away from anything ahead in its
-lane and otherwise drifts back to a lane centre. With it off, a rival can only slow down. So the
-difference between the arms is what the steering is worth. If passes/min barely moves, the rivals
-are not overtaking - they are being carried past slower cars by raw speed, and the dodge is
-decoration. That is the question part 2 of RLG-033 needs answered before it starts.
+With changes off a rival still holds a lane, still slows for what is in front, and still steers to
+its lane centre - it simply never picks a different lane. So the difference between the arms is
+what CHANGING LANE is worth, and nothing else.
 
 Math.random is seeded before any game script runs, so both arms race the same grid and the same
 traffic. Runs are repeated, because one run is weather.
@@ -88,14 +87,21 @@ from harness import console_utf8, launch_chromium  # noqa: E402
 # the scan that computes it, keeps the arms as close as possible: the scan still runs, still costs
 # the same, and still sets `want` from the blocking car. Only the steering is removed.
 
-DODGE_LINE = '    if(dodge !== 0){'
-DODGE_OFF = '    dodge = 0;\n    if(dodge !== 0){'
+# The control arm neutralises the LANE CHANGE and nothing else: rivals still hold a lane, still
+# slow for what is in front, still steer to their lane centre. They simply never choose a new lane.
+#
+# It used to patch `if(dodge !== 0){`, the old per-frame lateral pressure. RLG-033 part 2 replaced
+# that with a decision, so the old target vanished - and this harness REFUSED TO RUN rather than
+# report two identical arms as a finding. That refusal is the guard doing its job, and it is worth
+# leaving this note where the next person to move this code will read it.
+DODGE_LINE = '          if(best !== r.lane){ r.fromLane = r.lane; r.lane = best; r.settleT = LANE_SETTLE; }'
+DODGE_OFF = '          if(false){ r.fromLane = r.lane; r.lane = best; r.settleT = LANE_SETTLE; }'
 
 
 def road_without_dodge(src):
     hits = src.count(DODGE_LINE)
     if hits != 1:
-        raise SystemExit('[racer-test] the dodge branch was found %d times in road.js, not once.\n'
+        raise SystemExit('[racer-test] the lane-change line was found %d times in road.js, not once.\n'
                          '             Looked for: %s\n'
                          '             A control arm that patches nothing proves nothing, so this '
                          'stops rather than reporting two identical runs as a finding.'
@@ -296,7 +302,7 @@ def main():
             args=['--autoplay-policy=no-user-gesture-required', '--mute-audio'])
         for i in range(args.repeats):
             pair = {}
-            for dodge, label in ((True, 'dodge on'), (False, 'dodge off')):
+            for dodge, label in ((True, 'lane changes on'), (False, 'lane changes off')):
                 httpd, port = serve(ROOT, dodge)
                 try:
                     pair[label] = run_arm(browser, 'http://127.0.0.1:%d' % port,
@@ -308,7 +314,7 @@ def main():
         browser.close()
 
     print()
-    for label in ('dodge on', 'dodge off'):
+    for label in ('lane changes on', 'lane changes off'):
         arms = [pr[label] for pr in pairs]
         errs = [e for a in arms for e in a['errors']]
         print('  ' + label.upper() + '   (%d rivals x %d runs)'
@@ -330,11 +336,11 @@ def main():
                          '%.3f' % sd('lat'), '%.0f' % (sd('spd') * MPH)))
         print()
 
-    print('  WHAT THE STEERING IS WORTH  -  dodge on against dodge off')
+    print('  WHAT THE LANE CHANGE IS WORTH  -  changes on against changes off')
     for key, name, pct in (('passesPerMin', 'passes/min', False), ('blocked', 'blocked', True),
                            ('offCentre', 'off-centre', True), ('lat', 'lateral', False)):
-        on = statistics.fmean(r[key] for pr in pairs for r in pr['dodge on']['rows'])
-        off = statistics.fmean(r[key] for pr in pairs for r in pr['dodge off']['rows'])
+        on = statistics.fmean(r[key] for pr in pairs for r in pr['lane changes on']['rows'])
+        off = statistics.fmean(r[key] for pr in pairs for r in pr['lane changes off']['rows'])
         fmt = (lambda v: '%.0f%%' % (v * 100)) if pct else (lambda v: '%.3f' % v)
         print('    %-12s %10s  ->  %-10s' % (name, fmt(off), fmt(on)))
     print()

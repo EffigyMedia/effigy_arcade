@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-9"></a>
+## [0.9.9] — 2026-08-28
+- Fixed: **rivals never finished an overtake.** Steering was a per-frame lateral pressure that lasted
+  only while something was in front, then pulled the car back to a lane index nothing ever updated —
+  so a rival leaned out, unblocked its own scan, and drifted home. A lane change is a decision now:
+  pick a target, commit, arrive, one lane at a time. Measured, time off a lane centre fell from
+  **59–61% to 10–11%** with overtakes unchanged at ~30/min ([RLG-033](../fragments/RLG-033.md)).
+- Fixed: **rivals could not see the player.** They scanned traffic, each other and the police and
+  were blind to the one car you are sitting in — the same omission that once let them drive through
+  you ([RLG-033](../fragments/RLG-033.md)).
+- Changed: roadblocks are aimed at by **lane** rather than by coordinate, and every lane figure is in
+  lane widths, so full merging survives the road getting wider
+  ([RLG-040](../fragments/RLG-040.md), [RLG-024](../fragments/RLG-024.md)).
+- Fixed: `drive-test`'s autopilot was blind to racers and drove into them once the rivals stopped
+  wandering — 91% damage and a 127mph peak, which read as the engine failing
+  ([RLG-033](../fragments/RLG-033.md)).
+- Known: `speed rises above 150mph` now fails about one run in four at 146–148mph, because the road
+  is genuinely busier. **The threshold was deliberately not lowered**
+  ([RLG-056](../fragments/RLG-056.md)).
+
 <a id="v0-9-8"></a>
 ## [0.9.8] — 2026-08-28
 - Fixed: **every AI car accelerated through the PLAYER's gearbox.** `aiGearFactor` read `gearTable()`
