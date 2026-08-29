@@ -317,7 +317,7 @@ def main():
              ctx.close()
 
             # ---- 2. the gearbox --------------------------------------------
-            for body in (('MUSCLE', 'FORMULA') if 'gearbox' in want else ()):
+            for body in (('MUSCLE', 'APEX') if 'gearbox' in want else ()):
                 ctx, page = new_page(browser, dt)
                 boot(page, base, race=True)
                 page.wait_for_timeout(5_000)

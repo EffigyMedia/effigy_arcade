@@ -204,7 +204,7 @@ with sync_playwright() as p:
             }
             rows.push({ id: id, offN: off.n, onN: on.n, stray: stray });
           }
-          out.push({ name: name, ids: ids, rows: rows });
+          out.push({ name: name, cls: v.cls, ids: ids, rows: rows });
         }
         return out;
     }""")
@@ -213,10 +213,11 @@ with sync_playwright() as p:
     for v in fleet:
         if 'tail' not in v['ids']:
             notail.append(v['name'])
-        # THE FORMULA CAR HAS NO INDICATORS. Owner's ruling, 2026-08-29: a single-seater has none,
-        # and that is what the car IS rather than something unfinished. It is the ONE vehicle
-        # allowed to be missing them, and naming it here is what stops the exception spreading.
-        if 'FORMULA' not in v['name'] and not ('turn.l' in v['ids'] and 'turn.r' in v['ids']):
+        # A FORMULA CAR HAS NO INDICATORS. Owner's ruling, 2026-08-29: a single-seater has none,
+        # and that is what the car IS rather than something unfinished. The exception is read from
+        # the CLASS rather than from a name: there were three open-wheelers by the end of the same
+        # day, and two of them are not called FORMULA. A class cannot be widened by a rename.
+        if v.get('cls') != 'formula' and not ('turn.l' in v['ids'] and 'turn.r' in v['ids']):
             noturn.append(v['name'])
         for r in v['rows']:
             if not r['onN'] or not r['offN']:
@@ -226,8 +227,8 @@ with sync_playwright() as p:
                                % (v['name'], r['id'], r['stray'], r['onN']))
     ok(not notail, 'every vehicle declares a tail lamp',
        'missing on ' + ', '.join(notail) if notail else '%d vehicles' % len(fleet))
-    ok(not noturn, 'every vehicle but the FORMULA declares indicators',
-       'missing on ' + ', '.join(noturn) if noturn else 'FORMULA excepted by ruling')
+    ok(not noturn, 'every vehicle outside the formula class declares indicators',
+       'missing on ' + ', '.join(noturn) if noturn else 'the formula class excepted by ruling')
     ok(not drifted, 'and every lit lamp stays inside its own unlit bulb',
        ', '.join(drifted[:4]) if drifted else
        '%d lamps across %d vehicles' % (sum(len(v['ids']) for v in fleet), len(fleet)))

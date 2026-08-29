@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.32';
+window.ROAD_BUILD = '0.9.33';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -175,7 +175,10 @@ const TIMES = [
 ];
 let optTime = 0;
 /* debug only — never saved, never treated as an unlock */
-let dbgRacers = false, dbgTraffic = false;
+/* three switches, one per locked group: the racing ladder, the police, and the
+   road cars. They were two, and the patrol car rode on the racers' switch -
+   which meant testing a pursuit opened every class on the ladder with it. */
+let dbgRacers = false, dbgTraffic = false, dbgPolice = false;
 /* ---- ONE LIVERY PER RUN --------------------------------------------------
    A force does not run half its cars in white and half in black on the same
    night. The livery is chosen once when the run starts and every cruiser wears
@@ -1615,14 +1618,46 @@ const BODY = {
   'MATADOR': { bodyTop:0.52, cabinTop:0.24, cabW:0.44, cabOff:0.00, roofR:0.02,
               hip:0.105, wing:'high',  nose:0.16, spoiler:true, rear:'MATADOR', wide:0.045, arch:1.30, horn:1.06,
               mass:1580, hp:690, grip:1.38, brake:1.28, pull:1.24, vmax:0.97, note:'FASTEST OFF THE LINE \u00B7 LOWEST TOP END' },
-  /* ---- THE PRIZE ---------------------------------------------------------
-     A Formula car: highest acceleration AND highest top end, which breaks the
-     trade every other car obeys. That is the point of a prize — it is not
-     another option, it is better, and you had to win a tournament for it. */
-  'FORMULA': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
+  /* ---- THE PRIZE IS A CLASS, NOT A CAR ------------------------------------
+     Owner, 2026-08-29. There was ONE formula car, and gold in the supercar
+     tournament handed it over. There are three now, and the same gold hands
+     over all three, because Motorsport needs a grid of them and a grid of one
+     car repeated is not a race.
+
+     They are the same trade the supercars make, moved up a class: one pulls,
+     one runs, one sits between them. Every one of them is at least twenty per
+     cent above the BEST supercar in every stat - not above the average, above
+     the best - which is what makes the class a step up rather than three more
+     options. The reference points are MATADOR's 1.24 pull, STALLION's 1.03
+     top end, CREST's 1.42 grip and 1.32 brakes, and STALLION's 710hp.
+
+         VECTOR   248mph   pull 1.86    the launch car
+         APEX     260      1.70         the one that does everything
+         COMET    276      1.56         the top end
+
+     APEX carries what the single FORMULA used to be. It keeps the shape and
+     the badge; the numbers moved up with the rest of the class.
+
+     They share one BODY. Owner, 2026-08-29: they do not need unique designs -
+     cars from a single formula are near enough identical from behind, and what
+     separates them is the name, the badge and the numbers. Each wears its own
+     marque, and that is the whole of the visual difference.
+     ------------------------------------------------------------------------ */
+  'VECTOR': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
+              hip:0.135, wing:'high', nose:0.10, spoiler:true,
+              wide:0.145, arch:1.45, horn:1.46, rear:'VECTOR', redline:15500, pitch:1.62,
+              mass:690, hp:980, grip:2.05, brake:1.95, pull:1.86, vmax:1.24,
+              note:'VECTOR \u00B7 LEAVES THE LINE LIKE A LAUNCHED THING' },
+  'APEX': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
               hip:0.135, wing:'high', nose:0.10, spoiler:true,
               wide:0.145, arch:1.45, horn:1.42, rear:'FORMULA', redline:15000, pitch:1.55,
-              mass:740, hp:1000, grip:1.95, brake:1.85, pull:1.34, vmax:1.09, note:'FORMULA · NO COMPROMISE' },
+              mass:720, hp:1020, grip:2.00, brake:1.90, pull:1.70, vmax:1.30,
+              note:'APEX \u00B7 NO COMPROMISE' },
+  'COMET': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
+              hip:0.135, wing:'high', nose:0.10, spoiler:true,
+              wide:0.145, arch:1.45, horn:1.38, rear:'COMET', redline:14500, pitch:1.48,
+              mass:760, hp:1080, grip:1.92, brake:1.82, pull:1.56, vmax:1.38,
+              note:'COMET \u00B7 STILL PULLING WHEN THE ROAD RUNS OUT' },
   /* ---- THE TWO CONSOLATION CARS ----------------------------------------
      A silver unlocks TUNER, a bronze unlocks MUSCLE. Both are ROAD cars and
      both are slower than any supercar — they are a reward for a good
@@ -1775,7 +1810,7 @@ function hasNos(){
   if(B.nos !== undefined) return !!B.nos;
   return SPORTS_BODIES.indexOf(optBody) >= 0
       || SUPER_BODIES.indexOf(optBody) >= 0
-      || optBody === 'FORMULA'
+      || isFormula(optBody)
       || !!B.force && optBody === 'SUPERCRUISER';
 }
 
@@ -1801,7 +1836,9 @@ function bodyHp(){
 
 /* `brake` defaults to 1 so any body without the stat behaves exactly as before */
 function bodyStat(k){ return (BODY[optBody] || BODY['MATADOR'])[k]; }
-let optBody = 'MATADOR';
+/* the first car of the first class. It was a MATADOR, from when the supercars
+   were what a fresh install held - see the ladder in `cycleBody`. */
+let optBody = 'ROADSTER';
 
 
 /* ===========================================================================
@@ -2905,7 +2942,12 @@ function paintFront(o){
     g.fillStyle = 'rgba(0,0,0,.45)';
     g.beginPath(); g.ellipse(w*0.5, botY, w*wid*1.05, h*0.045, 0, 0, 6.2832); g.fill();
 
-    if(kind === 'FORMULA'){
+    if(isFormula(kind)){
+      /* ONE CAR, THREE ENTRIES. Owner, 2026-08-29: the three do not need
+         separate designs. They are cars from a single formula - in a real one
+         they are near enough identical from behind - and what separates them is
+         the name, the badge and the stat block. So this painter draws one shape
+         and the badge is looked up per car. */
       /* ---- A FORMULA NOSE, from the reference ------------------------------
          The old one was a tall narrow tower. The real thing is LOW and WIDE:
          the wheels sit far outboard and are the tallest things in the picture,
@@ -3028,7 +3070,9 @@ function paintFront(o){
       g.quadraticCurveTo(w*0.5, axle + TH2*0.54, w*0.404, axle + TH2*0.44);
       g.closePath(); g.fill();
       /* the number on it */
-      drawMarque(g, 'FORMULA', w*0.5, axle + TH2*0.26, h*0.034);
+      /* the car's OWN badge, not the class's - it was hard-coded to the bolt,
+         which put APEX's marque on all three noses */
+      drawMarque(g, (B && B.rear) || 'FORMULA', w*0.5, axle + TH2*0.26, h*0.034);
 
       /* ---- the roll hoop, low over a low deck ---------------------------- */
       g.fillStyle = o.lo;
@@ -3152,7 +3196,7 @@ function paintFront(o){
     }
 
     /* stripes on the nose: over the roof and down the bonnet, glass clear */
-    const stripeOn = o.stripes && kind !== 'FORMULA';
+    const stripeOn = o.stripes && !isFormula(kind);
 
     /* the greenhouse */
     g.fillStyle = o.lo;
@@ -3828,11 +3872,25 @@ function paintCar(o){
        P  ONE full-width light bar across the whole tail, twin pipes together
           low in the middle  (GT3 RS)
        -------------------------------------------------------------------- */
+    /* `kind` here is the MARQUE and not the body key - `B.rear` is the badge
+       this car wears. All three formula cars wear the same one, so this branch
+       is entered by marque, and anything that separates the three has to be
+       looked up from the BODY instead. Testing it as a body key drew a
+       supercar's tail on every open-wheeler. */
     const kind = B ? B.rear : 'MATADOR';
     const ty = cy - h*0.34, th = h*0.11;
     const lamp1 = o.lamp2 || '#ff6a5a', lamp0 = o.lamp || '#c8102e';
 
-    if(kind === 'FORMULA'){
+    /* Entered by the BODY and not by the marque. The three formula cars wear
+       three different badges now, so a test on the marque would have drawn a
+       supercar's tail on two of them - which is exactly what testing the body
+       key in the wrong painter did a moment ago, in the other direction. */
+    if(isFormula(o.bodyKey)){
+      /* ONE CAR, THREE ENTRIES. Owner, 2026-08-29: the three do not need
+         separate designs. They are cars from a single formula - in a real one
+         they are near enough identical from behind - and what separates them is
+         the name, the badge and the stat block. So this painter draws one shape
+         and the badge is looked up per car. */
       /* ---- A FORMULA TAIL, second pass -------------------------------------
          The first one had the wing floating above a cone. From the reference,
          what actually reads: the tyres are ENORMOUS and nearly touch the wing
@@ -3924,7 +3982,7 @@ function paintCar(o){
                            w*0.5 + sx*w*0.105, cyT - TH2*0.36);
         g.stroke();
       }
-      drawMarque(g, 'FORMULA', w*0.5, wgY + h*0.038, h*0.030);
+      drawMarque(g, kind, w*0.5, wgY + h*0.038, h*0.030);
       return;
     }
 
@@ -4181,12 +4239,27 @@ let optPaint = 'WHITE', optEasy = true, optMirror = 'FULL';   /* no cops unless 
    -------------------------------------------------------------------------- */
 const SPORTS_BODIES = ['ROADSTER','TUNER','MUSCLE'];
 const SUPER_BODIES  = ['STALLION','MATADOR','CREST'];
-function classOf(k){ return SPORTS_BODIES.indexOf(k) >= 0 ? 'sports' : 'super'; }
+/* ---- AND THE OPEN-WHEELERS ARE A CLASS OF THEIR OWN ----------------------
+   Owner, 2026-08-29. A formula car used to be the one thing that sat outside
+   the class system: it fell through `classOf` into 'super' and raced against
+   road cars, which is the only grid this game has ever put a wrong car on.
+
+   Three of them, and they race each other. Everything downstream follows from
+   the class rather than from a test for the car - a formula grid, a formula
+   ladder, and a formula wheel - so nothing has to name these three again.
+   ---------------------------------------------------------------------- */
+const FORMULA_BODIES = ['VECTOR','APEX','COMET'];
+function isFormula(k){ return FORMULA_BODIES.indexOf(k) >= 0; }
+function classOf(k){
+  if(isFormula(k)) return 'formula';
+  return SPORTS_BODIES.indexOf(k) >= 0 ? 'sports' : 'super';
+}
 function rivalBodies(){
-  return classOf(optBody) === 'sports' ? SPORTS_BODIES : SUPER_BODIES;
+  const c = classOf(optBody);
+  return c === 'sports' ? SPORTS_BODIES : c === 'formula' ? FORMULA_BODIES : SUPER_BODIES;
 }
 /* kept for the sprite pre-build, which needs every body a rival might use */
-const RIVAL_BODIES = SPORTS_BODIES.concat(SUPER_BODIES);
+const RIVAL_BODIES = SPORTS_BODIES.concat(SUPER_BODIES).concat(FORMULA_BODIES);
 const RIVAL_SP = {};
 let TRAFFIC_SP = {}, FRONT_SP = {};
 function buildSprites(){
@@ -4733,6 +4806,12 @@ function spawnBehind(){
   const roll = Math.random();
   /* the tuner takes a slice out of the coupe's share — it IS a coupe, so the
      road does not get more sports cars, just a more varied set of them */
+  /* ---- AND NEVER AN OPEN-WHEELER ------------------------------------------
+     Owner, 2026-08-29: a supercar may appear in traffic very rarely in a muted
+     colour (RLG-054); a formula car never does, at any rate, under any
+     condition. This list is road-car rigs only, so the rule holds today by
+     construction - it is written here so the rare-supercar work does not
+     quietly widen it. */
   const t = roll<0.10 ? 'truck'  : roll<0.24 ? 'van'
           : roll<0.40 ? 'pickup' : roll<0.52 ? 'coupe'
           : roll<0.58 ? 'tuner'  : roll<0.66 ? 'muscle'
@@ -5426,7 +5505,7 @@ function syncBoxClass(){
   document.body.classList.toggle('manual', !!optManual);
   /* one manual UI or the other, never both: the gate for a road car, paddles
      for the formula car */
-  const paddleCar = optBody === 'FORMULA';
+  const paddleCar = isFormula(optBody);
   const sh = document.getElementById('shifter');
   const pd = document.getElementById('paddles');
   if(sh) sh.hidden = !optManual ||  paddleCar;
@@ -6333,11 +6412,25 @@ function stepRacers(dt){
            car — so a tournament is worth finishing even when the win is gone */
         if(AR && AR.save){
           /* the save keys name the CARS, not a TYPE that no longer exists */
-          /* gold pays out by CLASS: the supercar ladder hands you the
-             open-wheeler, the sports ladder hands you the paint */
+          /* ---- EACH GOLD OPENS THE NEXT CLASS UP ------------------------
+             Owner, 2026-08-29. The sports ladder used to pay paint and the
+             supercar ladder paid the one formula car, with the supercars
+             themselves free from the start. Now every gold is a rung:
+
+                 sports  -> the SUPER class
+                 super   -> the FORMULA class, all three of them
+                 formula -> the iridescent paints, which is the last thing
+                            left to win once there is no faster class
+
+             The paint moved to the top on purpose. It is the only prize that
+             is not a car, so it is the one that can sit above the last class
+             without making anything obsolete.
+             --------------------------------------------------------- */
+          if(st === 1 && classOf(optBody) === 'sports')
+            AR.save.merge((GAME_ID + '-opts'), { super:true });
           if(st === 1 && classOf(optBody) === 'super')
             AR.save.merge((GAME_ID + '-opts'), { formula:true });
-          if(st === 1 && classOf(optBody) === 'sports')
+          if(st === 1 && classOf(optBody) === 'formula')
             AR.save.merge((GAME_ID + '-opts'), { iridescent:true });
           /* ---- AND THE POLICE CAR OF YOUR OWN CLASS, IF YOU RAN IT HOT ----
              Owner's ruling: a gold with HOT PURSUIT on also hands you the
@@ -6354,6 +6447,12 @@ function stepRacers(dt){
             AR.save.merge((GAME_ID + '-opts'), { cruiser:true });
           if(st === 1 && !optEasy && classOf(optBody) === 'super')
             AR.save.merge((GAME_ID + '-opts'), { supercruiser:true });
+          /* The silver and bronze prizes were the TUNER and the MUSCLE car.
+             Both are in the starting class now, so there is nothing left for
+             them to hand over. The merges stay because a save may already hold
+             the flags and nothing should start rewriting old saves; they gate
+             nothing. What silver and bronze should pay INSTEAD is an open
+             question for the owner rather than something to invent here. */
           if(st <= 2)  AR.save.merge((GAME_ID + '-opts'), { tuner:true });
           if(st <= 3)  AR.save.merge((GAME_ID + '-opts'), { muscle:true });
         }
@@ -6751,6 +6850,54 @@ function drawMarque(g, kind, cx, cy, r, tint){
       k ? g.lineTo(x,y) : g.moveTo(x,y);
     }
     g.closePath(); g.fill();
+  } else if(kind === 'VECTOR'){
+    /* ---- A CHEVRON, STRUCK UPWARD ----------------------------------------
+       VECTOR launches, and the badge is the only thing on the car that can say
+       so standing still. Two stacked chevrons in electric blue: a direction and
+       a magnitude, which is what the word means. The same dark edge the other
+       marques carry, so it holds on a white nose. */
+    g.fillStyle = 'rgba(8,14,22,.85)';
+    for(const dy of [2.6, -3.4]){
+      g.beginPath();
+      g.moveTo(0,-9.6+dy); g.lineTo(8.4,0.6+dy); g.lineTo(4.6,0.6+dy);
+      g.lineTo(0,-4.6+dy); g.lineTo(-4.6,0.6+dy); g.lineTo(-8.4,0.6+dy);
+      g.closePath(); g.fill();
+    }
+    g.fillStyle = '#3fa9ff';
+    for(const dy of [2.0, -4.0]){
+      g.beginPath();
+      g.moveTo(0,-9.0+dy); g.lineTo(7.4,0.0+dy); g.lineTo(4.4,0.0+dy);
+      g.lineTo(0,-4.4+dy); g.lineTo(-4.4,0.0+dy); g.lineTo(-7.4,0.0+dy);
+      g.closePath(); g.fill();
+    }
+  } else if(kind === 'COMET'){
+    /* ---- A HEAD AND A TAIL ------------------------------------------------
+       COMET is the top end, and a comet is the one object everybody pictures
+       as a thing that does not slow down. A bright head low and forward with a
+       tail streaming back and up behind it - three tapering strokes, because
+       at eight pixels a drawn tail has to be strokes rather than a gradient. */
+    g.strokeStyle = 'rgba(8,10,16,.85)'; g.lineCap = 'round';
+    for(let k=0;k<3;k++){
+      g.lineWidth = 3.4 - k*0.8;
+      g.beginPath();
+      g.moveTo(1.6 - k*0.6, -1.0 + k*2.6);
+      g.lineTo(-9.4, -8.0 + k*3.4);
+      g.stroke();
+    }
+    g.strokeStyle = '#ff9a4a';
+    for(let k=0;k<3;k++){
+      g.lineWidth = 2.2 - k*0.6;
+      g.beginPath();
+      g.moveTo(1.6 - k*0.6, -1.0 + k*2.6);
+      g.lineTo(-8.8, -7.6 + k*3.4);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(8,10,16,.85)';
+    g.beginPath(); g.arc(3.4, 2.0, 6.2, 0, 6.2832); g.fill();
+    const ch = g.createRadialGradient(2.2, 0.6, 0.5, 3.4, 2.0, 5.2);
+    ch.addColorStop(0,'#fff3d6'); ch.addColorStop(0.55,'#ffb347'); ch.addColorStop(1,'#ff7a2f');
+    g.fillStyle = ch;
+    g.beginPath(); g.arc(3.4, 2.0, 5.2, 0, 6.2832); g.fill();
   } else if(kind === 'FORMULA'){
     /* ---- A GOLD LIGHTNING BOLT --------------------------------------------
        No shield, no diamond, no plate. The mark IS the bolt — a single struck
@@ -6830,7 +6977,11 @@ function drawWheel(){
      it made the wheel unfamiliar every time you changed car — the badge is
      what should tell you which one you are in. */
   /* the formula yoke is not a ring, so it must not be drawn on one */
-  const TH = (MK === 'FORMULA') ? 13 : (thin ? 7.4 : plain ? 8.6 : 9.5);
+  /* a yoke is a property of the CAR, not of the badge on it. Two of the three
+     formula cars wear their own marque now, and testing the marque gave them a
+     road wheel with a rim. */
+  const yoke = isFormula(optBody);
+  const TH = yoke ? 13 : (thin ? 7.4 : plain ? 8.6 : 9.5);
   /* ---- the rim ----------------------------------------------------------
      A flat-bottomed sports wheel: circular through the top and sides, cut off
      square along the bottom, with the corners squared off where the leather
@@ -6865,7 +7016,7 @@ function drawWheel(){
   const flatY = roundRim ? R*0.995 : R*0.62;
   const aFlat = Math.asin(flatY/R);
   function rimPath(){
-    if(MK === 'FORMULA'){
+    if(yoke){
       /* ---- A FORMULA WHEEL ----------------------------------------------
          From the reference: not a ring at all. A wide rectangular yoke with
          the whole top cut away, deep thumb cut-outs, and a screen in the
@@ -6922,7 +7073,7 @@ function drawWheel(){
   if(!plain){
   g.save();
   g.beginPath();
-  if(MK === 'FORMULA'){
+  if(yoke){
     /* the carbon weave was clipped to a circular ARC of the rim, which drew a
        ghost ring above the yoke on the one wheel that is not round. It clips
        to the yoke's own path instead. */
@@ -6976,7 +7127,7 @@ function drawWheel(){
   /* and a plain wheel has no twelve-o'clock stripe either. It is a racing
      marker - it tells a driver where straight-ahead is at a glance, in a car
      where a quarter turn matters. Nobody puts one on a lorry. */
-  if(MK !== 'FORMULA' && !plain){
+  if(!yoke && !plain){
     g.strokeStyle = '#e8ecf2'; g.lineWidth = 2.4;
     g.beginPath(); g.moveTo(0, -R-TH/2+0.5); g.lineTo(0, -R+TH/2-0.5); g.stroke();
   }
@@ -7075,7 +7226,7 @@ function drawWheel(){
   g.fillStyle = boss;
   g.beginPath(); g.arc(0,0,bR,0,6.2832); g.fill();
   g.strokeStyle = 'rgba(255,255,255,.10)'; g.lineWidth = 1;
-  if(MK !== 'FORMULA'){ g.beginPath(); g.arc(0,0,bR-0.5,0,6.2832); g.stroke(); }
+  if(!yoke){ g.beginPath(); g.arc(0,0,bR-0.5,0,6.2832); g.stroke(); }
   }
 
   /* THE CAR'S OWN BADGE. A hard-coded horse lived here, drawn after the
@@ -11003,7 +11154,24 @@ function cycleBody(d){
      step, and the classes in `API.fleet`. `traffic` is the retired flag: a save
      that already holds it keeps both, because taking a car back off somebody
      who earned it under the old rule would be the worst kind of change. */
-  const LOCK = { 'FORMULA':'formula', 'CRUISER':'cruiser',
+  /* ---- THE LADDER -------------------------------------------------------
+     Owner, 2026-08-29. A fresh install holds the SPORTS class and nothing else.
+     Each gold opens the next class up, and a class is also its tournament -
+     a tournament is run in the class of the car you took to it, so owning the
+     cars IS having the ladder open. There is no second flag to keep in step.
+
+         start          the sports class - ROADSTER, TUNER, MUSCLE
+         sports gold    the SUPER class
+         super gold     the FORMULA class, all three
+         formula gold   the iridescent paints
+
+     The supercars used to be the starting cars, which made the sports class a
+     consolation prize for a tournament run in cars that were already better
+     than it. The ladder runs the other way now, and every rung is a class.
+     ------------------------------------------------------------------- */
+  const LOCK = { 'STALLION':'super', 'MATADOR':'super', 'CREST':'super',
+                 'VECTOR':'formula', 'APEX':'formula', 'COMET':'formula',
+                 'CRUISER':'cruiser',
                  'COUPE':'production','SALOON':'production','CAB':'production',
                  'PICKUP':'utility','VAN':'utility','LORRY':'utility' };
   /* ---- DEBUG OVERRIDES ---------------------------------------------------
@@ -11019,6 +11187,9 @@ function cycleBody(d){
     /* honoured for anyone who earned it under the hundred-mile rule */
     if((need === 'production' || need === 'utility') && unlocked('traffic')) return true;
     if(need === 'production' || need === 'utility') return !!dbgTraffic;
+    /* the police car has its own switch: a patrol car is not a racer, and
+       testing pursuit should not require opening the whole ladder */
+    if(need === 'cruiser' || need === 'supercruiser') return !!dbgPolice;
     return !!dbgRacers;
   };
   /* an NPC body has stats and a sprite but is not a car you can pick */
@@ -11418,11 +11589,14 @@ function showDebug(){
     '<div class="tmenu">' +
       '<button class="go ghost" data-act="dr">UNLOCK ALL RACERS \u00b7 <b>' +
         state(dbgRacers) + '</b></button>' +
+      '<button class="go ghost" data-act="dp">UNLOCK POLICE \u00b7 <b>' +
+        state(dbgPolice) + '</b></button>' +
       '<button class="go ghost" data-act="dt">UNLOCK ALL TRAFFIC \u00b7 <b>' +
         state(dbgTraffic) + '</b></button>' +
       '<button class="go" data-act="back">BACK</button>' +
     '</div>',
     { dr:   () => { dbgRacers  = !dbgRacers;  showDebug(); },
+      dp:   () => { dbgPolice  = !dbgPolice;  showDebug(); },
       dt:   () => { dbgTraffic = !dbgTraffic; showDebug(); },
       back: () => showOptions() });
 }
@@ -11672,6 +11846,10 @@ function showUnlock(key){
       ? '<div class="gnote">GOLD \u00B7 SPORTS TOURNAMENT \u00B7 UNDER PURSUIT</div>'
       : key === 'SUPERCRUISER'
       ? '<div class="gnote">GOLD \u00B7 SUPERCAR TOURNAMENT \u00B7 UNDER PURSUIT</div>'
+      /* the open-wheelers say where they came from too - one gold pays all
+         three of them, and the card is where a player reads that */
+      : isFormula(key)
+      ? '<div class="gnote">GOLD · SUPERCAR TOURNAMENT · THE WHOLE CLASS</div>'
       : '') +
     '<div class="gstack">' +
       '<button class="go" data-act="drive">DRIVE IT</button>' +
@@ -11698,12 +11876,23 @@ function showTrophy(st){
      `sports` reads the class of the car the tournament was run in, and
      `!optEasy` is hot pursuit having been on. Both are still in scope: the save
      merges happen at the finish, and nothing resets them before the trophy. */
-  const sports = classOf(optBody) === 'sports';
-  const goldCar = sports ? null : 'FORMULA';
-  const copCar  = (st === 1 && !optEasy) ? (sports ? 'CRUISER' : 'SUPERCRUISER') : null;
+  /* ---- THERE ARE THREE LADDERS NOW --------------------------------------
+     A formula tournament pays nothing, and that is deliberate rather than
+     unfinished: it is the top of the game, and there is no car above it to
+     hand over. What it gives is the standing itself, so the screen says so
+     instead of announcing a prize the player already owns.
+     -------------------------------------------------------------------- */
+  const cls = classOf(optBody);
+  const sports = cls === 'sports';
+  /* the first car of the class this gold just opened */
+  const goldCar = sports ? 'MATADOR' : cls === 'super' ? 'APEX' : null;
+  const copCar  = (st === 1 && !optEasy && cls !== 'formula')
+                ? (sports ? 'CRUISER' : 'SUPERCRUISER') : null;
   /* the headline prize of the ladder you ran, in the words the player will
      recognise from the garage */
-  const goldNote = sports ? 'IRIDESCENT PAINT UNLOCKED' : 'FORMULA UNLOCKED · NO COMPROMISE';
+  const goldNote = sports ? 'SUPERCAR CLASS UNLOCKED \u00B7 ALL THREE'
+                 : cls === 'super' ? 'FORMULA CLASS UNLOCKED \u00B7 ALL THREE'
+                 : 'IRIDESCENT PAINT UNLOCKED \u00B7 THE LAST THING TO WIN';
   /* the button opens the most interesting NEW car. A police car beats paint,
      and beats a formula the player may already have from a previous gold. */
   const showCar = copCar || goldCar || (st === 2 ? 'TUNER' : st === 3 ? 'MUSCLE' : null);
@@ -11811,7 +12000,24 @@ if (AR && AR.options) AR.options.define([
 (function(){
   const g0 = AR && AR.save ? AR.save.get((GAME_ID + '-opts')) : null;
   if(g0){
-    if(g0.body && BODY[g0.body]) optBody = g0.body;
+    /* the one formula car became three, and APEX is the one it became. A save
+       holding the retired key would otherwise fail the BODY test in silence and
+       drop the player back into a MATADOR. */
+    if(g0.body === 'FORMULA') optBody = 'APEX';
+    else if(g0.body && BODY[g0.body]) optBody = g0.body;
+    /* ---- AN OLD SAVE KEEPS ITS SUPERCARS -------------------------------
+       The supercars were free until the ladder was built, so a player who has
+       been driving one for a week must not open the garage and find it gone.
+       Any save that shows a career - a prize won, a car chosen, a distance
+       driven - is granted the class it already had. A save with none of that
+       has nothing to lose and starts at the bottom like everyone else.
+       ---------------------------------------------------------------- */
+    if(!g0.super){
+      const had = g0.formula || g0.iridescent || g0.cruiser || g0.supercruiser ||
+                  g0.traffic || g0.tuner || g0.muscle ||
+                  (g0.body && classOf(g0.body) !== 'sports');
+      if(had && AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { super:true });
+    }
     if(g0.paint && PAINT[g0.paint]){ optPaint = g0.paint; freePaint = g0.paint; }
     if(typeof g0.manual === 'boolean') optManual = g0.manual;
     if(typeof g0.timed === 'boolean') timedRun = g0.timed;
@@ -11924,7 +12130,8 @@ requestAnimationFrame(frameLoop);
        picture of everything is unreadable, and because these are the groupings
        the fleet actually has.
        ------------------------------------------------------------------- */
-    const CLS = { STALLION:'super', MATADOR:'super', CREST:'super', FORMULA:'super',
+    const CLS = { STALLION:'super', MATADOR:'super', CREST:'super',
+                  VECTOR:'formula', APEX:'formula', COMET:'formula',
                   ROADSTER:'sport', TUNER:'sport', MUSCLE:'sport',
                   CRUISER:'police', SUPERCRUISER:'police',
                   SALOON:'production', COUPE:'production', CAB:'production',

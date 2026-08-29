@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # ONE SHEET PER CLASS. A single picture of everything came out unreadable at any
 # size that fits on a screen - the owner asked for them split, and a class is the
 # grouping the fleet actually has rather than one invented for the page.
-CLASSES = ['super', 'sport', 'police', 'production', 'utility']
+CLASSES = ['formula', 'super', 'sport', 'police', 'production', 'utility']
 
 
 def _handover():

@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-33"></a>
+## [0.9.33] - 2026-08-29
+- Added: **the formula class - VECTOR, APEX and COMET.** One formula car became three, each at least
+  twenty per cent above the *best* supercar in every stat: 248, 260 and 276mph, biased to
+  acceleration, balance and top end. They share one design and are told apart by name, badge and
+  numbers - VECTOR wears blue chevrons, APEX the gold bolt, COMET a comet
+  ([RLG-070](../fragments/RLG-070.md)).
+- Changed: **`classOf` knows a third class.** A formula car used to fall through into 'super' and race
+  road cars. The grid, the ladder, the yoke, the missing indicators and the missing wipers all follow
+  the class now, so nothing names these three cars again ([RLG-070](../fragments/RLG-070.md)).
+- Changed: **the ladder of classes.** A fresh install holds the sports class alone. A sports gold
+  opens the supercars, a supercar gold opens the formula class, and a formula gold opens the
+  iridescent paints. An existing save that shows a career keeps the supercars it already had
+  ([RLG-070](../fragments/RLG-070.md)).
+- Added: **a third debug switch.** All racers, police, all traffic - the patrol car used to ride on
+  the racers' switch, so testing a pursuit opened the whole ladder with it
+  ([RLG-070](../fragments/RLG-070.md)).
+
 <a id="v0-9-32"></a>
 ## [0.9.32] - 2026-08-29
 - Added: **a plain steering wheel for the production and utility cars.** They were being given the
