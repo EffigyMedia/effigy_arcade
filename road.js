@@ -8246,14 +8246,48 @@ function quad(ax,ay,bx,by,cx,cy,dx,dy){
    -------------------------------------------------------------------------- */
 let spriteStats = { drawn:0, culled:0, clipped:0 };
 
+/* ---- WHY A VEHICLE WAS NOT DRAWN -----------------------------------------
+   [[RLG-041]]: cars disappear and reappear, reported from a real device and not
+   reproduced by anything here. `spriteStats` counts drawn against culled, which
+   separates "cars are missing" from "cars are hidden" and cannot say WHICH car
+   or WHY - and this file can drop a sprite in seven different places, five of
+   them without touching a counter.
+
+   The ruling says the first unit is a MEASUREMENT and that it must be able to
+   tell a draw fault from a cull fault: a car still in `traffic` and not painted
+   is one bug, a car that has left the array is a different one. So when the
+   watch is on, every vehicle offered to the painter records the reason it did
+   or did not appear, and `tools/pop-test.py` reads the sequence.
+
+   Off - which is always, in the product - it costs one boolean test per sprite.
+   -------------------------------------------------------------------------- */
+let drawWatch = 0, drawWhy = '', drawSeen = [], drawFrameNo = 0, drawVid = 0;
+function noteSprite(o, why){
+  if(!drawWatch) return;
+  if(!o.__vid) o.__vid = ++drawVid;
+  drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why,
+                  dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
+}
+
 function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
-  if(worldZ - pos < 430) return null;
+  drawWhy = 'drawn';
+  /* A painter with no entry for a body renders nothing, and RLG-041 lists that
+     as one of the candidates for the reported pop. Under the watch it is named
+     and skipped; in the product it falls through and does exactly what it did
+     before, because swallowing a missing sprite quietly is how a fault like
+     that survives a green run. */
+  if(!img){ drawWhy = 'nosprite'; if(drawWatch) return null; }
+  if(worldZ - pos < 430){ drawWhy = 'behind'; return null; }
   const p = proj(worldX*ROAD, worldZ);
-  if(!p.ok) return null;
+  if(!p.ok){ drawWhy = 'noproj'; return null; }
   const w = p.scale*worldW*ROAD*W/2*2;
-  if(w < 1.2 || w > W*3.4) return null;
+  /* both of these return nothing and count nothing: a sprite too small to see,
+     and a sprite so close it fills the screen. The second one is a vehicle
+     vanishing at the moment it is nearest, which is worth being able to see. */
+  if(w < 1.2){ drawWhy = 'tiny'; return null; }
+  if(w > W*3.4){ drawWhy = 'huge'; return null; }
   const h = w * img.height/img.width;
-  if(p.y - h > H || p.y < horizon - h) return null;
+  if(p.y - h > H || p.y < horizon - h){ drawWhy = 'offscreen'; return null; }
   /* ---- NO OCCLUSION TEST HERE ANY MORE -------------------------------
      `hiddenBehindHill` asked whether `roadY[idx]` had been filled — but
      sprites are emitted DURING the road pass now, so for any car the slices
@@ -8277,7 +8311,7 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      ------------------------------------------------------------------- */
   const brow = crestY(worldZ);
   /* even the roof is under the crest - genuinely out of sight */
-  if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; return null; }
+  if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; drawWhy = 'crest'; return null; }
   if(brow !== null && p.y > brow){
     ctx.save();
     /* keep what is ABOVE the crest line; the ground in front covers the rest */
@@ -8297,6 +8331,7 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
     ctx.globalAlpha=1;
     ctx.restore();
     spriteStats.clipped++;
+    drawWhy = 'clipped';
     return {x:p.x, y:p.y, w, h};
   }
   if(alpha!==undefined){ ctx.globalAlpha=alpha; }
@@ -8371,13 +8406,32 @@ function drawWorld(){
      -------------------------------------------------------------------- */
   const base = Math.floor(pos/SEG);
   spriteBuckets = {};
+  if(drawWatch){ drawFrameNo++; drawSeen = []; }
   for(const it of items){
     const n = Math.floor(it.z/SEG) - base;
-    if(n < 0 || n > DRAW+1) continue;
+    if(n < 0 || n > DRAW+1){
+      /* out of the drawn road entirely: the painter is never offered this one */
+      if(drawWatch && (it.kind==='t' || it.kind==='g' || it.kind==='k'))
+        noteSprite(it.o, 'unbucketed');
+      continue;
+    }
     (spriteBuckets[n] || (spriteBuckets[n] = [])).push(it);
   }
 }
 /* draw everything standing on one segment */
+/* Anything left in a bucket the road never painted. That is not a fault by
+   itself - an unemitted bucket is exactly how a car behind a hill is hidden
+   (RLG-021) - but it is a distinct reason for a car not being on the screen and
+   the measurement has to be able to name it. */
+function sweepUnemitted(){
+  if(!drawWatch) return;
+  for(const n in spriteBuckets){
+    if(emitted[n]) continue;
+    for(const it of spriteBuckets[n])
+      if(it.kind==='t' || it.kind==='g' || it.kind==='k') noteSprite(it.o, 'unemitted');
+  }
+}
+
 function emitBucket(n){
   const list = spriteBuckets[n];
   if(!list || emitted[n]) return;
@@ -8401,6 +8455,7 @@ function emitBucket(n){
          ------------------------------------------------------------- */
       const box = drawSprite(RIVAL_SP[(r.body||'MATADOR')+'|'+r.paint] || SP.player,
                              r.x, r.z, r.w, r.wreck>0?0.85:1);
+      noteSprite(r);
       if(box){
         /* 26px of car is a long way up the road — the place vanished exactly
            when you most wanted it, on the cars you are chasing. 14 shows it
@@ -8434,6 +8489,7 @@ function emitBucket(n){
       const set = TRAFFIC_SP[it.o.type];
       const img = set ? set[(it.o.paintN|0) % set.length] : SP[it.o.type];
       const box = drawSprite(img, it.o.x, it.o.z, it.o.w);
+      noteSprite(it.o);
       /* Tail lights on the same schedule the street lamps use, and BRIGHT the
          moment a car is actually shedding speed. Same rule for everything on
          the road, seen from in front or behind. */
@@ -8443,6 +8499,7 @@ function emitBucket(n){
          driveable cruiser gets, so the fleet reads as one force */
       const spr = it.o.superc ? (SP.superCop || SP.cop) : SP.cop;
       const box = drawSprite(spr, it.o.x, it.o.z, it.o.w, it.o.wreck>0?0.85:1);
+      noteSprite(it.o);
       drawCopLights(box, sirenPhase + it.o.phase);
       /* backing up: white reverse lamps, low and inboard on the tail */
       if(it.o.spd < -60 && it.o.wreck <= 0) drawReverse(box);
@@ -8952,6 +9009,7 @@ function draw(){
   drawHaze();
   drawWorld();          /* buckets the sprites */
   drawRoad();           /* paints the road AND emits them, far to near */
+  sweepUnemitted();     /* RLG-041: whatever the road never got to */
   drawPursuitWash();
   drawPlayer();
   drawRain();
@@ -10716,6 +10774,13 @@ requestAnimationFrame(frameLoop);
      survive that widening, so the instrument reads the geometry from the engine
      rather than restating it. */
   API.laneX = function(){ return LANE_X.slice(); };
+  /* RLG-041's instrument. `watchDraw(true)` turns the ledger on; `drawFrame()`
+     returns the last frame painted and what happened to every vehicle in it.
+     The frame number is returned so a reader can tell a missed frame from a
+     vehicle that was never offered - two things that look identical from a
+     sample taken on a timer. */
+  API.watchDraw = function(on){ drawWatch = on ? 1 : 0; drawSeen = []; return drawWatch; };
+  API.drawFrame = function(){ return { n:drawFrameNo, seen:drawSeen }; };
   API.scattered = function(){ return scattered; };
   API.nearestSpawn = function(){ return Math.round(nearestSpawn); };
   API.drawDistance = function(){ return DRAW * SEG; };

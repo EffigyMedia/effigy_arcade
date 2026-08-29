@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-11"></a>
+## [0.9.11] — 2026-08-28
+- Added: **the engine can say why a vehicle was not drawn.** A ledger behind `API.watchDraw()`
+  records the painter's own exit for every vehicle offered to it — `drawn`, `clipped`, `crest`,
+  `offscreen`, `behind`, `tiny`, `huge`, `unbucketed`, `unemitted`, `nosprite`. Off in the product,
+  where it costs one boolean test per sprite ([RLG-041](../fragments/RLG-041.md)).
+- Added: `tools/pop-test.py` — the measurement RLG-041 asks for before any fix. It answers the
+  ruling's question: **every disappearance was an object still in `traffic` or `racers` that the
+  painter declined to paint. Zero cull faults in four runs.** Two mechanisms account for the
+  flickers — a bucket alternating between emitted and not at ~11,000 units, and the draw-distance
+  edge at ~30,300 ([RLG-041](../fragments/RLG-041.md)).
+- Known: the run is a headless desktop browser at 480x900 and the owner's report is from a phone.
+  **A clean run here is not evidence the reported fault is absent**
+  ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-10"></a>
 ## [0.9.10] — 2026-08-28
 - Fixed: **traffic that gave way was never given back.** `keepLaneOpen` leans the car furthest ahead
