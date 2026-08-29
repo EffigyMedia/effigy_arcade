@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.21';
+window.ROAD_BUILD = '0.9.22';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1403,11 +1403,60 @@ function rr(g,x,y,w,h,r){
   g.lineTo(x+r,y+h); g.quadraticCurveTo(x,y+h,x,y+h-r);
   g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y); g.closePath();
 }
+/* ---- A LAMP IS ONE DRAWING, RUN TWICE ------------------------------------
+   [[RLG-053]], owner's ruling: a lit lamp is the UNLIT BULB DRAWN AGAIN, lit. It
+   is never a rectangle with its own coordinates.
+
+   The engine did the opposite. `paintCar` drew a tail lamp at whatever geometry
+   its body style called for, and `tailLights` and `playerBrakes` drew the glow
+   from a rect written out by hand - the comment above `tailLights` says so in as
+   many words: "These MUST match what paintCar draws... copied here rather than
+   guessed." Two descriptions of one object, agreeing only until somebody edits
+   either.
+
+   So a painter DECLARES its lamps into this registry, as functions that draw
+   themselves in sprite coordinates and take one argument: whether they are lit.
+   The sprite runs each one unlit as it bakes. `lampsLit` runs the same function
+   again, on the screen, through a transform that maps the sprite onto the car -
+   so the lit lamp cannot be anywhere but exactly where the unlit one is, and a
+   reskin moves both because there is only one of them.
+   ------------------------------------------------------------------------- */
 function sprite(w,h,paint){
   const c = document.createElement('canvas');
   c.width=w; c.height=h;
-  paint(c.getContext('2d'), w, h);
+  const lamps = {};
+  paint(c.getContext('2d'), w, h, lamps);
+  c.lamps = lamps;
   return c;
+}
+
+/* Run the declared lamps IN THE FRAME THE CAR IS ALREADY DRAWN IN. The caller
+   has whatever transform put the sprite on the screen - for the player that
+   includes the lean, which the old glow was drawn outside of, so the lights did
+   not roll with the car. `x`,`y` is the sprite's top-left in the current frame.
+
+   The sprite is the only description of where a lamp is. This scales sprite
+   space onto the drawn size and re-runs the declaration, so the lit lamp lands
+   on the unlit bulb by construction rather than by agreement. */
+function lampsHere(spr, x, y, w, h, ids, alpha){
+  if(!spr || !spr.lamps) return false;
+  let any = false;
+  for(const id of ids) if(spr.lamps[id]) any = true;
+  if(!any) return false;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(w / spr.width, h / spr.height);
+  ctx.globalCompositeOperation = 'lighter';
+  if(alpha !== undefined) ctx.globalAlpha = alpha;
+  for(const id of ids){ const f = spr.lamps[id]; if(f) f(ctx, true); }
+  ctx.restore();
+  return true;
+}
+
+/* the same thing for a car drawn flat from a `drawSprite` box */
+function lampsLit(box, spr, ids, alpha){
+  if(!box || box.w < 10) return false;
+  return lampsHere(spr, box.x - box.w/2, box.y - box.h, box.w, box.h, ids, alpha);
 }
 
 // generic rear-of-car painter
@@ -2862,7 +2911,7 @@ function paintFront(o){
 }
 
 function paintCar(o){
-  return (g,w,h)=>{
+  return (g,w,h,lamps)=>{
     const cy = h;
     // ground shadow
     g.fillStyle='rgba(0,0,0,.5)';
@@ -3359,33 +3408,83 @@ function paintCar(o){
         g.beginPath(); g.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); g.stroke();
       }
     } else {
+      /* ---- THE FIRST VEHICLE CONVERTED TO RLG-053 -------------------------
+         MATADOR's tail, and only MATADOR's. CREST and STALLION above still
+         paint their lamps straight into the sprite with no declaration, and
+         `playerBrakes` still falls back to its own rectangle for them. That is
+         the owner's ruling followed exactly - ONE VEHICLE END TO END first, so
+         the shape is proved before it is repeated fifteen times - and the
+         record has to say which one was done. This one.
+
+         Everything below is written once and run twice: unlit as the sprite
+         bakes, and lit by `lampsLit` on the screen, through a transform that
+         maps this sprite onto the car. There is no second set of coordinates
+         anywhere, which is the whole ruling.
+         ------------------------------------------------------------------ */
       /* angular blades that sweep out and down at the tips */
-      for(const sideL of [0,1]){
-        const x0 = sideL ? w*0.54 : w*0.10, dir = sideL ? 1 : -1;
-        g.fillStyle = 'rgba(18,14,16,.8)';
-        rr(g, x0, ty, w*0.36, th*0.95, 2); g.fill();
-        g.strokeStyle = lamp0; g.lineWidth = Math.max(1.2, th*0.34);
-        g.lineCap = 'round'; g.lineJoin = 'round';
-        /* ---- THREE chevrons a side ------------------------------------
-           One big arrow read as a single graphic. Three nested, each smaller
-           and further out, reads as a LAMP CLUSTER — and it echoes the triple
-           blades on its own front intakes. */
-        const ax = sideL ? x0 + w*0.02 : x0 + w*0.34;
-        for(let k=0;k<3;k++){
-          const inset = k * w*0.058;
-          const span  = w*0.115 - k*w*0.014;
-          g.strokeStyle = lamp0;
-          g.lineWidth = Math.max(1.1, th*0.30 - k*th*0.045);
-          g.beginPath();
-          g.moveTo(ax + dir*inset, ty + th*0.20);
-          g.lineTo(ax + dir*(inset + span), ty + th*0.46);
-          g.lineTo(ax + dir*inset, ty + th*0.74);
-          g.stroke();
-          g.strokeStyle = lamp1;
-          g.lineWidth = Math.max(0.5, th*0.12 - k*th*0.018);
-          g.stroke();
+      const blades = (gg, on) => {
+        const c0 = on ? '#ff2f3e' : lamp0;
+        const c1 = on ? '#ffe2dc' : lamp1;
+        for(const sideL of [0,1]){
+          const x0 = sideL ? w*0.54 : w*0.10, dir = sideL ? 1 : -1;
+          /* the housing is the dark casing the bulb sits in - it belongs to the
+             car, not to the light, so it is drawn only when the lamp is off */
+          if(!on){
+            gg.fillStyle = 'rgba(18,14,16,.8)';
+            rr(gg, x0, ty, w*0.36, th*0.95, 2); gg.fill();
+          }
+          gg.lineCap = 'round'; gg.lineJoin = 'round';
+          /* ---- THREE chevrons a side ------------------------------------
+             One big arrow read as a single graphic. Three nested, each smaller
+             and further out, reads as a LAMP CLUSTER — and it echoes the triple
+             blades on its own front intakes. */
+          const ax = sideL ? x0 + w*0.02 : x0 + w*0.34;
+          for(let k=0;k<3;k++){
+            const inset = k * w*0.058;
+            const span  = w*0.115 - k*w*0.014;
+            gg.strokeStyle = c0;
+            gg.lineWidth = Math.max(1.1, th*0.30 - k*th*0.045);
+            gg.beginPath();
+            gg.moveTo(ax + dir*inset, ty + th*0.20);
+            gg.lineTo(ax + dir*(inset + span), ty + th*0.46);
+            gg.lineTo(ax + dir*inset, ty + th*0.74);
+            gg.stroke();
+            gg.strokeStyle = c1;
+            gg.lineWidth = Math.max(0.5, th*0.12 - k*th*0.018);
+            gg.stroke();
+          }
         }
-      }
+      };
+      blades(g, false);
+      if(lamps) lamps.tail = blades;
+
+      /* ---- INDICATORS, WIRED AND UNASKED ----------------------------------
+         The owner's ruling (RLG-052, refined): every vehicle in the game has
+         indicators and they are wired to FUNCTION. What differs is only whether
+         anything asks them to come on - traffic does before a merge, a racer
+         has no reason to, and the player has no reason and no control. So the
+         bulb is part of the car and the path works, on this car, today.
+         --------------------------------------------------------------------- */
+      const turn = (sideL) => (gg, on) => {
+        const x0 = sideL ? w*0.54 : w*0.10;
+        /* hard against the outer end of the blade housing, where a real one is */
+        const bx = sideL ? x0 + w*0.305 : x0 + w*0.015;
+        const by = ty + th*0.16, bw = w*0.040, bh = th*0.62;
+        if(!on){
+          gg.fillStyle = 'rgba(40,26,10,.92)';
+          rr(gg, bx, by, bw, bh, bw*0.35); gg.fill();
+          gg.fillStyle = 'rgba(120,78,26,.55)';
+          rr(gg, bx + bw*0.22, by + bh*0.12, bw*0.56, bh*0.28, bw*0.22); gg.fill();
+        } else {
+          gg.fillStyle = '#ffb02e';
+          rr(gg, bx, by, bw, bh, bw*0.35); gg.fill();
+          gg.fillStyle = 'rgba(255,236,190,.9)';
+          rr(gg, bx + bw*0.20, by + bh*0.16, bw*0.60, bh*0.34, bw*0.22); gg.fill();
+        }
+      };
+      const turnL = turn(0), turnR = turn(1);
+      turnL(g, false); turnR(g, false);
+      if(lamps){ lamps['turn.l'] = turnL; lamps['turn.r'] = turnR; }
     }
 
     /* The marque, small, high on the panel. CREST wears a full-width light
@@ -7578,6 +7677,11 @@ function step(dt){
   shake = Math.max(0, shake - dt*2.2);
   hitFlash = Math.max(0, hitFlash - dt*2.4);
   sirenPhase += dt*7;
+  /* an indicator flashes at about 1.5Hz, the rate a real relay runs at. It is
+     advanced whether or not anything is signalling, so a lamp that comes on is
+     already in step with every other one on the road rather than starting its
+     own cycle - which is what makes a line of traffic look like traffic. */
+  blinkPhase += dt*9.4;
 
   var near = 0;
   for(const k of cops){
@@ -8783,30 +8887,28 @@ function emitBucket(n){
    touch the brake, either way. The player had none at all — every other car
    on the road had them.
    -------------------------------------------------------------------------- */
-function playerBrakes(box){
-  if(!box || box.w < 10) return;
-  const lit = lampsOn();
-  /* the pedal, the same as the glow above it */
-  const on = braking ? 1 : (lit > 0.01 ? 0.34 * lit : 0);
-  if(on <= 0.01) return;
-  const left = box.x - box.w/2;
-  const lw = box.w*0.265, lh = box.h*0.11;
-  const ly = box.y - box.h*0.34;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for(const lx of [left + box.w*0.135, left + box.w*0.60]){
-    ctx.fillStyle = 'rgba(255,' + (braking?52:26) + ',' + (braking?64:38) + ',' + on + ')';
-    ctx.fillRect(lx, ly, lw, lh);
-    if(box.w > 40){
-      const gl = ctx.createRadialGradient(lx+lw/2, ly+lh/2, 0, lx+lw/2, ly+lh/2, lw*1.5);
-      gl.addColorStop(0, 'rgba(255,40,60,' + (on*0.55) + ')');
-      gl.addColorStop(1, 'rgba(255,30,50,0)');
-      ctx.fillStyle = gl;
-      ctx.beginPath(); ctx.arc(lx+lw/2, ly+lh/2, lw*1.5, 0, 6.2832); ctx.fill();
-    }
-  }
-  ctx.restore();
-}
+/* ---- THE PLAYER'S OWN INDICATORS -----------------------------------------
+   Wired, and nothing in the game asks for them: RLG-052's ruling is that every
+   vehicle's signals FUNCTION and that only the driver differs. There is no
+   control and there will not be one - RLG-002 makes this touch-only and screen
+   space is the scarcest thing on it. The harness lights them through
+   `API.signal`, which is what proves the path works on a car nobody signals
+   with, and a later session finding an unlit bulb should read RLG-052 before
+   concluding anything is unfinished. */
+let playerTurn = 0, blinkPhase = 0, blinkHold = false, playerScreen = null;
+
+/* ---- `playerBrakes` IS GONE, AND IT HAD NEVER RUN ------------------------
+   It drew the player's brake glow from its own rectangle - `box.w*0.265`,
+   `box.h*0.11`, at `0.135` and `0.60` - a second description of a lamp the
+   sprite already had, and the exact fault RLG-053 was written about. It was
+   also DEAD: nothing in this file called it, and the glow you actually saw was
+   a third copy, inline in `drawPlayer`, from a third set of numbers.
+
+   Three descriptions of two tail lamps, one of them unreachable. The live one
+   is now the sprite's own declaration; the inline copy remains only for bodies
+   that have not been converted, and this one is deleted rather than converted,
+   because converting it would have kept a second answer alive.
+   ------------------------------------------------------------------------- */
 
 function drawPlayer(){
   /* THE CAR HAD A MIND OF ITS OWN. `proj()` adds the road's screen-space sweep
@@ -8970,6 +9072,21 @@ function drawPlayer(){
   ctx.rotate(lean*0.12);
   ctx.scale(1 - Math.abs(lean)*0.10, 1);
   ctx.drawImage(SP.player, -w/2, -h, w, h);
+  playerScreen = { x:p.x, y:p.y + bump, w:w, h:h };
+  /* ---- AND ITS LAMPS, IN THE SAME FRAME (RLG-053) ----------------------
+     The glow used to be painted further down this function, outside this
+     transform, from its own coordinates - so it did not lean with the car and
+     it agreed with the sprite only as long as nobody edited either. On a body
+     that declares its lamps there is nothing to agree with: the lamp IS the
+     bulb, drawn again.
+     ------------------------------------------------------------------- */
+  if(SP.player.lamps){
+    const glowNow = braking ? 0.90 : (lampsOn() > 0.30 ? 0.28 * lampsOn() : 0);
+    if(glowNow > 0.01)
+      lampsHere(SP.player, -w/2, -h, w, h, ['tail'], Math.min(1, glowNow));
+    if(playerTurn && (blinkHold || Math.sin(blinkPhase) > 0))
+      lampsHere(SP.player, -w/2, -h, w, h, [playerTurn < 0 ? 'turn.l' : 'turn.r'], 1);
+  }
   ctx.restore();
 
   /* ---- YOUR OWN LIGHT BAR ---------------------------------------------
@@ -9055,7 +9172,11 @@ function drawPlayer(){
   const litNow = lampsOn();
   const hard = braking;
   const glow = hard ? 0.90 : (litNow > 0.30 ? 0.28 * litNow : 0);
-  if(glow > 0.01){
+  /* ONLY for a body that has not been converted yet. CREST and STALLION still
+     paint their tails straight into the sprite with no declaration, so their
+     glow is still a pair of circles placed by hand - which is the fault RLG-053
+     exists to remove, left in place until each of them is converted in turn. */
+  if(glow > 0.01 && !SP.player.lamps){
   ctx.globalCompositeOperation='lighter';
   for(const ox of [-0.24,0.24]){
     const g = ctx.createRadialGradient(p.x+ox*w, p.y-h*0.34, 0, p.x+ox*w, p.y-h*0.34, w*0.30);
@@ -11034,6 +11155,19 @@ requestAnimationFrame(frameLoop);
      survive that widening, so the instrument reads the geometry from the engine
      rather than restating it. */
   API.laneX = function(){ return LANE_X.slice(); };
+  /* RLG-052/RLG-053: the player's indicators are wired and nothing in the game
+     asks for them, so this is the only thing that ever will. -1 left, 1 right,
+     0 off. It exists to PROVE the path works on a car nobody signals with. */
+  API.signal = function(v){ playerTurn = v|0; return playerTurn; };
+  /* where the car was last drawn, and a way to hold the blink on, so a harness
+     can ask whether the lit lamp lands on the sprite's own bulb rather than
+     merely near it. `API.playerSprite` already existed and is the other half. */
+  API.playerScreen = function(){ return playerScreen; };
+  API.holdBlink = function(v){ blinkHold = !!v; return blinkHold; };
+  API.lampsOf = function(k){
+    const spr = k === 'player' ? SP.player : null;
+    return spr && spr.lamps ? Object.keys(spr.lamps) : [];
+  };
   /* RLG-041's instrument. `watchDraw(true)` turns the ledger on; `drawFrame()`
      returns the last frame painted and what happened to every vehicle in it.
      The frame number is returned so a reader can tell a missed frame from a

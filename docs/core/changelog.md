@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-22"></a>
+## [0.9.22] - 2026-08-29
+- Added: **a lamp is one drawing, run twice.** A painter declares its lamps as functions that draw
+  themselves and take one argument - lit or not. The sprite runs each unlit as it bakes; the screen
+  runs the same function again through a transform that maps the sprite onto the car. One
+  description, executed twice, so a reskin moves the bulb and its light together
+  ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **there were three descriptions of the player's tail lamps.** The sprite's own art,
+  `playerBrakes` (which **nothing ever called**), and a third inline in `drawPlayer` - the one you
+  actually saw. `playerBrakes` is deleted rather than converted; the inline copy remains only for
+  bodies not yet converted ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: the player's tail glow was drawn **outside the transform that draws the car**, so it did not
+  lean with it ([RLG-053](../fragments/RLG-053.md)).
+- Added: **the MATADOR has indicators, wired and unasked.** An unlit amber bulb at each blade
+  housing, lit through the same declaration, with the blink phase running at ~1.5Hz whether or not
+  anything is signalling - so a lamp that comes on is in step with every other one on the road.
+  Nothing in the game asks for it, which is the ruling and not an omission
+  ([RLG-052](../fragments/RLG-052.md), [RLG-053](../fragments/RLG-053.md)).
+- Added: `tools/lamp-test.py` - runs the declaration lit into a blank canvas and checks those pixels
+  sit where the **baked sprite's** own unlit bulb sits. Shifting only the lit pass by 5% fails it.
+  Two earlier versions diffed live frames and were reporting weather: 800-1,300 pixels of the car
+  change between two frames with the lamp off ([RLG-053](../fragments/RLG-053.md)).
+- **Not converted:** CREST, STALLION, FORMULA, the cruiser, the super cruiser, every traffic body,
+  the front sprites and the rear-view. `lamp-test` skips rather than passes on those, so a
+  half-converted engine cannot read as a finished one ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-21"></a>
 ## [0.9.21] - 2026-08-29
 - Fixed: **fully visible cars vanished beyond the bottom of a valley.** `horizon` is a fixed line at

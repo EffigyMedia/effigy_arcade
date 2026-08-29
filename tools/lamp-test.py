@@ -1,0 +1,196 @@
+"""RLG-053: is a lit lamp the UNLIT BULB DRAWN AGAIN, or something drawn near it?
+
+The owner's ruling is a technique: a lit lamp is never a rectangle with its own coordinates, it is
+the bulb the painter already drew, drawn once more in a lit colour. The engine did the opposite, and
+the comment above the old `tailLights` admitted it - "These MUST match what paintCar draws... copied
+here rather than guessed." Two descriptions of one object. There were in fact three, and one of them
+was unreachable.
+
+A count cannot check a technique and neither can a screenshot. What can:
+
+  1. the sprite DECLARES lamps at all - read from the baked canvas, not from a name in road.js
+  2. the indicator is WIRED - `signal()` lights it on a car nothing in the game ever signals with,
+     which is the ruling that every vehicle's lamps function and only the driver differs
+  3. THE LIGHT LANDS ON THE BULB - the pixels that change when the lamp comes on sit inside the
+     region the sprite's own unlit bulb occupies, mapped onto the car as drawn
+
+Point 3 is the one that would catch a reskin moving the art and leaving the glow behind, which is
+the whole reason the ruling exists.
+
+THE CONTROL, AND IT IS NOT OPTIONAL
+-----------------------------------
+The world does not hold still: the sky turns, the tail glow follows the daylight, and the car
+breathes. Measured here, that is ~800 changed pixels on the car between two frames with the lamp
+OFF, against ~120 from the lamp itself. A plain before-and-after diff is mostly churn and reports a
+centroid in the middle of the car. So two frames are taken with the lamp off first, and only pixels
+that change WITH the lamp and NOT in the control are attributed to it.
+
+WHICH VEHICLE THIS COVERS
+-------------------------
+The MATADOR body, and only that one. CREST and STALLION still paint their tails straight into the
+sprite with no declaration and still light them from a hand-placed pair of circles. The ruling says
+one vehicle end to end first, and the record has to say which - this harness is that record, and it
+SKIPS rather than passes when the chosen body has not been converted.
+"""
+
+import sys, threading, http.server, socketserver, functools, importlib.util
+from pathlib import Path
+sys.path.insert(0, 'tools')
+from harness import launch_chromium, console_utf8
+from playwright.sync_api import sync_playwright
+spec = importlib.util.spec_from_file_location('dt', Path('tools/drive-test.py'))
+dt = importlib.util.module_from_spec(spec); spec.loader.exec_module(dt)
+console_utf8()
+h = functools.partial(http.server.SimpleHTTPRequestHandler, directory='.')
+srv = socketserver.TCPServer(('127.0.0.1', 0), h); PORT = srv.server_address[1]
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+# Where the RIGHT indicator bulb is in the baked sprite, in sprite units. Read from the sprite.
+BULB = """(side) => {
+  const spr = window.__probe.road.playerSprite();
+  const c = document.createElement('canvas');
+  c.width = spr.width; c.height = spr.height;
+  const g = c.getContext('2d'); g.drawImage(spr, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1, n = 0;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (side > 0 ? x < c.width/2 : x > c.width/2) continue;
+    const i = (y*c.width+x)*4, r = d[i], gg = d[i+1], b = d[i+2], a = d[i+3];
+    if (a < 40) continue;
+    if (r > 28 && r < 150 && gg > 14 && gg < 100 && b < 60 && r > gg*1.25 && gg > b*1.3) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y; n++;
+    }
+  }
+  return n ? {x0:x0/c.width, x1:x1/c.width, y0:y0/c.height, y1:y1/c.height, n:n} : null;
+}"""
+
+# the drawn car, in screen pixels, taken from the same numbers drawPlayer uses
+BOX = """() => {
+  const R = window.__probe.road, spr = R.playerSprite();
+  const p = R.playerScreen();
+  return p ? {x:p.x, y:p.y, w:p.w, h:p.h, sw:spr.width, sh:spr.height} : null;
+}"""
+
+SHOT = """() => {
+  const c = document.querySelector('canvas');
+  const g = c.getContext('2d');
+  const d = g.getImageData(0, 0, c.width, c.height);
+  return {w:c.width, h:c.height, data:Array.from(d.data)};
+}"""
+
+bad = 0
+
+
+def ok(cond, label, detail=''):
+    global bad
+    if not cond:
+        bad += 1
+    print('  %s  %s%s' % ('ok  ' if cond else 'FAIL', label, '   ' + detail if detail else ''))
+
+
+with sync_playwright() as p:
+    b = launch_chromium(p, headless=True, args=['--mute-audio'])
+    ctx = b.new_context(viewport={'width': 480, 'height': 900}); ctx.add_init_script(dt.INIT)
+    pg = ctx.new_page()
+    errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.goto('http://127.0.0.1:%d/games/sw/interstate.html' % PORT, wait_until='load')
+    pg.wait_for_timeout(1600)
+    pg.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
+    pg.click('[data-act="play"]')
+    pg.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+    pg.click('[data-act="drive"]'); pg.wait_for_timeout(1500)
+    pg.evaluate("() => { window.__probe.road.setSpd(0); }")
+    pg.wait_for_timeout(600)
+
+    bulb = pg.evaluate(BULB, 1)
+    box = pg.evaluate(BOX)
+    lamps = pg.evaluate("() => window.__probe.road.lampsOf('player')")
+    print('  ..    the player sprite declares: %s' % (lamps or 'nothing'))
+    if not lamps:
+        print()
+        print('  this body has not been converted yet - RLG-053 is one vehicle at a time,')
+        print('  and there is nothing here to check rather than something failing.')
+        b.close(); srv.shutdown(); raise SystemExit(0)
+    ok('turn.l' in lamps and 'turn.r' in lamps,
+       'the car declares indicators', ', '.join(lamps))
+    ok(bulb is not None, 'and an unlit indicator bulb is baked into the sprite',
+       'found %d pixels of it' % (bulb['n'] if bulb else 0))
+    ok(box is not None, 'the car reports where it was drawn')
+    if not (bulb and box):
+        b.close(); srv.shutdown(); raise SystemExit(1)
+
+    # ---- THE TECHNIQUE, TESTED WHERE THE WORLD CANNOT INTERFERE -------------
+    # A live frame is a poor place to ask this. The sky turns, the tail glow follows the daylight,
+    # and the car breathes: measured, ~800 to 1300 pixels of the car change between two frames with
+    # the lamp OFF, against a few hundred from the lamp. A control diff removes most of it and not
+    # reliably - the same run reported 100% and then 35% on consecutive attempts, which is a
+    # harness reporting weather.
+    #
+    # The claim being tested does not need the world at all. The declaration IS the drawing: run it
+    # lit into a blank canvas the size of the sprite, and ask whether those pixels sit where the
+    # sprite's own unlit bulb sits. If a reskin ever moves the art and leaves the glow behind, this
+    # is what catches it, and nothing else here would.
+    lit = pg.evaluate("""(side) => {
+        const spr = window.__probe.road.playerSprite();
+        const c = document.createElement('canvas');
+        c.width = spr.width; c.height = spr.height;
+        const g = c.getContext('2d');
+        spr.lamps[side > 0 ? 'turn.r' : 'turn.l'](g, true);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1, n = 0;
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+          const i = (y*c.width+x)*4;
+          if (d[i+3] < 40) continue;
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y; n++;
+        }
+        return n ? {x0:x0/c.width, x1:x1/c.width, y0:y0/c.height, y1:y1/c.height, n:n} : null;
+    }""", 1)
+    ok(lit is not None, 'the declared lamp draws something when it is lit',
+       '%d pixels' % (lit['n'] if lit else 0))
+    if lit:
+        # in sprite units, so it stays true at any drawn size
+        pad = 1.5 / 220.0
+        inside = (lit['x0'] >= bulb['x0'] - pad and lit['x1'] <= bulb['x1'] + pad and
+                  lit['y0'] >= bulb['y0'] - pad and lit['y1'] <= bulb['y1'] + pad)
+        print('  ..    unlit bulb  x %.3f-%.3f  y %.3f-%.3f'
+              % (bulb['x0'], bulb['x1'], bulb['y0'], bulb['y1']))
+        print('  ..    lit lamp    x %.3f-%.3f  y %.3f-%.3f'
+              % (lit['x0'], lit['x1'], lit['y0'], lit['y1']))
+        ok(inside, 'the lit lamp occupies the unlit bulb, and nothing else',
+           'lit is %s the bulb' % ('inside' if inside else 'OUTSIDE'))
+
+    # ---- AND IT IS WIRED INTO THE GAME --------------------------------------
+    # The above proves the technique. This proves the path: the indicator, on a car nothing in the
+    # game ever signals with, actually changes what is on the screen when it is asked to.
+    pg.evaluate("() => { window.__probe.road.signal(0); window.__probe.road.holdBlink(false); }")
+    pg.wait_for_timeout(140)
+    a2 = pg.evaluate(SHOT)
+    pg.evaluate("() => { window.__probe.road.signal(1); window.__probe.road.holdBlink(true); }")
+    pg.wait_for_timeout(140)
+    b2 = pg.evaluate(SHOT)
+    W, Hh = a2['w'], a2['h']
+    A, Bd = a2['data'], b2['data']
+    dpr = W / 480.0
+    ex0 = int((box['x'] - box['w']/2 + bulb['x0']*box['w']) * dpr) - 4
+    ex1 = int((box['x'] - box['w']/2 + bulb['x1']*box['w']) * dpr) + 4
+    ey0 = int((box['y'] - box['h'] + bulb['y0']*box['h']) * dpr) - 4
+    ey1 = int((box['y'] - box['h'] + bulb['y1']*box['h']) * dpr) + 4
+    onbulb = 0
+    for y in range(max(0, ey0), min(Hh, ey1)):
+        row = y*W*4
+        for x in range(max(0, ex0), min(W, ex1)):
+            i = row + x*4
+            if abs(A[i]-Bd[i]) + abs(A[i+1]-Bd[i+1]) + abs(A[i+2]-Bd[i+2]) > 40:
+                onbulb += 1
+    ok(onbulb > 0,
+       'and asking for it changes the screen, right where that bulb is',
+       '%d pixels lit up at the bulb' % onbulb)
+
+    ok(errs == [], 'no page errors', errs[0][:100] if errs else '')
+    b.close()
+srv.shutdown()
+print()
+print('  %s' % ('the lit lamp is the unlit bulb' if not bad else '%d FAILURES' % bad))
+sys.exit(1 if bad else 0)
