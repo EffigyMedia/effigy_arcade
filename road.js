@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.16';
+window.ROAD_BUILD = '0.9.17';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -7966,7 +7966,21 @@ function lampsOn(){
    -------------------------------------------------------------------------- */
 let hillClip = [];
 function buildHillClip(){
-  const base = Math.floor(pos/SEG);
+  /* ---- SAMPLED FROM THE CAMERA, NOT FROM THE SEGMENT BEHIND IT -----------
+     This walked `(base + n) * SEG`, where `base` is `floor(pos/SEG)` - so the
+     whole table was pinned to the segment boundary BEHIND the player and every
+     entry shifted by one the moment the player crossed one. `hillClip[n]` then
+     meant a slightly different stretch of road from one frame to the next, and
+     the segment just passed - which at a crest is the highest point on the
+     road - dropped out of the running minimum in a single step.
+
+     Measured (RLG-041): with the lookup interpolated but the table still built
+     this way, the brow still jumped by up to 475 pixels on a 900-pixel screen.
+
+     Walking `pos + n * SEG` instead makes the table continuous in `pos`: it is
+     the crest between the CAMERA and each point ahead, and it slides with the
+     player rather than snapping with the segment grid.
+     -------------------------------------------------------------------- */
   hillClip = new Array(DRAW+2);
   /* THE MINIMUM MUST EXCLUDE THE SEGMENT ITSELF. It was written as the running
      minimum INCLUDING n, so a sprite's own road height was always equal to the
@@ -7977,7 +7991,7 @@ function buildHillClip(){
   let minY = H;
   for(let n=0; n<=DRAW+1; n++){
     hillClip[n] = minY;                       /* record BEFORE folding n in */
-    const pn = proj(0, (base+n)*SEG);
+    const pn = proj(0, pos + n*SEG);
     if(pn.ok && pn.y < minY) minY = pn.y;
   }
 }
@@ -8028,15 +8042,35 @@ function crestY(worldZ){
      others. The owner reported exactly that, from a phone: at the lip of a
      dip, on some cars and not others.
      -------------------------------------------------------------------- */
-  return crestAt(Math.floor(worldZ/SEG) - Math.floor(pos/SEG));
+  return crestAt((worldZ - pos)/SEG);
 }
-/* the same lookup, by index. Split out so the watch can ask the question with
-   the other index convention and report where the two disagree - RLG-041. */
-function crestAt(n){
+/* ---- THE SILHOUETTE IS A LINE, NOT A STAIRCASE ---------------------------
+   `hillClip` holds one value per road segment, and this returned the value for
+   whichever segment a car stood in. So the brow a car was tested against did
+   not move while the car crossed a segment and then JUMPED when it left one -
+   and a step in the silhouette is a car appearing or disappearing at the brow
+   of a hill, which is what the owner reported after v0.9.13 fixed the index.
+
+   Measured before this (RLG-041): the brow moved between frames 30,000 times in
+   45 seconds, and 16-19% of those moves were steps of more than two pixels,
+   with single jumps of 93 and 355 pixels on a 900-pixel screen.
+
+   `hillClip` is a running minimum, so it is monotone along the road and a
+   straight blend between two entries is the silhouette itself rather than an
+   approximation of it. The index is fractional now and the value is
+   interpolated, so the brow slides.
+
+   Called with a whole number it returns exactly what it returned before, which
+   is what lets the watch keep asking the retired question.
+   ------------------------------------------------------------------------ */
+function crestAt(f){
   if(!hillClip.length) return null;
-  if(n < 2 || n >= hillClip.length) return null;
-  const v = hillClip[n];
-  return (v === undefined || v >= H) ? null : v;
+  const n = Math.floor(f);
+  if(n < 2 || n + 1 >= hillClip.length) return null;
+  const a = hillClip[n], b = hillClip[n+1];
+  if(a === undefined || b === undefined) return null;
+  const v = a + (b - a) * (f - n);
+  return v >= H ? null : v;
 }
 function overBrow(worldZ, screenY){
   return false;   /* see crestY: the whole test was inverted */
@@ -8348,13 +8382,13 @@ let skipBy = {};
 
    The owner reports the flicker at the lip of a dip, on some cars and not
    others, which is the signature. Measured before it is changed. */
-let drawSkew = 0;
+let drawBrow = null;
 function noteSprite(o, why){
   if(!drawWatch) return;
   if(!o.__vid) o.__vid = ++drawVid;
-  drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why, skew:drawSkew,
-                  dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
-  drawSkew = 0;
+  drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why,
+                  brow:drawBrow, dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
+  drawBrow = null;
 }
 
 function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
@@ -8398,14 +8432,13 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      it. Only the last one costs a clip.
      ------------------------------------------------------------------- */
   const brow = crestY(worldZ);
-  if(drawWatch){
-    /* the same question with the RETIRED index, so the record can keep saying
-       how far the old convention reached rather than asserting it from memory */
-    const b2 = crestAt(Math.floor((worldZ - pos)/SEG));
-    const h0 = w * img.height/img.width;
-    const verdict = (b) => b === null ? 0 : (p.y - h0 > b + H*0.004 ? 2 : (p.y > b ? 1 : 0));
-    drawSkew = verdict(brow) === verdict(b2) ? 0 : 1;
-  }
+  /* the brow itself, so the harness can see how far it MOVES between frames. A
+     silhouette that steps is a car appearing or disappearing at the brow of a
+     hill, and the size of the step is the whole measurement. It replaced a
+     counter that compared two index conventions: that question is settled, the
+     table and its lookup are now the same continuous quantity, and a counter
+     that can only ever read zero is not a check. */
+  if(drawWatch) drawBrow = brow === null ? null : +brow.toFixed(1);
   /* even the roof is under the crest - genuinely out of sight */
   if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; drawWhy = 'crest'; return null; }
   if(brow !== null && p.y > brow){

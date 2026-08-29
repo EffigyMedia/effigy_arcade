@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-17"></a>
+## [0.9.17] - 2026-08-29
+- Fixed: **cars still popped at the brow of a hill**, reported from the device after v0.9.13. Two
+  more faults in the same silhouette. The crest table holds one value per road segment and was read
+  as a **staircase** - the brow did not move while a car crossed a segment, then jumped when it left
+  one. It is interpolated now; the table is a running minimum, so a straight blend between entries
+  *is* the silhouette ([RLG-041](../fragments/RLG-041.md)).
+- Fixed: **the crest table was pinned to the segment behind the player.** It walked
+  `(base + n) * SEG`, so every entry shifted by one whenever the player crossed a boundary, and the
+  segment just passed - at a crest, the highest point on the road - left the running minimum in one
+  step. It walks `pos + n * SEG` now and slides with the camera
+  ([RLG-041](../fragments/RLG-041.md)).
+- Measured: the largest single jump in the silhouette fell from **355 px to 80 px** on a 900 px
+  screen, and the median move from 0.60 px to 0.40 px. Flicker rates moved too, but two runs apiece
+  cannot separate that from the road being different, so **no claim is made on them**
+  ([RLG-041](../fragments/RLG-041.md), [RLG-062](../fragments/RLG-062.md)).
+- Removed: the skew counter that compared the two crest-index conventions. They agree by
+  construction now, and a check that can only read zero is not a check
+  ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-16"></a>
 ## [0.9.16] — 2026-08-29
 - Fixed: **nothing came up behind you when you stopped**, reported from the device. Traffic was
