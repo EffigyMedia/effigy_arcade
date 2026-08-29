@@ -23,14 +23,20 @@ What it asserts:
     actually happening, rather than the test being disabled again)
 """
 import sys, threading, http.server, socketserver, functools
+from pathlib import Path
 
-sys.path.insert(0, 'tools')
+# IT SERVES ITS OWN FOLDER, NOT THE CALLER'S. Both of these were relative to the working
+# directory, so the harness only ran from the project root - and `step.py`, which records a
+# run as evidence, runs from the environment root. The failure looked like the game never
+# reaching its title card, which is a long way from "the server is serving the wrong place".
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tools'))
 from harness import launch_chromium, console_utf8
 from playwright.sync_api import sync_playwright
 
 console_utf8()
 
-handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory='.')
+handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT))
 srv = socketserver.TCPServer(('127.0.0.1', 0), handler)
 PORT = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -76,6 +82,7 @@ def stint(browser, secs):
         if not page.evaluate("() => !!(window.__road && window.__road.spriteStats)"):
             return None, 0, errs
         page.evaluate("() => { window.__road.setSpd && window.__road.setSpd(9000); }")
+        page.evaluate("() => { window.__road.resetCrestStats && window.__road.resetCrestStats(); }")
         tot = {'drawn': 0, 'clipped': 0, 'culled': 0}
         frames = 0
         for _ in range(int(secs * 4)):
@@ -85,7 +92,11 @@ def stint(browser, secs):
                 frames += 1
                 for k in tot:
                     tot[k] += st[k]
-        return tot, frames, errs
+        # WHAT THE SHARED CREST GATE DID, per kind of thing that asked it (RLG-073). It
+        # accumulates over the whole stint rather than being reset per frame, so it is read
+        # once at the end.
+        crest = page.evaluate("() => window.__road.crestStats ? window.__road.crestStats() : null")
+        return tot, frames, errs, crest
     finally:
         ctx.close()
 
@@ -104,9 +115,14 @@ def main():
                             args=['--mute-audio', '--autoplay-policy=no-user-gesture-required'])
         tot = {'drawn': 0, 'clipped': 0, 'culled': 0}
         frames, errs, per = 0, [], []
+        crest_tot = {}
         for i in range(STINTS):
-            st, f, e = stint(b, SECONDS)
+            st, f, e, crest = stint(b, SECONDS)
             errs += e
+            for who, row in (crest or {}).items():
+                acc = crest_tot.setdefault(who, {'asked': 0, 'hidden': 0, 'clipped': 0})
+                for k in acc:
+                    acc[k] += row.get(k, 0)
             if st is None:
                 ok(False, 'could reach the drive', f'stint {i + 1} never started')
                 b.close(); srv.shutdown(); return 1
@@ -132,6 +148,33 @@ def main():
         cul = [x['culled'] for x in per]
         print(f"  ..    culled per stint: {', '.join(str(c) for c in cul)} - "
               f"the road, not the code. Do not compare single runs")
+        # ---- THE LAMPS GO THROUGH THE CARS' GATE (RLG-073) -----------------------
+        # The owner asked for the lamps and every scenery object to use "the same system
+        # that clips and culls vehicles", not one that behaves like it. So the assertion
+        # is about the gate itself: both kinds must appear in ITS ledger. Two separate
+        # implementations that each happened to work would fail this and should.
+        for who, row in sorted(crest_tot.items()):
+            print(f"  ..    crest gate, {who}: asked={row['asked']} hidden={row['hidden']} "
+                  f"clipped={row['clipped']}")
+        ok('car' in crest_tot and 'lamp' in crest_tot,
+           'the cars AND the lamps go through one crest gate',
+           f"kinds that asked: {sorted(crest_tot) or 'none'}")
+        lamp = crest_tot.get('lamp', {})
+        ok(lamp.get('asked', 0) > 0, 'the lamps ask it at all',
+           f"asked={lamp.get('asked', 0)}")
+        # Before this, the lamps' test was `!overBrow(...)`, and `overBrow` returns false on
+        # its first line - dead since crestY was re-enabled. A post behind a hill drew
+        # straight through it and one coming over a brow arrived whole, so a non-zero clip
+        # count here is not a tuning result, it is a thing that could not happen at all.
+        ok(lamp.get('clipped', 0) > 0, 'a lamp coming over a brow is CUT OFF rather than popped in',
+           f"clipped={lamp.get('clipped', 0)} of {lamp.get('asked', 0)}")
+        # HIDDEN IS REPORTED AND NOT ASSERTED, for the same reason this file already refuses
+        # to quote a single run: the cull count is the road rather than the code. The cars'
+        # own `culled` came back 0, 40 and 147 on one unchanged build, and it is 0 for both
+        # kinds on plenty of honest roads. An assertion on it would fail at random and get
+        # this harness switched off, which is the failure mode the file was written against.
+        print(f"  ..    hidden this run: car={crest_tot.get('car', {}).get('hidden', 0)} "
+              f"lamp={lamp.get('hidden', 0)} - the road, not the code. Not asserted on")
         ok(errs == [], 'no page errors', errs[0][:100] if errs else '')
         b.close()
 

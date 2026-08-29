@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-60"></a>
+## [0.9.60] - 2026-08-29
+- Fixed: **the street lamps had no occlusion at all, and now they use the cars'.** The test guarding
+  them was `!overBrow(...)`, and `overBrow` returns false on its first line - dead since `crestY` was
+  re-enabled. So a post behind a hill drew straight through it and one coming over a brow arrived
+  whole, which is the pop reported from the device. The crest rules are lifted out of `drawSprite`
+  into one `crestGate` and both callers use it, because a second implementation that behaves
+  similarly is a thing that drifts ([RLG-073](../fragments/RLG-073.md)).
+- Added: **the crest gate keeps a ledger of what each kind of thing DID about its answer**, and the
+  distinction is the whole value of it. Counting the outcome inside the gate records what the gate
+  decided, and a caller that asks and then ignores the answer - which is exactly the fault being
+  fixed - produces an identical ledger. The first version of the check passed with the defect
+  deliberately put back. The count moved to the branch that acts, and it then failed at 0 clipped
+  against 47 ([RLG-073](../fragments/RLG-073.md)).
+
 <a id="v0-9-59"></a>
 ## [0.9.59] - 2026-08-29
 - Changed: **thunder is a crack and a rumble, and distance eats the crack.** High frequencies are

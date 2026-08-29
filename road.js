@@ -9859,6 +9859,60 @@ function crestAt(f){
   const v = a + (b - a) * (f - n);
   return v >= H ? null : v;
 }
+/* ---- ONE CREST TEST, FOR CARS AND FOR ANYTHING BESIDE THE ROAD (RLG-073) --
+   Owner, 2026-08-29, from the device: the street lamps pop in, and they and any
+   scenery added later must be "clipped and culled relative the ground" by the
+   SAME system the vehicles use. Not one that behaves similarly - a second
+   implementation is a thing that drifts, and this file has the receipts. The
+   cars' own test was wrong in a way nobody could see for weeks, and the fix in
+   RLG-041 is a specific set of rules rather than a general improvement.
+
+   So the rules are lifted out of `drawSprite` whole and both callers use them.
+   Three cases, and only the last costs a clip:
+
+     entirely under the silhouette   nothing of it is above the crest line, so
+                                     drawing it would paint no pixels. Culling
+                                     is a saving rather than a decision, which
+                                     is why the margin is H*0.05 - generous, so
+                                     the flip happens where the object has
+                                     already been clipped away to nothing.
+     across it                       clip to the band ABOVE the brow. Further
+                                     away is HIGHER on screen in this
+                                     projection, so a crest covers what is
+                                     BEHIND it from the bottom up and what
+                                     survives is the top.
+     entirely above it               draw it.
+
+   `topY` is the top of the object on screen and `baseY` is where it stands.
+   ------------------------------------------------------------------------- */
+let crestStats = {};
+function crestGate(worldZ, baseY, topY, who){
+  const brow = crestY(worldZ);
+  let out;
+  if(brow === null)             out = { hide:false, clip:null, brow:null };
+  else if(topY > brow + H*0.05) out = { hide:true,  clip:null, brow:brow };
+  else if(baseY > brow)         out = { hide:false, clip:brow, brow:brow };
+  else                          out = { hide:false, clip:null, brow:brow };
+  /* WHO ASKED, and only that. The OUTCOME is counted by the caller through
+     `crestDid`, at the point where it acts on the answer.
+
+     THE DIFFERENCE IS THE WHOLE VALUE OF THE LEDGER, and it was found by
+     watching the check fail to fail. Counting the outcome here records what
+     the gate DECIDED. A caller that asks and then ignores the answer - which
+     is precisely the fault being fixed, since the lamps' old `overBrow` test
+     was dead - produces an identical ledger to one that obeys it. The check
+     passed with the defect deliberately reintroduced, which means it was
+     measuring the gate's opinion and never the lamp. */
+  if(who) (crestStats[who] || (crestStats[who] = ZERO())).asked++;
+  return out;
+}
+function ZERO(){ return { asked:0, drawn:0, hidden:0, clipped:0 }; }
+/* what the caller DID about it. Called after the fact, from the branch taken. */
+function crestDid(who, what){
+  const r = crestStats[who] || (crestStats[who] = ZERO());
+  r[what]++;
+}
+
 function overBrow(worldZ, screenY){
   return false;   /* see crestY: the whole test was inverted */
   if(!hillClip.length) return false;
@@ -10039,7 +10093,7 @@ function drawRoad(){
        daylight. Now the column and head draw at every hour and only the bulb
        and its bloom are switched.
        ---------------------------------------------------------------------- */
-    if(idx % 8 === 0 && !overBrow(z1, p1.y)){
+    if(idx % 8 === 0){
       const side = ((idx/8)|0) % 2 ? 1 : -1;
       const lx = p1.x + side * p1.scale * ROAD * W * 1.15;
       const sc = p1.scale * ROAD * W;
@@ -10047,6 +10101,26 @@ function drawRoad(){
       const poleW = Math.max(1, sc * 0.045);
       const armL  = Math.max(2, sc * 0.30) * -side;
       const topY  = y1 - poleH;
+      /* ---- THE SAME GATE THE CARS GO THROUGH (RLG-073) -----------------
+         The test here was `!overBrow(z1, p1.y)`, and `overBrow` returns false
+         on its first line - it has been dead since `crestY` was re-enabled.
+         So a lamp had NO occlusion at all: a post behind a hill drew straight
+         through it, and one coming over a brow arrived whole. That is the pop
+         the owner reported from the device, and it is the same fault the cars
+         had before RLG-041, in a place nobody thought to look because the
+         call still read as if it were testing something.
+
+         A lamp is a tall thin object standing on the road surface, which is
+         exactly what the gate is written for: `y1` is where it stands and
+         `topY` is the top of the pole.
+         -------------------------------------------------------------- */
+      const gate = crestGate(z1, y1, topY, 'lamp');
+      if(gate.hide) { crestDid('lamp', 'hidden'); } else {
+      ctx.save();
+      if(gate.clip !== null){
+        crestDid('lamp', 'clipped');
+        ctx.beginPath(); ctx.rect(0, 0, W, gate.clip); ctx.clip();
+      } else crestDid('lamp', 'drawn');
 
       /* ---- SOLID -------------------------------------------------------
          `globalAlpha = fade` made the whole post see-through for most of its
@@ -10121,6 +10195,8 @@ function drawRoad(){
         ctx.ellipse(hx, y1, rw, rh, 0, 0, 6.2832);
         ctx.fill();
         ctx.restore();
+      }
+      ctx.restore();   /* the crest clip */
       }
     }
 
@@ -10347,7 +10423,11 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      Three cases: entirely under the silhouette, entirely above it, or across
      it. Only the last one costs a clip.
      ------------------------------------------------------------------- */
-  const brow = crestY(worldZ);
+  /* THE RULES LIVE IN `crestGate` NOW (RLG-073), so the lamps and the scenery
+     ask the same question the cars do rather than a similar one. The brow is
+     still read out of it because the watch below reports on it. */
+  const gate = crestGate(worldZ, p.y, p.y - h, 'car');
+  const brow = gate.brow;
   /* ---- THE CULL IS AN OPTIMISATION, AND IT WAS A CLIFF ---------------------
      A car entirely under the brow draws nothing through the clip below - the
      clip keeps what is ABOVE the crest line, and there is nothing of the car up
@@ -10385,11 +10465,12 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
     drawPx  = +h.toFixed(1);
   }
   /* even the roof is under the crest - genuinely out of sight */
-  if(brow !== null && p.y - h > brow + H*0.05){ spriteStats.culled++; drawWhy = 'crest'; return null; }
-  if(brow !== null && p.y > brow){
+  if(gate.hide){ spriteStats.culled++; crestDid('car', 'hidden'); drawWhy = 'crest'; return null; }
+  if(gate.clip !== null){
+    crestDid('car', 'clipped');
     ctx.save();
     /* keep what is ABOVE the crest line; the ground in front covers the rest */
-    ctx.beginPath(); ctx.rect(0, 0, W, brow); ctx.clip();
+    ctx.beginPath(); ctx.rect(0, 0, W, gate.clip); ctx.clip();
     if(alpha!==undefined){ ctx.globalAlpha=alpha; }
     if(flip){
     /* a left-hand corner is a right-hand one seen from the other side — one
@@ -10412,6 +10493,7 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   ctx.drawImage(img, p.x - w/2, p.y - h, w, h);
   ctx.globalAlpha=1;
   spriteStats.drawn++;
+  crestDid('car', 'drawn');
   return {x:p.x, y:p.y, w, h};
 }
 
@@ -13364,6 +13446,11 @@ requestAnimationFrame(frameLoop);
   API.drawDistance = function(){ return DRAW * SEG; };
   API.setTow = function(v){ towOverride = (v === undefined || v < 0) ? -1 : v; };
   API.tightestAhead = function(){ return +tightestAhead.toFixed(3); };
+  /* what the shared crest gate did, per kind of thing that asked it. RLG-073:
+     the claim is that the lamps and the scenery use the CARS' system, and this
+     is how a harness tells that apart from each of them merely working. */
+  API.crestStats = function(){ return JSON.parse(JSON.stringify(crestStats)); };
+  API.resetCrestStats = function(){ crestStats = {}; };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){
     const pp = proj(0, pos + dz);
