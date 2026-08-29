@@ -185,7 +185,14 @@ Python 3 with Playwright installed runs the two test harnesses; a browser runs e
   it after any file is added, moved, or removed. **It needs `node` on PATH**, which the
   environment's shim provides. It uses `zip` when present and falls back to PowerShell's
   `Compress-Archive`, so it completes on a stock Windows box.
-- `deploy` — GitHub Pages serves `main` directly. A push deploys. `sync.sh` is inherited and
+- `deploy` — GitHub Pages serves `main` directly. A push deploys. **A TESTABLE BUILD IS A RELEASE
+  HERE, so push when there is something for the owner to test on the device** — not per commit, and
+  not once per session. Rendering, audio mix, on-device layout and feel are only judged there, so
+  unpushed work is untested work; 46 commits once sat local while the device tested a build fifteen
+  versions old. There are no Actions workflows and Pages is a `legacy` build from `main`, so a push
+  costs one Pages build against a documented soft limit of ten an hour — keep it under about six.
+  **Never force-push and never rewrite pushed history.** Say the build number when handing over, and
+  it must match the BUILD row in SETTINGS. See `docs/fragments/RLG-066.md` and `RLG-063.md`. `sync.sh` is inherited and
   **obsolete in its current form**: it clones the remote to a temporary folder and copies files over
   the top, from when the working folder was not a repository. This folder is the repository.
 
