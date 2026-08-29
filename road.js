@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.43';
+window.ROAD_BUILD = '0.9.44';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -4310,12 +4310,35 @@ function rivalFront(bodyKey, paintKey){
   const rs = BODY[bodyKey], pt = PAINT[paintKey];
   if(!rs || !pt) return (RIVAL_FRONT_SP[k] = null);
   const L = { lamp:'#d61b3c', lamp2:'#ff7a86', player:true, marque:rs.rear };
+  const rz = rs.rig ? rigBox(rs.rig) : null;
   RIVAL_FRONT_SP[k] = rs.rig
-    ? sprite(220,168, paintRigFront(rs.rig, Object.assign({}, L, pt)))
+    ? sprite(rz[0], rz[1], paintRigFront(rs.rig, Object.assign({}, L, pt)))
     /* `bodyType`, not `kind` - `paintFront` reads the body from there, and
        passing the wrong field is what once put one nose on five supercars */
     : sprite(230,215, paintFront(Object.assign({ bodyType:bodyKey }, L, pt)));
   return RIVAL_FRONT_SP[k];
+}
+
+/* ---- A RIG'S SPRITE BOX, IN ONE PLACE -----------------------------------
+   Every road-car shape has its own canvas size, and getting it wrong does not
+   throw - it draws the same car at a different aspect ratio, which looks like a
+   layout fault and is not one. The garage found it: a ROADSTER's tail is
+   painted into 206x150 and its face was being painted into 220x168, so the two
+   ends of one car had different proportions and no amount of placing them could
+   line them up.
+
+   The table was already written down three times - in `buildSprites`, in the
+   traffic build and in the fleet sheet - and the fourth copy was the one that
+   was wrong. There is one now.
+   ------------------------------------------------------------------------- */
+function rigBox(rig){
+  return rig === 'muscle' ? [210,158]
+       : rig === 'cop'    ? [200,164]
+       : rig === 'van'    ? [200,196]
+       : rig === 'pickup' ? [206,176]
+       : rig === 'truck'  ? [230,250]
+       : rig === 'sedan' || rig === 'taxi' ? [200,164]
+       : [206,150];
 }
 
 function buildSprites(){
@@ -4331,13 +4354,7 @@ function buildSprites(){
        one on the road. The traffic tables have always had these numbers; the
        player build was the only place that did not use them.
        ------------------------------------------------------------------- */
-    const rz = shape.rig === 'muscle' ? [210,158]
-             : shape.rig === 'cop'    ? [200,164]
-             : shape.rig === 'van'    ? [200,196]
-             : shape.rig === 'pickup' ? [206,176]
-             : shape.rig === 'truck'  ? [230,250]
-             : shape.rig === 'sedan' || shape.rig === 'taxi' ? [200,164]
-             : [206,150];
+    const rz = rigBox(shape.rig);
     /* ---- THE TRAILER IS THE COLOUR, MUCH DARKER -------------------------
        It used to be a fixed beige panel, on the grounds that a lorry's box is
        the part that never changes. Owner, 2026-08-29: let it inherit a much
@@ -4358,7 +4375,8 @@ function buildSprites(){
       paintRig(shape.rig, Object.assign({ lamp:'#d61b3c', lamp2:'#ff7a86',
                                           player:true, marque:shape.rear,
                                           stripes:optStripes && stripesAllowed() }, rigPaint)));
-    SP.playerFront = sprite(220,168,
+    /* the SAME box as its tail. A different one is a different car. */
+    SP.playerFront = sprite(rz[0], rz[1],
       paintRigFront(shape.rig, Object.assign({ lamp:'#d61b3c', lamp2:'#ff7a86',
                                           player:true, marque:shape.rear,
                                           stripes:optStripes && stripesAllowed() }, rigPaint)));
@@ -4405,7 +4423,7 @@ function buildSprites(){
          A rig body goes through `paintRig`, the same painter its NPC version
          uses. */
       RIVAL_SP[bk+'|'+k] = rs.rig
-        ? sprite(220,168, paintRig(rs.rig, Object.assign({
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1], paintRig(rs.rig, Object.assign({
             player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86'
           }, PAINT[k])))
@@ -11241,29 +11259,32 @@ function drawGarageCar(){
     return bx;
   };
 
-  /* ---- ONE CAR IS ONE WIDTH ---------------------------------------------
-     Drawing both ends at a SINGLE scale still looked wrong, and the owner was
-     right about it twice. The two painters do not draw the car at the same
-     size inside their own canvases: at one scale the front came out about nine
-     per cent wider and taller than the back, which reads as two different cars
-     rather than as two views of one.
+  /* ---- THE PAINTERS ALREADY AGREE. MEASURE, DO NOT CORRECT --------------
+     Two attempts at this were wrong in the same way: both assumed the front
+     and the rear disagreed about how big the car is, and set about correcting
+     it. Measured, they do not disagree. Every rig body draws its front and its
+     rear into the SAME canvas at the SAME top row - a COUPE is rows 37 to 164
+     from behind and 37 to 167 from the front - and a supercar's two ends are
+     143 rows tall in both of their different canvases.
 
-     A car is the same WIDTH from either end - that is the one dimension both
-     views share, and the one a person checks. So each end gets its own scale,
-     chosen so their solid bodywork comes out the same width, and the pair is
-     then sized so the taller of the two still fits the card. Height is left to
-     differ, because a front view genuinely is taller: it has a windscreen and
-     a roofline where the back has a boot lid.
+     What differs is where each view is WIDEST: a rear is widest at its
+     shoulder, about seven tenths of the way down, and a front is widest at its
+     bumper, about nine tenths. Normalising the two to a common WIDTH therefore
+     scales two different features to the same size and pulls the whole car
+     with them - which is what made the front nine per cent bigger and its
+     roofline sit high.
+
+     So: ONE scale for the pair, and each placed by its own content bottom.
+     Nothing is corrected, because there is nothing to correct.
      ------------------------------------------------------------------- */
   const FLOOR = 124, HALF = 150, PAD = 12;
   const pair = front ? [back, front] : [back];
   const boxes = pair.map(bounds);
-  /* the widest the pair can be drawn with the tallest of them still fitting */
-  let targetW = HALF - PAD*2;
-  for(const bx of boxes) targetW = Math.min(targetW, (FLOOR - 8) * (bx.w / bx.h));
+  const maxW = Math.max.apply(null, boxes.map(b => b.w));
+  const maxH = Math.max.apply(null, boxes.map(b => b.h));
+  const sc = Math.min((HALF - PAD*2) / maxW, (FLOOR - 8) / maxH);
   const put = (img, box, cx) => {
     if(!img) return;
-    const sc = targetW / box.w;
     /* place the CONTENT: its centre on cx, its bottom on the floor */
     const dx = cx - (box.x + box.w/2)*sc;
     const dy = FLOOR - (box.y + box.h)*sc;
@@ -12313,6 +12334,9 @@ requestAnimationFrame(frameLoop);
   API.accelOf = function(k){ return +accelOf(k).toFixed(3); };
   API.brakeOf = function(k){ return +brakeOf(k).toFixed(3); };
   API.setBody = function(k){ optBody = k; buildSprites(); syncBoxClass(); };
+  /* which car the player is actually in. A harness that asserts a speed has to
+     know what it is sitting in, or it reports the fleet as an engine fault. */
+  API.bodyKey = function(){ return optBody; };
   API.launchKick = function(){ return launchKick; };
   API.cops = function(){ return cops; };
   API.heat = function(v){ if(v!==undefined) heat=v; return heat; };
@@ -12414,13 +12438,15 @@ requestAnimationFrame(frameLoop);
       /* the rival cache is keyed by paint, and it only holds the ordinary
          white one - a livery that is not in it is built here the same way */
       const rear = (pKey === 'WHITE' && !LIVERY[k] && RIVAL_SP[k+'|WHITE']) || (rs.rig
-        ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1],
+            paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
             bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));
       const front = rs.rig
-        ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1],
+            paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         /* `paintFront` takes the body under `bodyType` - `o.body` is a COLOUR on
            every other painter, and the comment inside it says so. Passing `kind`
@@ -12441,13 +12467,15 @@ requestAnimationFrame(frameLoop);
          ---------------------------------------------------------------- */
       const striped = stripesOn(k);
       const rearS = !striped ? null : (rs.rig
-        ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1],
+            paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
             stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
             bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
             stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));
       const frontS = !striped ? null : (rs.rig
-        ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1],
+            paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
             stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         : sprite(230,215, paintFront(Object.assign({ bodyType:k, marque:rs.rear,
             player:true, stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));

@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-44"></a>
+## [0.9.44] - 2026-08-29
+- Fixed: **the player's front sprite is built in the same box as its rear.** The garage's two views
+  were not misaligned, they were different shapes: a road car's tail is painted into that shape's own
+  canvas and its face was being painted into a flat 220x168, so the same car came out with different
+  proportions. The same hardcoded box was in three other places, including the rival caches - so
+  every sports-class rival on the road was drawn at the wrong aspect ratio. One `rigBox()` now, read
+  by all of them ([RLG-072](../fragments/RLG-072.md)).
+- Fixed: **drive-test knows about the ladder.** It expected the supercars in the garage and asserted
+  150mph in a car that now tops out at 153 - so a garage change reported itself as a slow engine. It
+  expects the sports class and asserts nine tenths of whatever car it is sitting in
+  ([RLG-070](../fragments/RLG-070.md)).
+
 <a id="v0-9-43"></a>
 ## [0.9.43] - 2026-08-29
 - Fixed: **an old save no longer starts with the supercars.** The migration that protects a returning

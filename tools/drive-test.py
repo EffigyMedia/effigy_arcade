@@ -38,9 +38,13 @@ GAMES = {
     'motorsport': 'games/sw/motorsport.html',
 }
 
-# Every car the garage must offer from a clean save. Both classes are
-# unlocked from the start; FORMULA and the traffic bodies are not.
-EXPECTED_CARS = ['ROADSTER', 'TUNER', 'MUSCLE', 'STALLION', 'MATADOR', 'CREST']
+# Every car the garage must offer from a clean save. RLG-070 made the ladder: a fresh install holds
+# the SPORTS class and nothing else, and each gold opens the class above it. This list was the two
+# classes together, from when the supercars were free - so it started failing the moment the ladder
+# landed, which is the check doing its job.
+EXPECTED_CARS = ['ROADSTER', 'TUNER', 'MUSCLE']
+# and the ones that must NOT be there until they are earned
+LOCKED_CARS = ['STALLION', 'MATADOR', 'CREST', 'VECTOR', 'APEX', 'COMET', 'CAB', 'VAN', 'LORRY']
 
 
 # --- capture the engine before it runs ---------------------------------------
@@ -345,7 +349,21 @@ def drive(page, res, seconds, is_circuit):
     samples = page.evaluate('() => window.__probe.log')
     peak = page.evaluate('() => window.__probe.peakMph')
 
-    res.check(peak > 150, 'speed rises above 150mph', f'peak {peak:.0f}mph')
+    # ---- THE CAR THIS IS MEASURED IN --------------------------------------
+    # 150mph was a MATADOR's number, from when a fresh save started in one. The ladder starts the
+    # player in a ROADSTER, which tops out at 153 - so the assertion could not be met by the car
+    # the harness was driving, and the failure said "the engine is slow" when it meant "the
+    # garage changed".
+    #
+    # The threshold follows the CAR now: the engine has to get this driver to nine tenths of
+    # whatever the car it is sitting in can do. That is a statement about the engine rather than
+    # about the fleet, so it survives the next retune.
+    top = page.evaluate('() => { const R = window.__probe.road;'
+                        ' const k = R.bodyKey ? R.bodyKey() : "ROADSTER";'
+                        ' return (R.BODY[k] || {}).vmax || 0.765; }')
+    want = 0.90 * top * 200
+    res.check(peak > want, f'speed rises above {want:.0f}mph (nine tenths of this car)',
+              f'peak {peak:.0f}mph')
 
     # ---- THE NEEDLE MUST NEVER GO PAST THE LIMITER ------------------------
     # A slipstream that scaled the GEAR ceiling as well as the aero one spun
