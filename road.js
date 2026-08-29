@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.20';
+window.ROAD_BUILD = '0.9.21';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8427,13 +8427,14 @@ let skipBy = {};
 
    The owner reports the flicker at the lip of a dip, on some cars and not
    others, which is the signature. Measured before it is changed. */
-let drawBrow = null;
+let drawBrow = null, drawCut = 0, drawPx = 0;
 function noteSprite(o, why){
   if(!drawWatch) return;
   if(!o.__vid) o.__vid = ++drawVid;
   drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why,
-                  brow:drawBrow, dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
-  drawBrow = null;
+                  brow:drawBrow, cut:drawCut, px:drawPx,
+                  dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
+  drawBrow = null; drawCut = 0; drawPx = 0;
 }
 
 function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
@@ -8454,7 +8455,29 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   if(w < 1.2){ drawWhy = 'tiny'; return null; }
   if(w > W*3.4){ drawWhy = 'huge'; return null; }
   const h = w * img.height/img.width;
-  if(p.y - h > H || p.y < horizon - h){ drawWhy = 'offscreen'; return null; }
+  /* ---- THE HORIZON IS NOT THE TOP OF THE SCREEN --------------------------
+     This culled any sprite standing above `horizon`, which is a FIXED line at
+     40% of the canvas - the height the sky meets the ground on FLAT road. The
+     road does not stay under it. Beyond the bottom of a dip the far side rises,
+     `hillPx` lifts those slices, and the road is painted well above that line;
+     a car standing on it was thrown away as "off screen" while being in the
+     middle of the picture.
+
+     Measured (RLG-041), splitting the two cases apart before changing either:
+     2,083 and 3,469 vehicle-frames in two runs were culled this way while the
+     car was ON the screen. Genuinely off the top: 3 and 5. So the test was
+     wrong essentially every time it fired, and it fired at 2-3% of all
+     vehicle-frames - 16 and 22 of them as cars that were fully visible,
+     vanished, and came back, median 23,000 to 25,000 units out.
+
+     That is the owner's report exactly: at the top of a hill, looking down at a
+     valley, cars flickering just beyond the bottom where the road starts going
+     back up. The road going back up is what lifts it over the line.
+
+     The screen is the bound. A sprite is off the top when it is off the TOP,
+     and the horizon has nothing to do with it.
+     -------------------------------------------------------------------- */
+  if(p.y - h > H || p.y < 0){ drawWhy = 'offscreen'; return null; }
   /* ---- A CAR ARRIVES, IT DOES NOT APPEAR --------------------------------
      The road is drawn to DRAW*SEG and the sprite buckets reach one segment
      past it, so a car crossed that line and was suddenly THERE. I twice wrote
@@ -8525,7 +8548,20 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      counter that compared two index conventions: that question is settled, the
      table and its lookup are now the same continuous quantity, and a counter
      that can only ever read zero is not a check. */
-  if(drawWatch) drawBrow = brow === null ? null : +brow.toFixed(1);
+  if(drawWatch){
+    drawBrow = brow === null ? null : +brow.toFixed(1);
+    /* HOW MUCH OF THE CAR THE CREST TAKES, as a fraction of the car itself. The
+       brow moving is not the measurement - what a car loses when it moves is.
+       At 24,000 units a car is a few pixels tall, so a brow step that is small
+       in pixels is most of the car, and the same step near the player is
+       nothing. This is the number that reads the same at both distances. */
+    drawCut = brow === null ? 0
+            : clamp((p.y - brow) / Math.max(h, 0.001), 0, 1);
+    drawCut = +drawCut.toFixed(3);
+    /* and how tall the car is, because the same step in the brow is nothing on
+       a near car and most of a far one */
+    drawPx  = +h.toFixed(1);
+  }
   /* even the roof is under the crest - genuinely out of sight */
   if(brow !== null && p.y - h > brow + H*0.05){ spriteStats.culled++; drawWhy = 'crest'; return null; }
   if(brow !== null && p.y > brow){

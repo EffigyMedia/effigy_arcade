@@ -114,7 +114,7 @@ COLLECTOR = r"""
   var PAINTED = { drawn:1, clipped:1 };
   var last = {}, frames = 0, gaps = 0, lastN = null;
   var pops = [], vanish = [], reasons = {}, offered = 0, inArrayNotOffered = 0;
-  var browAt = {}, browJump = [], bigAt = [];
+  var browAt = {}, browJump = [], bigAt = [], cutAt = {}, cutJump = [], cutDir = {}, reversals = [];
 
   P.pop = { on:true };
   R.watchDraw(true);
@@ -146,6 +146,22 @@ COLLECTOR = r"""
          decides whether a car is hidden, so a step in it IS a car appearing or vanishing at
          the brow of a hill - which is what the owner reports seeing. */
       if(e.brow !== null && e.brow !== undefined){
+        var pc = cutAt[e.id];
+        if(pc !== undefined && e.cut !== undefined){
+          var dc = Math.abs(e.cut - pc);
+          if(dc > 0.25) cutJump.push({ dz:e.dz, px:e.px, from:+pc.toFixed(2), to:e.cut });
+          /* ---- IS IT GOING, OR IS IT FLICKERING? -------------------------
+             A car sliding behind a hill loses itself in ONE direction. A car
+             that flickers loses and regains. Only the second is a fault, and
+             the two are indistinguishable in a count of jumps. */
+          if(dc > 0.10){
+            var dir = e.cut > pc ? 1 : -1;
+            if(cutDir[e.id] !== undefined && cutDir[e.id] !== dir)
+              reversals.push({ dz:e.dz, px:e.px, at:+e.cut.toFixed(2) });
+            cutDir[e.id] = dir;
+          }
+        }
+        cutAt[e.id] = e.cut;
         var prev = browAt[e.id];
         if(prev !== undefined){
           var d = Math.abs(e.brow - prev);
@@ -198,7 +214,7 @@ COLLECTOR = r"""
     P.pop.on = false;
     R.watchDraw(false);
     return { frames:frames, gaps:gaps, pops:pops, vanish:vanish, reasons:reasons,
-             browJump:browJump, bigAt:bigAt,
+             browJump:browJump, bigAt:bigAt, cutJump:cutJump, reversals:reversals,
              offered:offered, notOffered:inArrayNotOffered };
   };
   return true;
@@ -268,6 +284,30 @@ def report(game, out, seconds):
     # THE BROW, FRAME TO FRAME. It is sampled once per road segment, so it steps as a car crosses
     # a boundary - and a step in the silhouette is a car appearing or vanishing at the brow of a
     # hill. Reported as the distribution of jumps, in screen pixels.
+    mins = max(seconds, 1) / 60.0
+    rv = out['reversals']
+    print('    REVERSALS - a car losing a tenth of itself to the crest and then getting it back: '
+          '%d  (%.1f/min)' % (len(rv), len(rv) / mins))
+    if rv:
+        farr = [r for r in rv if r['dz'] >= 8000]
+        print('      beyond 8,000 units: %d, median %d units, median height %.1f px'
+              % (len(farr), statistics.median([r['dz'] for r in farr]) if farr else 0,
+                 statistics.median([r['px'] for r in farr]) if farr else 0))
+
+    cj = out['cutJump']
+    if cj:
+        near = [c for c in cj if c['dz'] < 8000]
+        far  = [c for c in cj if c['dz'] >= 8000]
+        print('    a car LOST OR REGAINED over a quarter of itself between two frames: %d times'
+              % len(cj))
+        print('      within 8,000 units: %-4d   beyond: %-4d' % (len(near), len(far)))
+        if far:
+            print('      the far ones: median %d units out, median sprite height %.1f px'
+                  % (statistics.median([c['dz'] for c in far]),
+                     statistics.median([c['px'] for c in far])))
+    else:
+        print('    no car lost a quarter of itself between two frames')
+
     big = out['bigAt']
     if big:
         ds = sorted(b['dz'] for b in big)

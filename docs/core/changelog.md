@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-21"></a>
+## [0.9.21] - 2026-08-29
+- Fixed: **fully visible cars vanished beyond the bottom of a valley.** `horizon` is a fixed line at
+  40% of the canvas - where sky meets ground on *flat* road - and the sprite pass culled anything
+  standing above it as "off screen". Beyond a dip the far side rises, the road is painted well above
+  that line, and a car standing on it was thrown away while in plain sight. The screen is the bound
+  now ([RLG-041](../fragments/RLG-041.md)).
+- Measured, splitting the two cases before changing either: **2,083 and 3,469 vehicle-frames per run
+  were culled as "off screen" while on the screen; genuinely off the top, 3 and 5.** Total pops fell
+  from 53-56 per minute to 9-20 ([RLG-041](../fragments/RLG-041.md)).
+- Not kept: fading small sprites at a crest instead of clipping them. The reasoning was sound - at
+  25,000 units a car is six pixels tall and the crest line legitimately moves several pixels a frame
+  - but it **did not move any measured number**, so it was removed rather than shipped beside the
+  fix that works ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-20"></a>
 ## [0.9.20] - 2026-08-29
 - Fixed: **cars flickered in a valley below you**, reported from the device on v0.9.19 once the brow
