@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.49';
+window.ROAD_BUILD = '0.9.50';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1501,9 +1501,9 @@ function sprite(w,h,paint){
     const hg = halo.getContext('2d');
     const r = Math.max(2, Math.round(Math.min(w, h) * 0.030));
     if(typeof hg.filter === 'string'){
-      hg.globalAlpha = 0.34; hg.filter = 'blur(' + r + 'px)';
+      hg.globalAlpha = 0.42; hg.filter = 'blur(' + r + 'px)';
       hg.drawImage(full, 0, 0);
-      hg.globalAlpha = 0.24; hg.filter = 'blur(' + Math.round(r*2.4) + 'px)';
+      hg.globalAlpha = 0.30; hg.filter = 'blur(' + Math.round(r*2.4) + 'px)';
       hg.drawImage(full, 0, 0);
       hg.filter = 'none';
     } else {
@@ -1515,9 +1515,15 @@ function sprite(w,h,paint){
       /* `true` means BRIGHT: every call site that predates the third state
          means "braking" or "indicating", and both of those are bright. */
       const l = (lvl === true) ? 2 : (lvl === false || lvl === undefined) ? 0 : lvl;
-      if(l >= 2){
+      /* ---- THE GLOW FOLLOWS THE STATE -------------------------------
+         Bright carries the halo as baked; DIM carries a third of it, because a
+         running light does glow a little and a lamp that lights with no bloom
+         at all reads as a painted shape rather than as a light. Off carries
+         none, which is the whole of what off means. */
+      if(l >= 1){
         gg.save();
         gg.globalCompositeOperation = 'lighter';
+        if(l < 2) gg.globalAlpha = 0.34;
         gg.drawImage(halo, 0, 0);
         gg.restore();
       }
@@ -1610,7 +1616,10 @@ const AMBER_ON  = '#ffb02e', AMBER_ON_HI  = '#ffe4a8';
    unlit lens becomes the RUNNING light, and unlit goes down to a lens with
    almost nothing in it. An unlit red lamp in daylight is nearly black - what you
    see of one is the shape of the glass, not the colour of it. */
-const RED_OFF = '#280a0d', RED_DIM = '#4a1016', RED_ON = '#ff2a22';
+/* Owner again, a moment later: the dim state should be a little brighter -
+   "split the difference between off and bright". Which is exactly what it is
+   now: #931a17 is the midpoint of #280a0d and #ff2a22, channel by channel. */
+const RED_OFF = '#280a0d', RED_DIM = '#931a17', RED_ON = '#ff2a22';
 /* ---- THE HIGHLIGHT IS RED TOO -----------------------------------------
    Owner, 2026-08-29, twice: "you are still making the illuminated brake lights
    white... off is a dark red, dim is slightly brighter, and bright is a bright
@@ -1623,7 +1632,7 @@ const RED_OFF = '#280a0d', RED_DIM = '#4a1016', RED_ON = '#ff2a22';
    distance between the two is small: it is a curve of glass catching light,
    not a bulb of a different colour.
    -------------------------------------------------------------------- */
-const RED_OFF_HI = '#361012', RED_DIM_HI = '#5c1a1e', RED_ON_HI = '#ff5348';
+const RED_OFF_HI = '#361012', RED_DIM_HI = '#b8322c', RED_ON_HI = '#ff5348';
 function redOf(l){ return l >= 2 ? RED_ON : l >= 1 ? RED_DIM : RED_OFF; }
 function redHiOf(l){ return l >= 2 ? RED_ON_HI : l >= 1 ? RED_DIM_HI : RED_OFF_HI; }
 

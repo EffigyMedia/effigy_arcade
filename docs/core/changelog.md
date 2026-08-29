@@ -14,6 +14,12 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-50"></a>
+## [0.9.50] - 2026-08-29
+- Changed: **the dim state splits the difference between off and bright**, and carries a third of the
+  glow. A running light does glow a little, and a lamp that lights with no bloom reads as a painted
+  shape rather than as a light ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-49"></a>
 ## [0.9.49] - 2026-08-29
 - Changed: **the whole lamp ladder moves down a rung.** The red that was the unlit lens is the
