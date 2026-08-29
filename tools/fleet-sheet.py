@@ -1,16 +1,23 @@
-"""Draw the whole fleet, unlit and lit, and save it as a picture.
+"""Draw the whole fleet - back, front, lamps and wipers - and save it as a picture.
 
-RLG-053 converted every vehicle's lamps to a DECLARATION - one drawing, run unlit into the sprite
-and again lit onto the screen. This renders that: every vehicle the engine can put on the road, each
-one dark, then with its tail lit, then with an indicator lit, and the cruiser with its bar.
-
-It is a deliverable and it is also the check a person can make in a second: if a lit lamp is not
-exactly on top of the bulb in the dark cell beside it, the declaration has drifted - which is the
+RLG-053 made every lamp a DECLARATION: one drawing, run unlit into the sprite and again lit on top
+of it. This renders that, and it is the check a person can make in a second - if a lit lamp is not
+exactly on top of the bulb in the dark cell beside it, the declaration has drifted, which is the
 fault the whole ruling exists to make impossible. `tools/lamp-test.py` asserts the same thing in
 numbers; this is the version you can look at.
 
-The sprites come from the engine itself through `API.fleet()`, so nothing here knows how a car is
-painted, and a body added later appears without this file being touched.
+Each vehicle gets TWO rows, back then front, and the sheet ends with the steering wheels - one per
+car, which nothing outside the cockpit has ever shown side by side.
+
+  back    dark, braking, indicating right, indicating left, bar
+  front   dark, headlights, indicating right, indicating left, wipers parked and at full sweep
+
+ONE ROW PER VEHICLE, NOT PER LIVERY. The garage car and the traffic car are the same painter with
+different paint - there is no garage version of anything - so rows are grouped by painter and each
+is named once.
+
+Everything comes from the engine through `API.fleet()` and `API.wheelOf()`, so nothing here knows how
+a car is painted and a body added later appears without this file being touched.
 """
 import base64
 import functools
@@ -23,7 +30,10 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / 'docs' / 'fleet.png'
+# ONE SHEET PER CLASS. A single picture of everything came out unreadable at any
+# size that fits on a screen - the owner asked for them split, and a class is the
+# grouping the fleet actually has rather than one invented for the page.
+CLASSES = ['super', 'sport', 'police', 'production', 'utility']
 
 
 def _handover():
@@ -44,25 +54,21 @@ from playwright.sync_api import sync_playwright   # noqa: E402
 from harness import console_utf8, launch_chromium  # noqa: E402
 
 
-SHEET = r"""() => {
+SHEET = r"""(cls) => {
   const R = window.__probe.road;
-  const fleet = R.fleet();
+  const fleet = R.fleet().filter(v => v.cls === cls);
+  if (!fleet.length) return null;
 
-  /* ONE ROW PER VEHICLE, NOT PER LIVERY. The garage SALOON and the traffic sedan come out of the
-     same painter with different paint, so showing both is showing the fleet twice - which is what
-     the first version of this sheet did. Grouped by painter, and the row says who drives it. */
-  const rows = [];
-  const by = {};
+  const rows = [], by = {};
   for (const v of fleet) {
-    if (by[v.sig] === undefined) { by[v.sig] = rows.length; rows.push({ spr: v.spr, who: [v.name], sig: v.sig }); }
-    else rows[by[v.sig]].who.push(v.name);
+    if (by[v.sig] === undefined) { by[v.sig] = rows.length; rows.push(v); }
+    else if (!rows[by[v.sig]].front && v.front) rows[by[v.sig]].front = v.front;
   }
 
-  const CELL = 190, PAD = 16, LABEL = 230, ROW = CELL + PAD;
-  const heads = ['dark', 'braking', 'right', 'left', 'bar'];
-  const cols = heads.length;
+  const CELL = 300, PAD = 18, LABEL = 240;
+  const cols = 6;
   const W = LABEL + cols*CELL + PAD*2;
-  const H = PAD*3 + 44 + rows.length*ROW;
+  const H = PAD*3 + 52 + rows.length*(CELL*2 + PAD*2) + CELL + PAD*4;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
@@ -70,57 +76,100 @@ SHEET = r"""() => {
   g.fillStyle = '#0b0c10'; g.fillRect(0, 0, W, H);
   g.fillStyle = '#f0f2f6';
   g.font = '700 22px system-ui, sans-serif';
-  g.fillText('EFFIGY ARCADE - THE FLEET, LAMPS DECLARED', PAD, PAD + 22);
+  g.fillText('EFFIGY ARCADE - ' + cls.toUpperCase(), PAD, PAD + 22);
   g.fillStyle = '#7c8199';
   g.font = '500 13px system-ui, sans-serif';
   g.fillText('every lamp is one drawing, run unlit into the sprite and again lit on top of it',
              PAD, PAD + 40);
-  for (let i = 0; i < cols; i++)
-    g.fillText(heads[i], LABEL + i*CELL + 8, PAD + 62);
 
-  const drawCell = (spr, x, y, ids, blank) => {
+  const cell = (spr, x, y, ids, wipeT, label) => {
     g.fillStyle = '#15171e';
     g.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
-    if (blank) {
+    if (label) {
+      g.fillStyle = '#5f6579';
+      g.font = '500 10px system-ui, sans-serif';
+      g.fillText(label, x + 8, y + 15);
+    }
+    if (!spr) {
       g.fillStyle = '#2a2e39';
       g.font = '500 12px system-ui, sans-serif';
       g.fillText('none', x + CELL/2 - 14, y + CELL/2);
       return;
     }
-    const s = Math.min((CELL - 18) / spr.width, (CELL - 18) / spr.height);
+    const s = Math.min((CELL - 22) / spr.width, (CELL - 22) / spr.height);
     const dw = spr.width*s, dh = spr.height*s;
-    const dx = x + (CELL - dw)/2, dy = y + (CELL - dh)/2;
+    const dx = x + (CELL - dw)/2, dy = y + (CELL - dh)/2 + 6;
     g.drawImage(spr, dx, dy, dw, dh);
+    g.save();
+    g.translate(dx, dy); g.scale(dw/spr.width, dh/spr.height);
     if (ids && ids.length && spr.lamps) {
       g.save();
-      g.translate(dx, dy); g.scale(dw/spr.width, dh/spr.height);
       g.globalCompositeOperation = 'lighter';
       for (const id of ids) if (spr.lamps[id]) spr.lamps[id](g, true);
       g.restore();
     }
+    /* the wipers are not a lamp: they are the same drawing at a different point
+       in its sweep, so they are drawn normally rather than added */
+    if (wipeT !== null && wipeT !== undefined && spr.wipers) {
+      spr.wipers(g, wipeT);
+      /* and whatever stands in FRONT of them goes back on top - the muscle
+         car's blower is bodywork over the bottom of the screen, and without
+         this the blades sweep across the front of a supercharger */
+      if (spr.overWipers) spr.overWipers(g);
+    }
+    g.restore();
   };
 
-  let y = PAD*2 + 52;
+  let y = PAD*2 + 46;
   for (const r of rows) {
-    const spr = r.spr, L = spr.lamps || {};
-    const bar = Object.keys(L).filter(k => k.indexOf('bar.') === 0);
-    g.fillStyle = '#e6e9f0';
-    g.font = '600 15px system-ui, sans-serif';
-    g.fillText(r.who[0], PAD, y + CELL/2 - 10);
-    g.fillStyle = '#8d93a8';
-    g.font = '500 12px system-ui, sans-serif';
-    /* ONE OF EACH VEHICLE. There is no such thing as a garage version and a
-       traffic version - it is one car, and the sheet says its name once. */
-    g.fillStyle = '#5f6579';
-    g.font = '500 11px system-ui, sans-serif';
-    g.fillText(Object.keys(L).join('  '), PAD, y + CELL/2 + 26);
+    const back = r.spr, front = r.front;
+    const bL = back.lamps || {}, fL = (front && front.lamps) || {};
+    const bar = Object.keys(bL).filter(k => k.indexOf('bar.') === 0);
+    const fbar = Object.keys(fL).filter(k => k.indexOf('bar.') === 0);
 
-    drawCell(spr, LABEL + 0*CELL, y, []);
-    drawCell(spr, LABEL + 1*CELL, y, ['tail']);
-    drawCell(spr, LABEL + 2*CELL, y, ['turn.r'], !L['turn.r']);
-    drawCell(spr, LABEL + 3*CELL, y, ['turn.l'], !L['turn.l']);
-    drawCell(spr, LABEL + 4*CELL, y, bar, !bar.length);
-    y += ROW;
+    g.fillStyle = '#e6e9f0';
+    g.font = '600 16px system-ui, sans-serif';
+    g.fillText(r.name, PAD, y + CELL - 6);
+    g.fillStyle = '#5f6579';
+    g.font = '500 10px system-ui, sans-serif';
+    g.fillText(r.sig, PAD, y + CELL + 12);
+
+    cell(back, LABEL + 0*CELL, y, [], null, 'back - dark');
+    cell(back, LABEL + 1*CELL, y, ['tail'], null, 'braking');
+    cell(back, LABEL + 2*CELL, y, ['turn.r'], null, 'right');
+    cell(back, LABEL + 3*CELL, y, ['turn.l'], null, 'left');
+    cell(back, LABEL + 4*CELL, y, bar, null, bar.length ? 'bar' : '');
+    cell(back, LABEL + 5*CELL, y, Object.keys(bL), null, 'all');
+
+    const y2 = y + CELL + PAD;
+    cell(front, LABEL + 0*CELL, y2, [], 0, 'front - dark');
+    cell(front, LABEL + 1*CELL, y2, ['head'], 0, 'headlights');
+    cell(front, LABEL + 2*CELL, y2, ['turn.r'], 0, 'right');
+    cell(front, LABEL + 3*CELL, y2, ['turn.l'], 0, 'left');
+    cell(front, LABEL + 4*CELL, y2, fbar, 0, 'wipers parked');
+    cell(front, LABEL + 5*CELL, y2, fbar, 1, 'wipers swept');
+
+    y += CELL*2 + PAD*2;
+  }
+
+  /* ---- and the wheel each of them is driven with ------------------------ */
+  g.fillStyle = '#e6e9f0';
+  g.font = '600 16px system-ui, sans-serif';
+  g.fillText('THE WHEELS', PAD, y + 22);
+  let wx = LABEL, wy = y;
+  for (const v of rows) {
+    const wheel = R.wheelOf(v.name);
+    if (!wheel) continue;
+    g.fillStyle = '#15171e';
+    g.fillRect(wx + 3, wy + 3, CELL - 6, CELL - 6);
+    const s = Math.min((CELL - 26) / wheel.width, (CELL - 26) / wheel.height);
+    g.drawImage(wheel, wx + (CELL - wheel.width*s)/2, wy + (CELL - wheel.height*s)/2 + 6,
+                wheel.width*s, wheel.height*s);
+    g.fillStyle = '#8d93a8';
+    g.font = '500 10px system-ui, sans-serif';
+    g.fillText(v.name, wx + 8, wy + 15);
+    wx += CELL;
+    if (wx + CELL > W - PAD) { wx = LABEL; wy += CELL + PAD; }
   }
   return c.toDataURL('image/png');
 }"""
@@ -143,6 +192,8 @@ def main():
             ctx = b.new_context(viewport={'width': 480, 'height': 900})
             ctx.add_init_script(dt.INIT)
             pg = ctx.new_page()
+            errs = []
+            pg.on('pageerror', lambda e: errs.append(str(e)))
             pg.goto('http://127.0.0.1:%d/games/sw/interstate.html' % port, wait_until='load')
             pg.wait_for_timeout(1600)
             pg.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
@@ -150,15 +201,23 @@ def main():
             pg.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
             pg.click('[data-act="drive"]')
             pg.wait_for_timeout(1500)
-            url = pg.evaluate(SHEET)
+            made = []
+            for cls in CLASSES:
+                url = pg.evaluate(SHEET, cls)
+                if not url:
+                    print('  %-11s no vehicles in this class' % cls)
+                    continue
+                out = ROOT / 'docs' / ('fleet-%s.png' % cls)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(base64.b64decode(url.split(',', 1)[1]))
+                made.append(out)
+                print('  wrote %s (%d KB)' % (out.relative_to(ROOT), out.stat().st_size // 1024))
+            if errs:
+                print('  page errors: ' + errs[0][:140])
             b.close()
     finally:
         srv.shutdown()
-
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_bytes(base64.b64decode(url.split(',', 1)[1]))
-    print('wrote %s (%d KB)' % (OUT.relative_to(ROOT), OUT.stat().st_size // 1024))
-    return 0
+    return 0 if made else 1
 
 
 if __name__ == '__main__':

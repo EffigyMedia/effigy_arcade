@@ -14,6 +14,34 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-27"></a>
+## [0.9.27] - 2026-08-29
+- Added: **every FRONT declares its lamps** - `head`, `turn.l`, `turn.r`, and the front pair of the
+  police bar. 84 lamps became 130 across the same 26 vehicles
+  ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **every car's headlights were on at noon.** `headGlow` painted a bloom straight into the
+  sprite, so a parked car glowed in the garage. A headlight is a lamp like any other now
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **wipers.** A wiper is not a lamp - it has a POSITION, not an on and off - so a sprite
+  carries `wipers(g, t)` beside its lamps, 0 parked and 1 at full sweep, and bakes the parked pose.
+  They wear the car's own paint and a lighter shade of it ([RLG-060](../fragments/RLG-060.md),
+  [RLG-053](../fragments/RLG-053.md)).
+- Changed: **the muscle car loses its forced stripes and gains an exposed blower** standing out of
+  the bonnet and cutting into the screen, drawn in front of the wipers. Its outer headlight is a
+  bigger bulb than its inner one ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **every supercar wore MATADOR's face.** `paintFront` takes its body under `bodyType` and the
+  fleet accessor was passing `kind` - five cars, one nose
+  ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **a front indicator is its own lamp, never a headlight.** At the rear a cluster is a row
+  of repeated elements and the outermost can be the amber; at the front there are two lamps and
+  taking one removes a headlight. STALLION and MATADOR stack theirs under the lamp at the lamp's own
+  rake; CREST's banded bar gives up its outermost segment, which is the rear's answer for the rear's
+  reason ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **one sheet per class** - `docs/fleet-super.png`, `-sport`, `-police`, `-production`,
+  `-utility`. One picture of everything was unreadable at any size that fits on a screen. Two rows
+  per vehicle, back then front, and the steering wheels at the end
+  ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-26"></a>
 ## [0.9.26] - 2026-08-29
 - Fixed: **the van has one brake light and one indicator above it, per side.** It was a single tall

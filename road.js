@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.26';
+window.ROAD_BUILD = '0.9.27';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1424,10 +1424,65 @@ function rr(g,x,y,w,h,r){
 function sprite(w,h,paint){
   const c = document.createElement('canvas');
   c.width=w; c.height=h;
-  const lamps = {};
-  paint(c.getContext('2d'), w, h, lamps);
+  const lamps = {}, parts = {};
+  paint(c.getContext('2d'), w, h, lamps, parts);
   c.lamps = lamps;
+  /* A WIPER IS NOT A LAMP. It has no on and off - it has a POSITION, and the
+     sprite bakes it parked. `parts.wipers(g, t)` draws it anywhere in its sweep,
+     0 parked and 1 at full extension, so the animation is the same drawing at a
+     different argument rather than a second description of a blade. */
+  c.wipers = parts.wipers || null;
+  /* ---- AND WHAT STANDS IN FRONT OF THEM --------------------------------
+     A flat sprite cannot express "this bit is behind that bit" once a consumer
+     re-draws part of it. The muscle car's blower is bodywork that stands over
+     the bottom of the screen, so a caller animating the wipers must draw them
+     and then put the blower back on top - otherwise the blades sweep across the
+     front of a supercharger, which is what the owner saw.
+     ------------------------------------------------------------------ */
+  c.overWipers = parts.overWipers || null;
   return c;
+}
+
+/* ---- WIPERS -----------------------------------------------------------
+   RLG-060, as the owner corrected it: wipers are a detail ON OTHER CARS, seen
+   in the rearview. They never cross the player's own view, so they cannot
+   occlude anything the player needs - and a car in front of you with its wipers
+   going is the cheapest way to say it is raining on everyone rather than only
+   on your windscreen.
+
+   Two blades pivoting from the bottom of the screen. Parked they lie along the
+   bottom edge; extended they stand up it. Everything is derived from the screen
+   rectangle the painter passes in, so a car with a different screen gets
+   different wipers without anything here changing.
+   -------------------------------------------------------------------------- */
+function wiperPair(x0, x1, yTop, yBot, body, hi){
+  const sw = x1 - x0, sh = yBot - yTop;
+  return (g, t) => {
+    const a = -0.26 + (-1.24 + 0.26) * clamp(t, 0, 1);
+    const len = sh * 0.86;
+    g.save();
+    g.lineCap = 'round';
+    for(const px of [x0 + sw*0.28, x0 + sw*0.70]){
+      const ex = px + Math.cos(a)*len, ey = yBot + Math.sin(a)*len;
+      /* ---- PAINTED, NOT SILVER -----------------------------------------
+         Owner, 2026-08-29: the wipers take the car's own colour and a lighter
+         shade of it. Dark blades on dark glass read as a scratch, and one
+         silver for every car reads as a part bolted on by someone else - a
+         wiper arm that matches the paint belongs to the car it is on, and the
+         lighter shade is what catches the light along its length.
+         ------------------------------------------------------------- */
+      g.strokeStyle = body || 'rgba(198,208,220,.85)';
+      g.lineWidth = Math.max(1, sw*0.012);
+      g.beginPath(); g.moveTo(px, yBot); g.lineTo(ex, ey); g.stroke();
+      g.strokeStyle = hi || 'rgba(228,236,246,.95)';
+      g.lineWidth = Math.max(1.4, sw*0.022);
+      g.beginPath();
+      g.moveTo(px + Math.cos(a)*len*0.30, yBot + Math.sin(a)*len*0.30);
+      g.lineTo(ex, ey);
+      g.stroke();
+    }
+    g.restore();
+  };
 }
 
 /* Declare a lamp: draw it now, unlit, into the sprite being baked, and keep the
@@ -1750,7 +1805,7 @@ let optBody = 'MATADOR';
    grille, a coupe sits low.
    =========================================================================== */
 function paintRigFront(kind, o){
-  return (g, w, h) => {
+  return (g, w, h, lamps, parts) => {
     const P = o;
     const cy = h;
     const grad = (y0,y1) => { const b = g.createLinearGradient(0,y0,0,y1);
@@ -1797,11 +1852,21 @@ function paintRigFront(kind, o){
            so they overhung it at both ends */
         g.beginPath(); g.moveTo(w*0.125, yy); g.lineTo(w*0.875, yy); g.stroke();
       }
-      /* lamps at the same height its rear lamps sit */
-      for(const lx of [0.10, 0.74]){
-        g.fillStyle='#f2f8ff'; rr(g, w*lx, cy-h*0.155, w*0.16, h*0.032, 2); g.fill();
-        headGlow(g, w*(lx+0.08), cy-h*0.139, w);
-      }
+      /* ---- A HEADLIGHT IS A LAMP TOO (RLG-053) --------------------------
+         The glow was baked into the sprite, so every car on the road had its
+         headlights burning at noon and a parked one glowed in the garage. It is
+         a declaration now: a dim lens when it is off, and the lens plus its
+         bloom when something asks for it.
+         ---------------------------------------------------------------- */
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const lx of [0.10, 0.74]){
+          gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+          rr(gg, w*lx, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
+          if(on) headGlow(gg, w*(lx+0.08), cy-h*0.139, w);
+        }
+      });
+      decl(g, lamps, 'turn.l', turnBulb(w*0.055, cy-h*0.155, w*0.040, h*0.032, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.905, cy-h*0.155, w*0.040, h*0.032, true));
       drawMarque(g, 'GENERIC', w*0.5, bot-h*0.215, h*0.030);   /* the cab, front only */
       g.fillStyle='#20242a'; g.fillRect(w*0.055, bot-h*0.055, w*0.89, h*0.055);
       g.fillStyle='#2a2f36'; g.fillRect(w*0.06, cy-h*0.115, w*0.88, h*0.014);
@@ -1832,11 +1897,23 @@ function paintRigFront(kind, o){
         const yy = bot-h*0.215 + k*h*0.034;
         g.beginPath(); g.moveTo(w*0.165, yy); g.lineTo(w*0.835, yy); g.stroke();
       }
-      /* lamps where the rear's tall corner lamps are: 0.07 and 0.855 */
-      for(const lx of [0.07, 0.855]){
-        g.fillStyle='#f2f8ff'; rr(g, w*lx, bot-h*0.135, w*0.075, h*0.070, 2); g.fill();
-        headGlow(g, w*(lx+0.037), bot-h*0.100, w);
-      }
+      /* the same corners as the tail, and the same stack the owner ruled for
+         it: one amber above, one lamp below, on each side */
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const lx of [0.07, 0.855]){
+          gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+          rr(gg, w*lx, bot-h*0.092, w*0.075, h*0.072, 2); gg.fill();
+          if(on) headGlow(gg, w*(lx+0.037), bot-h*0.056, w);
+        }
+      });
+      decl(g, lamps, 'turn.l', (gg, on) => {
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(gg, w*0.07, bot-h*0.150, w*0.075, h*0.042, 2); gg.fill();
+      });
+      decl(g, lamps, 'turn.r', (gg, on) => {
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(gg, w*0.855, bot-h*0.150, w*0.075, h*0.042, 2); gg.fill();
+      });
       /* the van wears it on the NOSE only */
       drawMarque(g, 'GENERIC', w*0.5, bot-h*0.285, h*0.030);
       g.fillStyle='#1b1f26'; g.fillRect(w*0.055, bot-h*0.055, w*0.89, h*0.055);
@@ -1881,11 +1958,18 @@ function paintRigFront(kind, o){
         const yy = bedTop+h*0.055 + k*h*0.035;
         g.beginPath(); g.moveTo(w*(gL+0.02), yy); g.lineTo(w*(gR-0.02), yy); g.stroke();
       }
-      /* square lamps flanking it */
-      for(const lx of [0.075, 0.775]){
-        g.fillStyle='#f2f8ff'; rr(g, w*lx, bedTop+h*0.075, w*0.15, h*0.075, 3); g.fill();
-        headGlow(g, w*(lx+0.075), bedTop+h*0.112, w);
-      }
+      /* square lamps flanking it, with the amber carved out of the outer end */
+      decl(g, lamps, 'head', (gg, on) => {
+        gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+        rr(gg, w*(0.075+0.048), bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
+        rr(gg, w*0.775, bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
+        if(on){
+          headGlow(gg, w*0.150, bedTop+h*0.112, w);
+          headGlow(gg, w*0.825, bedTop+h*0.112, w);
+        }
+      });
+      decl(g, lamps, 'turn.l', turnBulb(w*0.075, bedTop+h*0.075, w*0.048, h*0.075, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.877, bedTop+h*0.075, w*0.048, h*0.075, true));
       /* the pickup front returns before the shared badge line, so it needs its
          own — on the bonnet, above the grille */
       drawMarque(g, 'GENERIC', w*0.5, bedTop + h*0.028, h*0.032);
@@ -1963,6 +2047,12 @@ function paintRigFront(kind, o){
     g.lineTo(w*(0.5+pCab/2+0.03), pDeck-h*0.015);
     g.lineTo(w*(0.5-pCab/2-0.03), pDeck-h*0.015);
     g.closePath(); g.fill();
+    /* the wipers sit on that screen, parked, and can be swept from here */
+    if(parts){
+      parts.wipers = wiperPair(w*(0.5-pCab/2-0.02), w*(0.5+pCab/2+0.02),
+                               pRoof+h*0.022, pDeck-h*0.015, P.body, P.hi);
+      parts.wipers(g, 0);
+    }
     g.fillStyle = 'rgba(90,120,150,.18)';
     g.beginPath();
     g.moveTo(w*(0.5-pCab/2+0.055), pRoof+h*0.022);
@@ -1981,16 +2071,65 @@ function paintRigFront(kind, o){
     }
     /* the stripes go AFTER the body — drawn before it they were painted over
        and only showed on the rear, where the order happens to be the other way */
-    /* the muscle car wears them always; anything else when the option is on —
-       this was `kind === 'muscle'` only, so the TUNER never got front stripes
-       even with the toggle set */
-    if(kind === 'muscle' || P.stripes){
+    /* ---- NOBODY IS FORCED INTO STRIPES ---------------------------------
+       Owner, 2026-08-29: remove the forced stripes on the muscle car. It wore
+       them whether or not the option was set, which made the option a lie on
+       the one car most likely to want it - and the car's identity is now the
+       BLOWER standing out of its bonnet, which is a better signature than a
+       paint job anybody can switch on.
+       ------------------------------------------------------------------ */
+    if(P.stripes){
       /* roof and bonnet, never across the windscreen */
       g.fillStyle = shade(P.body, 0.42);
       for(const sx of [0.415, 0.530]){
         g.fillRect(w*sx, pRoof, w*0.055, h*0.030);
         g.fillRect(w*sx, pDeck, w*0.055, bot - pDeck);
       }
+    }
+
+    /* ---- THE BLOWER, STANDING PROUD OF THE BONNET ----------------------
+       Owner, 2026-08-29: an exposed engine blower above the hood. It replaces
+       the forced stripes as what says MUSCLE at a glance, and it says it from
+       the front - which is the view a car behind you has of it, and the one the
+       mirror shows.
+
+       It is drawn before the mirrors so they sit in front of it, and it is
+       bodywork rather than a lamp: nothing lights it, and it is the same shape
+       whatever the weather.
+       ---------------------------------------------------------------- */
+    if(kind === 'muscle'){
+      /* HIGH ENOUGH TO CUT THE SCREEN. Owner, 2026-08-29: the blower obscures
+         part of the windscreen and the wipers behind it. It is drawn after both,
+         so it stands in front of them the way a real one does - that is the
+         whole point of an exposed blower, and a car you cannot quite see the
+         driver of is a different car.
+
+         It is also handed back as `parts.overWipers`, so anything that animates
+         the wipers can put it back on top afterwards. */
+      const bx = w*0.5, bw2 = w*0.185, bTop = pDeck - h*0.150;
+      const blower = (g) => {
+      /* the scoop mouth, facing you, with a shadow under its lip */
+      g.fillStyle = '#0c0e12';
+      rr(g, bx - bw2, bTop, bw2*2, h*0.052, h*0.008); g.fill();
+      g.fillStyle = 'rgba(120,132,148,.30)';
+      rr(g, bx - bw2*0.94, bTop + h*0.004, bw2*1.88, h*0.014, h*0.006); g.fill();
+      /* the case below it, sitting on the bonnet */
+      const cg = g.createLinearGradient(0, bTop + h*0.052, 0, pDeck);
+      cg.addColorStop(0, '#7f8794'); cg.addColorStop(1, '#3d434d');
+      g.fillStyle = cg;
+      rr(g, bx - bw2*0.88, bTop + h*0.046, bw2*1.76, h*0.038, h*0.006); g.fill();
+      /* the drive belt at one end, and the butterflies across the mouth */
+      g.strokeStyle = 'rgba(18,20,26,.85)';
+      g.lineWidth = Math.max(1, w*0.008);
+      for(let k = 1; k < 4; k++){
+        const xx = bx - bw2 + (bw2*2)*(k/4);
+        g.beginPath(); g.moveTo(xx, bTop + h*0.004); g.lineTo(xx, bTop + h*0.048); g.stroke();
+      }
+      g.fillStyle = 'rgba(255,255,255,.16)';
+      rr(g, bx - bw2*0.88, bTop + h*0.046, bw2*1.76, h*0.010, h*0.005); g.fill();
+      };
+      blower(g);
+      if(parts) parts.overWipers = blower;
     }
 
     /* mirrors */
@@ -2005,38 +2144,66 @@ function paintRigFront(kind, o){
     const ly = pDeck + (bot-pDeck)*0.40, lh = h*0.055;
     if(kind === 'muscle'){
       /* QUAD round lamps, stacked wide, with a chrome ring each */
+      /* ---- THE OUTER BULB IS THE BIG ONE --------------------------------
+         Owner, 2026-08-29. It is what a quad-lamp muscle car does: a large
+         outer main beam and a smaller inner high beam, which is also why the
+         pair reads as a face rather than as four identical dots.
+         ---------------------------------------------------------------- */
+      const mOuter = (lx) => (lx < 0.5 ? lx + 0.068 : lx + 0.185);
+      const mInner = (lx) => (lx < 0.5 ? lx + 0.185 : lx + 0.068);
+      /* the chrome rings are bodywork; the lenses inside them are the lamp */
       for(const lx of [0.055, 0.685]){
-        /* four haloes at 0.054 merged into one white bar. Smaller lamps, and
-           only ONE glow per pair, centred between them. */
-        for(const k of [0.068, 0.185]){
-          g.fillStyle = 'rgba(185,194,205,.9)';
-          g.beginPath(); g.arc(w*(lx+k), ly+lh*0.5, w*0.042, 0, 6.2832); g.fill();
-          g.fillStyle = '#f2f8ff';
-          g.beginPath(); g.arc(w*(lx+k), ly+lh*0.5, w*0.030, 0, 6.2832); g.fill();
-        }
-        headGlow(g, w*(lx+0.127), ly+lh*0.5, w);
+        g.fillStyle = 'rgba(185,194,205,.9)';
+        g.beginPath(); g.arc(w*mOuter(lx), ly+lh*0.5, w*0.050, 0, 6.2832); g.fill();
+        g.beginPath(); g.arc(w*mInner(lx), ly+lh*0.5, w*0.038, 0, 6.2832); g.fill();
       }
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const lx of [0.055, 0.685]){
+          gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+          gg.beginPath(); gg.arc(w*mOuter(lx), ly+lh*0.5, w*0.038, 0, 6.2832); gg.fill();
+          gg.beginPath(); gg.arc(w*mInner(lx), ly+lh*0.5, w*0.026, 0, 6.2832); gg.fill();
+          if(on) headGlow(gg, w*(lx+0.127), ly+lh*0.5, w);
+        }
+      });
+      /* inside the lamp row, in the gap the two round pairs leave at each end.
+         They were at 0.010 and 0.952, which is off the bodywork entirely - two
+         amber dots floating beside the car. */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.058, ly+lh*0.18, w*0.040, lh*0.64, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.902, ly+lh*0.18, w*0.040, lh*0.64, true));
     } else if(kind === 'tuner'){
       /* ROUND lamps, a pair each side, in a dark housing */
       for(const lx of [0.055, 0.685]){
         g.fillStyle = 'rgba(12,14,18,.80)';
         rr(g, w*lx, ly-h*0.012, w*0.26, lh+h*0.024, h*0.026); g.fill();
-        for(const k of [0.075, 0.185]){
-          g.fillStyle = '#f2f8ff';
-          g.beginPath(); g.arc(w*(lx+k), ly+lh*0.5, w*0.045, 0, 6.2832); g.fill();
-          g.fillStyle = 'rgba(180,215,255,.45)';
-          g.beginPath(); g.arc(w*(lx+k), ly+lh*0.38, w*0.024, 0, 6.2832); g.fill();
-          headGlow(g, w*(lx+k), ly+lh*0.5, w);
+      }
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const lx of [0.055, 0.685]) for(const k of [0.075, 0.185]){
+          gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+          gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.5, w*0.045, 0, 6.2832); gg.fill();
+          gg.fillStyle = on ? 'rgba(220,240,255,.75)' : 'rgba(180,215,255,.45)';
+          gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.38, w*0.024, 0, 6.2832); gg.fill();
+          if(on) headGlow(gg, w*(lx+k), ly+lh*0.5, w);
         }
-      }
+      });
+      decl(g, lamps, 'turn.l', turnBulb(w*0.062, ly+lh*0.20, w*0.036, lh*0.60, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.902, ly+lh*0.20, w*0.036, lh*0.60, true));
     } else {
-      for(const lx of [0.055, 0.685]){
-        g.fillStyle = '#f2f8ff';
-        rr(g, w*lx, ly, w*0.26, lh, 3); g.fill();
-        g.fillStyle = 'rgba(180,215,255,.45)';
-        rr(g, w*(lx+0.01), ly+lh*0.14, w*0.24, lh*0.30, 2); g.fill();
-        headGlow(g, w*(lx+0.13), ly+lh*0.5, w);
-      }
+      /* the amber is the OUTBOARD end of the cluster, exactly as on the tail */
+      const FL = 0.055, FR = 0.685, FW = 0.26, FT = 0.048;
+      decl(g, lamps, 'head', (gg, on) => {
+        gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+        rr(gg, w*(FL+FT), ly, w*(FW-FT), lh, 3); gg.fill();
+        rr(gg, w*FR, ly, w*(FW-FT), lh, 3); gg.fill();
+        gg.fillStyle = on ? 'rgba(225,242,255,.8)' : 'rgba(180,215,255,.45)';
+        rr(gg, w*(FL+FT+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
+        rr(gg, w*(FR+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
+        if(on){
+          headGlow(gg, w*(FL+0.13), ly+lh*0.5, w);
+          headGlow(gg, w*(FR+0.13), ly+lh*0.5, w);
+        }
+      });
+      decl(g, lamps, 'turn.l', turnBulb(w*FL, ly, w*FT, lh, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*(FR+FW-FT), ly, w*FT, lh, true));
     }
     /* and on the nose */
     if(P.marque) drawMarque(g, P.marque, w*0.5, pDeck + h*0.026, h*0.030);
@@ -2482,7 +2649,9 @@ function paintRig(kind, o){
 
        And they were sitting INSIDE the `else` opened for the round lamps, so
        they drew for every car EXCEPT the muscle one. Outside it now. */
-    if(isMuscle || P.stripes){
+    /* the muscle car is not forced into stripes any more - see the front
+       painter for the ruling and for what took their place */
+    if(P.stripes){
       g.fillStyle = shade(P.body, 0.42);
       for(const sx of [0.415, 0.530]){
         g.fillRect(w*sx, roofY, w*0.055, h*0.030);
@@ -2592,7 +2761,7 @@ function slats(g, x, y, w2, h2, n){
 }
 
 function paintFront(o){
-  return function(g, w, h){
+  return function(g, w, h, lamps, parts){
     /* `o.body` is a COLOUR on every other painter, so the type comes in under
        its own name — otherwise the two collide silently and every car draws
        the same nose. */
@@ -2883,6 +3052,13 @@ function paintFront(o){
     g.lineTo(w*(0.5+cw2*gTop), gRoof);
     g.quadraticCurveTo(w*(0.5+cw2*gCtl), gRoof, w*(0.5+wid*gSpring), topY - h*0.005);
     g.closePath(); g.fill();
+    /* the wipers, parked along the bottom of the screen. A supercar's glass is
+       a curve rather than a box, so the rectangle is the span it fills. */
+    if(parts){
+      parts.wipers = wiperPair(w*(0.5-wid*0.62), w*(0.5+wid*0.62),
+                               gRoof, topY - h*0.005, o.body, o.hi);
+      parts.wipers(g, 0);
+    }
     for(const sx of [-1,1]){
       g.fillStyle = o.body;
       g.beginPath();
@@ -2905,13 +3081,21 @@ function paintFront(o){
        behind.
        ------------------------------------------------------------------- */
     if(B.force){
+      /* THE FRONT PAIR of the four the owner ruled into scope. Seen from the
+         front the car's own left carries the red and its right the blue, which
+         is the reverse of the view from behind - and the names say which corner
+         rather than which colour, so a pattern can address all four. */
       const bY = roofT - h*0.030;
       g.fillStyle = '#1b1e24';
       rr(g, w*0.24, bY, w*0.52, h*0.045, 2); g.fill();
-      g.fillStyle = '#ff2b4a';
-      rr(g, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); g.fill();
-      g.fillStyle = '#2f6bff';
-      rr(g, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); g.fill();
+      decl(g, lamps, 'bar.fl', (gg, on) => {
+        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        rr(gg, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
+      });
+      decl(g, lamps, 'bar.fr', (gg, on) => {
+        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        rr(gg, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
+      });
       g.fillStyle = '#2b3038';
       for(const sx of [0.285, 0.695]) g.fillRect(w*sx, bY + h*0.040, w*0.020, h*0.020);
     }
@@ -2945,17 +3129,46 @@ function paintFront(o){
     if(F === 'F'){
       /* wide slim lamps swept back into the wings, a low hexagonal mouth and
          two brake ducts \u2014 front-engined, so the mouth is the biggest feature */
-      for(const sx of [-1,1]){
+      /* ---- THE HEADLIGHT IS A LAMP (RLG-053) ---------------------------
+         The glow used to be baked into the sprite, so every car on the road had
+         its headlights burning at noon. It is declared now: a dim lens when it
+         is off, the lens and its bloom when something asks.
+         ---------------------------------------------------------------- */
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const sx of [-1,1]){
+          const lx = w*0.5 + sx*w*wid*0.60;
+          gg.fillStyle = on ? '#ffffff' : '#c9d6e6';
+          gg.beginPath();
+          gg.moveTo(lx - sx*w*0.115, topY + h*0.085);
+          gg.lineTo(lx + sx*w*0.075, topY + h*0.062);
+          gg.lineTo(lx + sx*w*0.075, topY + h*0.102);
+          gg.lineTo(lx - sx*w*0.115, topY + h*0.125);
+          gg.closePath(); gg.fill();
+          if(on) headGlow(gg, lx, topY + h*0.093, w);
+        }
+      });
+      /* ---- A VERTICAL STACK, AT THE LAMP'S OWN RAKE ---------------------
+         Owner, 2026-08-29: the indicator runs along the BOTTOM of the headlight
+         at the same angle, so the two read as one stacked unit. A swept lamp
+         with a level bar under it looks like two unrelated parts; the same
+         parallelogram, repeated below, looks like the car was designed.
+
+         The four corners below are the lamp's own bottom edge, dropped. There
+         is no second description of the rake - it is the same two x values and
+         the same two y values, plus a constant.
+         ---------------------------------------------------------------- */
+      const fTurn = (sx) => (gg, on) => {
         const lx = w*0.5 + sx*w*wid*0.60;
-        g.fillStyle = '#eef6ff';
-        g.beginPath();
-        g.moveTo(lx - sx*w*0.115, topY + h*0.085);
-        g.lineTo(lx + sx*w*0.075, topY + h*0.062);
-        g.lineTo(lx + sx*w*0.075, topY + h*0.102);
-        g.lineTo(lx - sx*w*0.115, topY + h*0.125);
-        g.closePath(); g.fill();
-        headGlow(g, lx, topY + h*0.093, w);
-      }
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        gg.beginPath();
+        gg.moveTo(lx - sx*w*0.115, topY + h*0.132);
+        gg.lineTo(lx + sx*w*0.075, topY + h*0.109);
+        gg.lineTo(lx + sx*w*0.075, topY + h*0.131);
+        gg.lineTo(lx - sx*w*0.115, topY + h*0.154);
+        gg.closePath(); gg.fill();
+      };
+      decl(g, lamps, 'turn.l', fTurn(-1));
+      decl(g, lamps, 'turn.r', fTurn(1));
       g.fillStyle = 'rgba(10,12,16,.9)';
       g.beginPath();
       g.moveTo(w*(0.5-wid*0.50), topY + h*0.20);
@@ -2981,16 +3194,53 @@ function paintFront(o){
         g.rotate(sx * 0.30);
         g.fillStyle = 'rgba(10,12,16,.88)';
         rr(g, -w*0.098, -h*0.048, w*0.196, h*0.096, h*0.020); g.fill();
-        for(const k of [-1, 1]){
-          g.fillStyle = '#eef6ff';
-          g.beginPath(); g.arc(k*w*0.046, 0, w*0.036, 0, 6.2832); g.fill();
-          g.fillStyle = 'rgba(150,190,255,.35)';
-          g.beginPath(); g.arc(k*w*0.046, -h*0.008, w*0.020, 0, 6.2832); g.fill();
-        }
         g.restore();
-        headGlow(g, lx - sx*w*0.03, topY + h*0.088, w);
-        headGlow(g, lx + sx*w*0.03, topY + h*0.102, w);
       }
+      /* the housings above are bodywork; the lenses in them are the lamp, and
+         the outboard one of each pair is the indicator */
+      const lHouse = (gg, sx, fn) => {
+        const lx = w*0.5 + sx*w*wid*0.60;
+        gg.save();
+        gg.translate(lx, topY + h*0.095);
+        gg.rotate(sx * 0.30);
+        fn(gg);
+        gg.restore();
+      };
+      /* ---- ALL FOUR LENSES ARE HEADLIGHTS -------------------------------
+         Owner, 2026-08-29: "you substituted one of the matador's headlights
+         into the turn indicator - I don't want that." Correct, and it is the
+         difference between the two ends of a car: at the REAR the cluster is a
+         row of repeated elements and taking the outermost one for the amber
+         reads as design. At the FRONT there are two lamps and taking one
+         removes a headlight.
+
+         So the front indicator is its OWN lamp, outboard of the housing on the
+         bodywork, and every lens stays a headlight.
+         ---------------------------------------------------------------- */
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const sx of [-1,1]) lHouse(gg, sx, (c) => {
+          for(const k of [-1, 1]){
+            c.fillStyle = on ? '#ffffff' : '#c9d6e6';
+            c.beginPath(); c.arc(k*w*0.046, 0, w*0.036, 0, 6.2832); c.fill();
+            c.fillStyle = on ? 'rgba(215,235,255,.7)' : 'rgba(150,190,255,.35)';
+            c.beginPath(); c.arc(k*w*0.046, -h*0.008, w*0.020, 0, 6.2832); c.fill();
+          }
+        });
+        if(on) for(const sx of [-1,1]){
+          const lx = w*0.5 + sx*w*wid*0.60;
+          headGlow(gg, lx - sx*w*0.03, topY + h*0.088, w);
+          headGlow(gg, lx + sx*w*0.03, topY + h*0.102, w);
+        }
+      });
+      /* the same stack as the STALLION, and here it is free: the housing is
+         already a rotated frame, so a bar drawn under it in that frame is at
+         the lamp's angle by construction */
+      const lTurn = (sx) => (gg, on) => lHouse(gg, sx, (c) => {
+        c.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(c, -w*0.090, h*0.054, w*0.180, h*0.026, h*0.010); c.fill();
+      });
+      decl(g, lamps, 'turn.l', lTurn(-1));
+      decl(g, lamps, 'turn.r', lTurn(1));
       g.fillStyle = 'rgba(10,12,16,.9)';
       rr(g, w*(0.5-wid*0.34), topY + h*0.215, w*wid*0.68, h*0.055, 3); g.fill();
       for(const sx of [-1,1]){
@@ -3012,17 +3262,40 @@ function paintFront(o){
       const bw2 = wid*0.86, by2 = topY + h*0.075, bh2 = h*0.052;
       g.fillStyle = 'rgba(10,12,16,.88)';
       rr(g, w*(0.5-bw2), by2 - h*0.010, w*bw2*2, bh2 + h*0.020, bh2*0.6); g.fill();
-      for(const sx of [-1,1]){
-        const x0 = sx < 0 ? w*(0.5-bw2*0.94) : w*(0.5+bw2*0.10);
-        const segW = w*bw2*0.84;
-        g.fillStyle = '#eef6ff';
-        rr(g, x0, by2, segW, bh2, bh2*0.5); g.fill();
-        /* the bands across it */
-        g.fillStyle = 'rgba(20,26,34,.55)';
-        for(let k=1;k<4;k++)
-          g.fillRect(x0 + segW*(k/4) - w*0.004, by2, w*0.008, bh2);
-        headGlow(g, x0 + segW*0.5, by2 + bh2*0.5, w);
-      }
+      /* the housing is bodywork and the band inside it is the lamp, whole - the
+         indicator is its own, below the outboard end of the bar */
+      const pSeg = (sx) => (sx < 0 ? w*(0.5-bw2*0.94) : w*(0.5+bw2*0.10));
+      const pW = w*bw2*0.84;
+      decl(g, lamps, 'head', (gg, on) => {
+        for(const sx of [-1,1]){
+          const x0 = pSeg(sx);
+          /* three of the four segments; the outermost belongs to the amber */
+          const seg = pW/4;
+          const hx = sx < 0 ? x0 + seg : x0;
+          gg.fillStyle = on ? '#ffffff' : '#c9d6e6';
+          rr(gg, hx, by2, pW - seg, bh2, bh2*0.5); gg.fill();
+          /* the bands across it */
+          gg.fillStyle = 'rgba(20,26,34,.55)';
+          for(let k=1;k<3;k++)
+            gg.fillRect(hx + (pW-seg)*(k/3) - w*0.004, by2, w*0.008, bh2);
+          if(on) headGlow(gg, hx + (pW-seg)*0.5, by2 + bh2*0.5, w);
+        }
+      });
+      /* ---- THE OUTERMOST SEGMENT OF THE BAR IS THE INDICATOR --------------
+         Owner, 2026-08-29: on the CREST, use the outermost headlight lamp as
+         the indicator. This face is a BANDED bar - a row of repeated segments -
+         so taking the outer one is the same answer the rear clusters give, and
+         it does not remove a headlight the way taking one of a PAIR would.
+         ---------------------------------------------------------------- */
+      const pTurn = (sx) => (gg, on) => {
+        const x0 = pSeg(sx);
+        const seg = pW/4;
+        const ax = sx < 0 ? x0 : x0 + pW - seg;
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(gg, ax, by2, seg, bh2, bh2*0.5); gg.fill();
+      };
+      decl(g, lamps, 'turn.l', pTurn(-1));
+      decl(g, lamps, 'turn.r', pTurn(1));
       g.fillStyle = 'rgba(10,12,16,.85)';
       rr(g, w*(0.5-wid*0.42), topY + h*0.235, w*wid*0.84, h*0.060, h*0.024); g.fill();
     }
@@ -6379,10 +6652,13 @@ function drawMarque(g, kind, cx, cy, r, tint){
 }
 
 
+/* lifted only by `API.wheelOf`, which needs the wheel drawn on a machine that
+   has no touch at all - every harness is one */
+let wheelForce = false;
 function drawWheel(){
   if(!wheelCx) return;
-  if(document.body.classList.contains('no-touch')) return;
-  if(document.body.classList.contains('hardware')) return;
+  if(!wheelForce && document.body.classList.contains('no-touch')) return;
+  if(!wheelForce && document.body.classList.contains('hardware')) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   if(dpr !== wheelDpr){ wheelDpr = dpr; wheelCv.width = 115*dpr; wheelCv.height = 115*dpr; }
   const g = wheelCx, R = 47, cx = 57.5, cy = 57.5;
@@ -11378,26 +11654,49 @@ requestAnimationFrame(frameLoop);
      sprite a vehicle is drawn from, by name, so a harness can ask what each one
      declares without knowing how any of them is built */
   API.fleet = function(){
-    /* Every vehicle the engine can put on the road, with the PAINTER it came
-       from. Two entries that share a painter are the same vehicle in two
-       liveries - the garage SALOON and the traffic sedan are one car - so a
-       reader can group them instead of being shown the fleet twice. */
+    /* Every vehicle the engine can put on the road, FRONT AND BACK, with the
+       painter each came from. Two entries that share a painter are the same
+       vehicle in two liveries - there is no garage version and traffic version,
+       it is one car - so a reader groups by `sig` and names it once. */
     const out = [];
+    /* ---- THE FIVE CLASSES -------------------------------------------------
+       Owner, 2026-08-29. They are not a rendering detail: a class is what a car
+       IS on this road - what it can do, who drives it, and what colour it is
+       allowed to wear (RLG-044). The sheet is split by them because one enormous
+       picture of everything is unreadable, and because these are the groupings
+       the fleet actually has.
+       ------------------------------------------------------------------- */
+    const CLS = { STALLION:'super', MATADOR:'super', CREST:'super', FORMULA:'super',
+                  ROADSTER:'sport', TUNER:'sport', MUSCLE:'sport',
+                  CRUISER:'police', SUPERCRUISER:'police',
+                  SALOON:'production', COUPE:'production', CAB:'production',
+                  sedan:'production', sedan2:'production', coupe:'production',
+                  taxi:'production', tuner:'sport', muscle:'sport',
+                  PICKUP:'utility', VAN:'utility', LORRY:'utility',
+                  pickup:'utility', van:'utility', truck:'utility' };
+    const add = (name, sig, rear, front) =>
+      out.push({ name:name, sig:sig, cls:CLS[name] || 'production', spr:rear, front:front });
     for(const k in BODY){
       const rs = BODY[k];
       /* the cache only holds bodies a rival can be given, so an unlockable is
          not in it. Build it the way the cache does rather than leaving a hole. */
-      const spr = RIVAL_SP[k+'|WHITE'] || (rs.rig
+      const rear = RIVAL_SP[k+'|WHITE'] || (rs.rig
         ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)))
         : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
             bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE))));
-      /* the SIGNATURE is the painter, so two liveries of one car group together.
-         For a rig body that is the rig; for a painted body it is the body key
-         itself, because SUPERCRUISER and the police super cruiser are the same
-         car and keying on `rear` would have split them - it is MATADOR's tail. */
-      out.push({ name:k, sig: rs.rig ? 'rig:'+rs.rig : 'car:'+k, spr:spr });
+      const front = rs.rig
+        ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)))
+        /* `paintFront` takes the body under `bodyType` - `o.body` is a COLOUR on
+           every other painter, and the comment inside it says so. Passing `kind`
+           meant every supercar fell back to MATADOR and the sheet showed one
+           nose on five cars. The size is the one the garage uses, 230x215,
+           because a front is taller than a back. */
+        : sprite(230,215, paintFront(Object.assign({ bodyType:k, marque:rs.rear,
+            player:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)));
+      add(k, rs.rig ? 'rig:'+rs.rig : 'car:'+k, rear, front);
     }
     const traf = { sedan:SP.sedan, sedan2:SP.sedan2, coupe:SP.coupe, van:SP.van,
                    pickup:SP.pickup, truck:SP.truck, taxi:(TRAFFIC_SP.taxi||[])[0],
@@ -11405,10 +11704,28 @@ requestAnimationFrame(frameLoop);
     const trafRig = { sedan:'sedan', sedan2:'sedan', coupe:'coupe', van:'van', pickup:'pickup',
                       truck:'truck', taxi:'taxi', muscle:'muscle', tuner:'tuner' };
     for(const k in traf)
-      if(traf[k]) out.push({ name:k, sig:'rig:'+trafRig[k], spr:traf[k] });
-    if(SP.cop) out.push({ name:'CRUISER', sig:'rig:cop', spr:SP.cop });
-    if(SP.superCop) out.push({ name:'SUPERCRUISER', sig:'car:SUPERCRUISER', spr:SP.superCop });
+      if(traf[k]) add(k, 'rig:'+trafRig[k], traf[k], (FRONT_SP[k]||[])[0] || null);
+    if(SP.cop) add('CRUISER', 'rig:cop', SP.cop, (FRONT_SP.cop||[])[0] || null);
+    if(SP.superCop) add('SUPERCRUISER', 'car:SUPERCRUISER', SP.superCop, null);
     return out;
+  };
+
+  /* ---- THE STEERING WHEEL THIS CAR IS DRIVEN WITH ----------------------
+     Every marque has its own rim, spokes and badge, and nothing outside the
+     cockpit has ever shown them side by side. `drawWheel` paints the HUD canvas
+     and refuses on a device with no touch, which is every harness - so the
+     refusal is lifted for the duration and the result is copied off.
+     ------------------------------------------------------------------- */
+  API.wheelOf = function(k){
+    if(!wheelCv || !wheelCx) return null;
+    const prevBody = optBody, prevTurn = steerTurn;
+    optBody = k; steerTurn = 0; wheelForce = true;
+    try { drawWheel(); } catch(e){ /* fall through and return what there is */ }
+    wheelForce = false; optBody = prevBody; steerTurn = prevTurn;
+    const c = document.createElement('canvas');
+    c.width = wheelCv.width; c.height = wheelCv.height;
+    c.getContext('2d').drawImage(wheelCv, 0, 0);
+    return c;
   };
   API.holdBlink = function(v){ blinkHold = !!v; return blinkHold; };
   API.lampsOf = function(k){
