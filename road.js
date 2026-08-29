@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.38';
+window.ROAD_BUILD = '0.9.39';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5362,6 +5362,24 @@ function zeroSixty(key){
    swing caused by a car it has never met. Three sessions, agreeing to within
    0.2 of a percentage point. See RLG-042.
    ------------------------------------------------------------------------- */
+/* ---- THE FASTEST THING IN THE GAME, ASKED RATHER THAN ASSUMED ----------
+   Two ceilings were written as constants when the quickest car in the game did
+   206mph: a hard clamp on `spd` at 1.30 of MAX_SPD, and a speedometer face
+   reading to 260. The formula class arrived at 248, 260 and 276mph, so COMET
+   was being held at 260 by a safety clamp and its needle was pegged at the top
+   of the dial - the owner reported both as one symptom, that the instruments
+   were capping the car.
+
+   Both are derived from the fleet now. A body added later moves them with it,
+   which is the only way a number like this stays true.
+   ------------------------------------------------------------------------- */
+let FLEET_TOP = 1.0;
+function fleetTop(){
+  let m = 1.0;
+  for(const k in BODY) if(BODY[k] && BODY[k].vmax > m) m = BODY[k].vmax;
+  return m;
+}
+
 function gearCountFor(k){ return (BODY[k] && BODY[k].gears) || 6; }
 function redlineFor(k){ return (BODY[k] && BODY[k].redline) || REDLINE; }
 function pullOf(k){ return (BODY[k] && BODY[k].pull) || 1; }
@@ -7964,10 +7982,16 @@ function step(dt){
   /* a gear that cannot pull makes the engine labour, which you hear */
   bogT = (optManual && onGas && gearFactor() < 0.4) ? Math.min(1, bogT + dt*3)
                                                     : Math.max(0, bogT - dt*3);
-  /* the hard ceiling is the fastest thing any car can do on the bottle, not a
-     flat 200 — this was the last reference to the constant I removed, and it
-     threw every frame, which pinned the car at 31mph */
-  spd = clamp(spd, 0, MAX_SPD * 1.30);
+  /* ---- THE HARD CEILING IS THE FLEET'S, NOT A CONSTANT ------------------
+     A safety clamp, and the only thing it should ever stop is a number going
+     wild. At a flat 1.30 it was stopping a CAR: COMET's own top end is 1.38,
+     so the fastest car in the game could not reach its own declared speed and
+     nothing in the code said why.
+
+     The fleet's own maximum plus a tenth: the tenth is the slipstream, which
+     raises the aero ceiling by up to 4.5%, plus room for a frame of overshoot.
+     -------------------------------------------------------------------- */
+  spd = clamp(spd, 0, MAX_SPD * (FLEET_TOP * 1.10));
   if(offRoad){
     shake = Math.max(shake, 0.22);
     targetX = clamp(targetX, -1.18, 1.18);
@@ -10752,15 +10776,25 @@ function drawDials(){
   face(g, 30, 30, 26, rpm / redline(), (rpm/1000).toFixed(1), 'x1000',
        0.86, '#5ff0d8', '#ff3b5c', undefined, gearLabel());
   /* ---- THE DIAL HAS TO REACH ------------------------------------------
-     The needle was `spd / MAX_SPD`, so 200mph was full deflection and
-     anything faster simply pegged — which is the other half of why nothing
-     ever appeared to go above 200. The face reads to 260 now, so FORMULA's
-     218 sits where it belongs and a bottle takes it past that.
+     The needle was `spd / MAX_SPD`, so 200mph was full deflection and anything
+     faster simply pegged - which is why nothing ever appeared to go above 200.
+     It was then fixed to 260, which was the same mistake with a bigger number:
+     COMET does 276 and pegged in exactly the same way.
+
+     The face is built from the fleet and rounded up to the next twenty, so the
+     fastest car in the game has somewhere to sit and a bottle has somewhere to
+     go beyond that.
+
+     THE RED BAND IS THIS CAR'S OWN CEILING rather than a fixed 200. Above its
+     `vmax` a car is over-running - the engine is being pushed past what its
+     gearing and its aero can hold, and it sheds speed hard the moment you lift.
+     That is a fact about the car you are in, so the dial should say it about
+     the car you are in.
      ------------------------------------------------------------------- */
-  const DIAL_TOP = 260;
+  const DIAL_TOP = Math.ceil(FLEET_TOP * 200 / 20) * 20;
   const mph = clamp((spd / MAX_SPD * 200) / DIAL_TOP, 0, 1);
   face(g, 85, 30, 26, mph, Math.round(spd/MAX_SPD*200), 'MPH',
-       200/DIAL_TOP, '#ffd98a', '#ff3b5c', dist);
+       (bodyStat('vmax') * 200) / DIAL_TOP, '#ffd98a', '#ff3b5c', dist);
 }
 function gearLabel(){
   /* Just the number. The D prefix was noise — you know which box you chose,
@@ -12163,6 +12197,7 @@ if (AR && AR.options) AR.options.define([
   }
   buildSprites();
 })();
+FLEET_TOP = fleetTop();
 syncBoxClass();
 applyTouchUI();
 

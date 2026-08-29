@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-39"></a>
+## [0.9.39] - 2026-08-29
+- Fixed: **the formula cars reach their own top speed.** A safety clamp at 260mph and a speedometer
+  face fixed at 260 were both written when the quickest car did 206 - so COMET, declared at 276, was
+  held at 260 with a pegged needle. Both are derived from the fleet now, and the dial's red band is
+  the car's own ceiling rather than a fixed 200. Measured: 248, 260 and 276 of 248, 260 and 276; with
+  the old clamp restored, COMET reaches 260 ([RLG-075](../fragments/RLG-075.md)).
+
 <a id="v0-9-38"></a>
 ## [0.9.38] - 2026-08-29
 - Fixed: **the garage's two views stand on one floor at one scale.** They were bottom-aligned by
