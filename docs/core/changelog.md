@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-56"></a>
+## [0.9.56] - 2026-08-29
+- Changed: **snow accumulates instead of settling to a level.** It used to chase the fall and stop
+  there, so a flurry could never whiten the ground however long it lasted and a blizzard reached its
+  ceiling in seconds. It integrates now - about forty seconds of heavy snow to cover the ground,
+  three or four minutes for a flurry - and melt is a twentieth of the rate it arrived
+  ([RLG-057](../fragments/RLG-057.md)).
+- Changed: **deep snow is slicker than snow.** Settled cover costs more grip than the fall does: a
+  road with an inch on it is the hazard and the flakes are only how it got there. Measured, grip fell
+  from 0.578 to 0.340 as the ground whitened, and the floor is deliberate - below a third of dry grip
+  a car feels broken rather than slippery ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-55"></a>
 ## [0.9.55] - 2026-08-29
 - Fixed: **settled snow is two layers rather than one slab.** It was a single overlay filling

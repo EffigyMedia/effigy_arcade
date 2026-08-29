@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.55';
+window.ROAD_BUILD = '0.9.56';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6201,22 +6201,58 @@ function stepWeather(dt){
     if(optWeather === 'wet' && wetTarget === 0){ wetTarget = rnd(0.5,0.9); snowy = B.snow > B.rain ? 1 : 0; }
     wetNext = rnd(35, 80);
   }
-  /* snow SETTLES: it whitens the ground long after it stops falling */
-  const want = snowy ? wet : 0;
-  /* ...unless the place it settled on cannot hold it. Driving out of a tundra
-     into a desert used to leave the ground white for a minute and a half. */
-  const fade = settleMelt ? 0.55 : (want > settle ? 0.10 : 0.03);
-  settle += (want - settle) * Math.min(1, dt * fade);
-  if(settleMelt && settle < 0.02){ settle = 0; settleMelt = 0; }
+  /* ---- SNOW ACCUMULATES. IT DOES NOT SETTLE TO A LEVEL ------------------
+     Owner, 2026-08-29: "a snow coverage increase where over time it gets more
+     and more slick and the white overlay becomes more and more opaque."
+
+     `settle` used to CHASE the fall - it eased toward `wet` and stopped there,
+     so a light flurry could never whiten the ground however long it lasted, and
+     a heavy one reached its ceiling in a few seconds and then held. That is a
+     level, not an accumulation: the ground looked the same after ten minutes of
+     snow as after ten seconds of it.
+
+     It integrates now. How fast it builds is how hard it is falling; where it
+     stops is the ground being covered, not the storm's intensity. A long light
+     fall and a short heavy one arrive at the same white by different roads,
+     which is what snow does.
+
+     MELT IS SLOWER THAN FALL and it is not the same number. Snow lies. What
+     takes it away is the place turning warm - `settleMelt`, set when the biome
+     underneath can no longer hold it - and that is fast, because driving out of
+     a tundra into a desert should not leave the ground white for a minute.
+     ------------------------------------------------------------------- */
+  if(settleMelt){
+    settle = Math.max(0, settle - dt * 0.55);
+    if(settle < 0.02){ settle = 0; settleMelt = 0; }
+  } else if(snowy && wet > 0.04){
+    /* about forty seconds of heavy snow to cover the ground completely, and
+       three or four minutes of a flurry - which is the difference a driver
+       should feel between weather passing through and weather setting in */
+    settle = Math.min(1, settle + dt * wet * 0.030);
+  } else {
+    /* it stops falling and the ground stays white for a good while */
+    settle = Math.max(0, settle - dt * 0.012);
+  }
   /* rain arrives faster than a road dries */
   const rate = wetTarget > wet ? 0.22 : 0.055;
   wet += (wetTarget - wet) * Math.min(1, dt * rate * 3);
 }
 
 /* the two things weather actually changes */
-/* snow is worse than rain, and settled snow keeps costing after it stops */
-function wetGrip(){  return 1 - wet * (snowy ? 0.52 : 0.38) - settle * 0.14; }
-function wetBrake(){ return 1 - wet * (snowy ? 0.46 : 0.32) - settle * 0.12; }
+/* ---- SNOW IS WORSE THAN RAIN, AND DEEP SNOW IS WORSE THAN SNOW ----------
+   Settled snow costs more than the fall does now that it accumulates: a road
+   with an inch on it is the hazard, and the flakes in the air are only how it
+   got there. At full cover the two together take about half the grip, which is
+   enough that a corner taken flat in the dry has to be thought about - and it
+   arrives gradually, over the minutes the ground takes to whiten, rather than
+   the moment the weather turns.
+
+   The floor is deliberate. Below about a third of normal grip a car does not
+   feel slippery, it feels broken, and the owner's ruling is that weather should
+   change how you drive rather than take the car away.
+   ------------------------------------------------------------------------- */
+function wetGrip(){  return Math.max(0.34, 1 - wet * (snowy ? 0.42 : 0.38) - settle * 0.30); }
+function wetBrake(){ return Math.max(0.32, 1 - wet * (snowy ? 0.38 : 0.32) - settle * 0.28); }
 let towOverride = -1;               /* -1 = off; a harness may force a tow */
 let horning = false, hornCool = 0, bustT = 0, behindT = 2, slowFor = 0, audioTick = 0, bendT = 0, skySmooth = 0, pushK = 0;
 
@@ -12881,6 +12917,7 @@ requestAnimationFrame(frameLoop);
   API.wet = function(){ return +wet.toFixed(3); };
   API.snowy = function(){ return snowy; };
   API.settle = function(){ return +settle.toFixed(3); };
+  API.wetGrip = function(){ return +wetGrip().toFixed(3); };
   API.biome = function(){ return biome; };
   /* where the day cycle is, 0 to 1: 0 dusk, 0.25 night, 0.5 dawn, 0.75 midday.
      It sits with `wet`, `snowy`, `settle` and `biome` because it is the same
