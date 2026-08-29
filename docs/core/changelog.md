@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-32"></a>
+## [0.9.32] - 2026-08-29
+- Added: **a plain steering wheel for the production and utility cars.** They were being given the
+  sports wheel with its flat bottom rounded off - carbon weave, chrome spoke inserts, a bezel round
+  the switchgear and a racing tick at twelve o'clock. The plain wheel is its own object: a moulded
+  rim, plain arms, no weave and no tick, and a wide horn pad in place of the machined hub. The lorry
+  takes a thinner rim than the rest ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-31"></a>
 ## [0.9.31] - 2026-08-29
 - Changed: **racing stripes belong to the supercars and the sports cars.** The rule was an exclusion

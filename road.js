@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.31';
+window.ROAD_BUILD = '0.9.32';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6805,11 +6805,32 @@ function drawWheel(){
   g.rotate(clamp(steerTurn, -1, 1) * 1.5708);
 
   const MK = (BODY[optBody] && BODY[optBody].rear) || 'L';
+  /* ---- A WORKING CAR HAS A WORKING WHEEL --------------------------------
+     Owner, 2026-08-29: the production and utility cars want a less sporty
+     wheel. Every road car was being given the sports wheel with a round rim
+     instead of a flat bottom, which is a supercar's wheel with one feature
+     removed - carbon weave across the top, chrome inserts down the spokes, a
+     silver bezel round switchgear, and a racing tick at twelve o'clock.
+
+     None of that is on the wheel of a van. What is on one is moulded plastic,
+     two plain arms and a wide horn pad, and that is a different OBJECT rather
+     than a plainer version of the same one - so it gets its own treatment
+     everywhere the sporty wheel has a flourish.
+
+     The patrol cars are not in this list. They are pursuit vehicles, and the
+     owner named production and utility.
+     ------------------------------------------------------------------- */
+  const PLAIN_WHEEL = { SALOON:1, COUPE:1, CAB:1, PICKUP:1, VAN:1, LORRY:1,
+                        sedan:1, sedan2:1, coupe:1, taxi:1, pickup:1, van:1, truck:1 };
+  const plain = !!PLAIN_WHEEL[optBody];
+  /* a lorry's wheel is big and THIN - it is turned with the whole arm rather
+     than gripped, and a fat sports rim on one reads as the wrong vehicle */
+  const thin = optBody === 'LORRY' || optBody === 'truck';
   /* ONE rim for all three. Three shapes was a distinction nobody asked for and
      it made the wheel unfamiliar every time you changed car — the badge is
      what should tell you which one you are in. */
   /* the formula yoke is not a ring, so it must not be drawn on one */
-  const TH = (MK === 'FORMULA') ? 13 : 9.5;
+  const TH = (MK === 'FORMULA') ? 13 : (thin ? 7.4 : plain ? 8.6 : 9.5);
   /* ---- the rim ----------------------------------------------------------
      A flat-bottomed sports wheel: circular through the top and sides, cut off
      square along the bottom, with the corners squared off where the leather
@@ -6878,14 +6899,27 @@ function drawWheel(){
   rimPath();
   g.lineWidth = TH; g.lineJoin = 'round'; g.lineCap = 'round';
   const leather = g.createLinearGradient(-R,-R,R,R);
-  leather.addColorStop(0,'#5c626c'); leather.addColorStop(0.42,'#33373d');
-  leather.addColorStop(0.62,'#42474f'); leather.addColorStop(1,'#23262b');
+  if(plain){
+    /* MOULDED, NOT STITCHED. A flatter gradient with less contrast between the
+       lit and shaded sides: leather catches light along its length and a
+       plastic rim does not, and that difference is most of why one wheel looks
+       expensive and the other looks like a tool. */
+    leather.addColorStop(0,'#4b5058'); leather.addColorStop(0.45,'#383c42');
+    leather.addColorStop(0.70,'#3d4148'); leather.addColorStop(1,'#2a2d32');
+  } else {
+    leather.addColorStop(0,'#5c626c'); leather.addColorStop(0.42,'#33373d');
+    leather.addColorStop(0.62,'#42474f'); leather.addColorStop(1,'#23262b');
+  }
   g.strokeStyle = leather; g.stroke();
-  /* a dark seam down the middle of the stock */
-  g.lineWidth = TH*0.20; g.strokeStyle = 'rgba(0,0,0,.45)';
+  /* a dark seam down the middle of the stock - a moulding line on a plain
+     wheel, and a stitched seam on a sports one. Fainter on the plain one. */
+  g.lineWidth = TH*0.20; g.strokeStyle = plain ? 'rgba(0,0,0,.28)' : 'rgba(0,0,0,.45)';
   rimPath(); g.stroke();
   g.restore();
-  /* the weave, painted into the top third and the bottom bar */
+  /* the weave, painted into the top third and the bottom bar. A plain wheel has
+     none: carbon fibre on a delivery van is the single loudest wrong note on
+     this whole drawing. */
+  if(!plain){
   g.save();
   g.beginPath();
   if(MK === 'FORMULA'){
@@ -6909,6 +6943,7 @@ function drawWheel(){
     g.beginPath(); g.moveTo(k, R+8); g.lineTo(k+R*2, -R-8); g.stroke();
   }
   g.restore();
+  }
   /* ---- the flat bottom --------------------------------------------------
      Was a full-width slab: the weave filled a clip RECTANGLE rather than the
      rim itself, so it ran out past the stock at both ends and read as a bar
@@ -6938,7 +6973,10 @@ function drawWheel(){
      it was left floating in the gap */
   /* the guard has to wrap the DRAW, not the style line before it — an if with
      no braces takes only the next statement, so the tick still drew */
-  if(MK !== 'FORMULA'){
+  /* and a plain wheel has no twelve-o'clock stripe either. It is a racing
+     marker - it tells a driver where straight-ahead is at a glance, in a car
+     where a quarter turn matters. Nobody puts one on a lorry. */
+  if(MK !== 'FORMULA' && !plain){
     g.strokeStyle = '#e8ecf2'; g.lineWidth = 2.4;
     g.beginPath(); g.moveTo(0, -R-TH/2+0.5); g.lineTo(0, -R+TH/2-0.5); g.stroke();
   }
@@ -6953,10 +6991,23 @@ function drawWheel(){
   /* ---- the spokes -------------------------------------------------------
      Two horizontal arms at nine and three with a silver bezel round the
      switchgear, and a single bottom arm with a chrome insert. */
-  const armW = R*0.72, armH = 9.5, armY = 2;
+  const armW = R*0.72, armH = plain ? 8.0 : 9.5, armY = 2;
   for(const sx of [-1, 1]){
     g.save();
     g.translate(sx*(R*0.34), armY);
+    if(plain){
+      /* ---- A PLAIN ARM ------------------------------------------------
+         No bezel and no switch blocks. A production car's wheel has its
+         controls on stalks behind it, and a utility one frequently has none
+         at all - so the arm is a moulded bar with a soft top edge, which is
+         what you see of one in a photograph. */
+      g.fillStyle = '#33373e';
+      g.beginPath(); g.roundRect(-armW/2, -armH/2, armW, armH, armH/2); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.09)';
+      g.beginPath(); g.roundRect(-armW/2+2, -armH/2+1.1, armW-4, armH*0.34, armH*0.17); g.fill();
+      g.restore();
+      continue;
+    }
     g.fillStyle = '#1d2025';
     g.beginPath(); g.roundRect(-armW/2, -armH/2, armW, armH, 3); g.fill();
     /* the silver surround */
@@ -6985,6 +7036,15 @@ function drawWheel(){
        three-spoke road wheel puts them. */
     for(const a of [-0.52, 0.52]){
       g.save(); g.rotate(a);
+      if(plain){
+        /* one moulded spoke, no chrome insert down the middle of it */
+        g.fillStyle = '#33373e';
+        g.beginPath(); g.roundRect(-4.6, 8, 9.2, R-16, 4); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.07)';
+        g.beginPath(); g.roundRect(-3.0, 10.5, 3.0, R-21, 1.5); g.fill();
+        g.restore();
+        continue;
+      }
       g.fillStyle = '#1d2025';
       g.beginPath(); g.roundRect(-5, 8, 10, R-16, 3); g.fill();
       g.fillStyle = 'rgba(196,203,214,.9)';
@@ -6993,14 +7053,30 @@ function drawWheel(){
     }
   }
 
-  /* ---- the boss ---------------------------------------------------------- */
-  const bR = 21;
+  /* ---- the boss ----------------------------------------------------------
+     A sports wheel has a small machined hub with a badge on it. A working car
+     has a WIDE HORN PAD - a soft square of moulded plastic that fills the
+     middle of the wheel, which is the other half of why the two read
+     differently at a glance. The badge sits on the pad either way.
+     ------------------------------------------------------------------- */
+  const bR = plain ? 24 : 21;
+  if(plain){
+    const pad = g.createLinearGradient(0, -bR, 0, bR);
+    pad.addColorStop(0,'#41464e'); pad.addColorStop(0.55,'#31353b'); pad.addColorStop(1,'#22252a');
+    g.fillStyle = pad;
+    g.beginPath(); g.roundRect(-bR, -bR*0.78, bR*2, bR*1.56, bR*0.42); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1;
+    g.beginPath(); g.roundRect(-bR+0.5, -bR*0.78+0.5, bR*2-1, bR*1.56-1, bR*0.40); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(-bR*0.72, -bR*0.62); g.lineTo(bR*0.72, -bR*0.62); g.stroke();
+  } else {
   const boss = g.createRadialGradient(-bR*0.3, -bR*0.35, 1, 0, 0, bR);
   boss.addColorStop(0,'#3a3e45'); boss.addColorStop(0.55,'#1e2126'); boss.addColorStop(1,'#0d0f12');
   g.fillStyle = boss;
   g.beginPath(); g.arc(0,0,bR,0,6.2832); g.fill();
   g.strokeStyle = 'rgba(255,255,255,.10)'; g.lineWidth = 1;
   if(MK !== 'FORMULA'){ g.beginPath(); g.arc(0,0,bR-0.5,0,6.2832); g.stroke(); }
+  }
 
   /* THE CAR'S OWN BADGE. A hard-coded horse lived here, drawn after the
      marque call, so every car wore the same emblem however the marque table
