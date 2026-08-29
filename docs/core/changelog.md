@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-31"></a>
+## [0.9.31] - 2026-08-29
+- Changed: **racing stripes belong to the supercars and the sports cars.** The rule was an exclusion
+  of the two cars that already wear a livery, which left every van and saloon free to wear a pair of
+  Le Mans stripes. It is a list now - the formula car stays out because its livery is its bodywork -
+  and the STRIPES button no longer appears in the garage for the six production and utility cars
+  ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-30"></a>
 ## [0.9.30] - 2026-08-29
 - Changed: **each vehicle is drawn in the paint it is allowed to wear.** The fleet sheet built every

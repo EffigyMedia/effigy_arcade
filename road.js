@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.30';
+window.ROAD_BUILD = '0.9.31';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -187,9 +187,26 @@ const COP_PAINT = {
   WHITE: { body:'#dfe4ec', hi:'#f4f7fb', lo:'#96a0ad' },
   BLACK: { body:'#23262c', hi:'#3a3f47', lo:'#111317' }
 };
-/* a formula car has a livery and a police car has one too — neither takes
-   stripes over the top of it */
-function stripesAllowed(){ return optBody !== 'FORMULA' && optBody !== 'CRUISER'; }
+/* ---- WHICH CARS WEAR RACING STRIPES ------------------------------------
+   Owner, 2026-08-29. A racing stripe is a claim about what a car is for, and a
+   saloon, a cab, a van and a patrol car are not making it. The rule used to be
+   an exclusion of two cars - the FORMULA car and the CRUISER, both of which
+   already wear a livery - which let every delivery van in the game take a pair
+   of Le Mans stripes over the roof.
+
+   It is a LIST rather than an exclusion now, and the list is the two classes a
+   stripe belongs to: the supercars and the sports cars. The formula car is a
+   supercar and is still out, because its livery is the whole of its bodywork.
+
+   Keyed by body rather than read from `optBody`, so it can answer for a car it
+   is not currently looking at - the fleet sheet asks about all of them at once,
+   and the garage asks about the one in front of the player.
+   ------------------------------------------------------------------------ */
+const STRIPE_BODIES = { STALLION:1, MATADOR:1, CREST:1,
+                        ROADSTER:1, TUNER:1, MUSCLE:1,
+                        tuner:1, muscle:1 };
+function stripesOn(k){ return !!STRIPE_BODIES[k]; }
+function stripesAllowed(){ return stripesOn(optBody); }
 /* A FUNCTION, not a const: it was declared halfway down step() and read above
    it, so the temporal dead zone threw on the FIRST frame and killed the whole
    update — which is why the skyline looked frozen even after being fixed. */
@@ -11901,17 +11918,16 @@ requestAnimationFrame(frameLoop);
         : sprite(230,215, paintFront(Object.assign({ bodyType:k, marque:rs.rear,
             player:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol)));
       /* ---- STRIPES ARE PAINT, AND NOT EVERY CAR TAKES THEM --------------
-         `stripesAllowed()` is the garage's rule and it reads `optBody`, so it
-         cannot answer for a car it is not looking at. The rule itself is short
-         and it is stated here rather than duplicated by hand: a FORMULA car and
-         a patrol car already wear a livery, and a second set of markings over
-         the top of one is not a thing either of them does.
+         `stripesOn` is the garage's own rule, asked about a body rather than
+         about the car the player is looking at. Only the supercars and the
+         sports cars take stripes; the formula car does not, because its livery
+         is its bodywork.
 
          A striped frame is built only where it is allowed. Everywhere else the
          sheet shows an empty cell, which is the answer to "does this car take
          stripes" rather than the absence of one.
          ---------------------------------------------------------------- */
-      const striped = k !== 'FORMULA' && k !== 'CRUISER' && k !== 'SUPERCRUISER';
+      const striped = stripesOn(k);
       const rearS = !striped ? null : (rs.rig
         ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
             stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
