@@ -114,7 +114,7 @@ COLLECTOR = r"""
   var PAINTED = { drawn:1, clipped:1 };
   var last = {}, frames = 0, gaps = 0, lastN = null;
   var pops = [], vanish = [], reasons = {}, offered = 0, inArrayNotOffered = 0;
-  var browAt = {}, browJump = [];
+  var browAt = {}, browJump = [], bigAt = [];
 
   P.pop = { on:true };
   R.watchDraw(true);
@@ -147,7 +147,13 @@ COLLECTOR = r"""
          the brow of a hill - which is what the owner reports seeing. */
       if(e.brow !== null && e.brow !== undefined){
         var prev = browAt[e.id];
-        if(prev !== undefined) browJump.push(Math.abs(e.brow - prev));
+        if(prev !== undefined){
+          var d = Math.abs(e.brow - prev);
+          browJump.push(d);
+          /* WHERE a big step happens. The owner reports the survivors in valleys, at a
+             particular place, so the distribution of distances is the question. */
+          if(d > 10) bigAt.push({ dz: e.dz, from: +prev.toFixed(1), to: e.brow });
+        }
         browAt[e.id] = e.brow;
       } else { delete browAt[e.id]; }
     }
@@ -192,7 +198,7 @@ COLLECTOR = r"""
     P.pop.on = false;
     R.watchDraw(false);
     return { frames:frames, gaps:gaps, pops:pops, vanish:vanish, reasons:reasons,
-             browJump:browJump,
+             browJump:browJump, bigAt:bigAt,
              offered:offered, notOffered:inArrayNotOffered };
   };
   return true;
@@ -262,6 +268,19 @@ def report(game, out, seconds):
     # THE BROW, FRAME TO FRAME. It is sampled once per road segment, so it steps as a car crosses
     # a boundary - and a step in the silhouette is a car appearing or vanishing at the brow of a
     # hill. Reported as the distribution of jumps, in screen pixels.
+    big = out['bigAt']
+    if big:
+        ds = sorted(b['dz'] for b in big)
+        print('    steps over 10 px in the silhouette: %d, at distances %d to %d (median %d)'
+              % (len(ds), ds[0], ds[-1], statistics.median(ds)))
+        buckets = {}
+        for b in big:
+            k = (b['dz'] // 4000) * 4000
+            buckets[k] = buckets.get(k, 0) + 1
+        for k in sorted(buckets):
+            print('      %6d - %6d units: %-3d %s'
+                  % (k, k + 3999, buckets[k], '#' * min(50, buckets[k])))
+
     bj = [j for j in out['browJump'] if j > 0.05]
     if bj:
         big = [j for j in bj if j > 2.0]

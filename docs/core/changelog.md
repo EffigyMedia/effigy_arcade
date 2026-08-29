@@ -14,6 +14,28 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-20"></a>
+## [0.9.20] - 2026-08-29
+- Fixed: **cars flickered in a valley below you**, reported from the device on v0.9.19 once the brow
+  flicker was gone. Three faults in the near end of the crest table, found by recording the
+  *distance* of every step over ten pixels: 618 of 632 were within 4,000 units of the player
+  ([RLG-041](../fragments/RLG-041.md)).
+- Fixed: **the crest table started at `pos`, and the camera is `PLAYER_Z` ahead of it.** Its first
+  five entries projected points *behind the camera*, where a sample flickering between refused and
+  accepted poisons the running minimum for everything after it. The `n < 2` guard in `crestAt` was a
+  patch over exactly that and is gone ([RLG-041](../fragments/RLG-041.md)).
+- Fixed: **"no crest yet" was written as `H`, a screen coordinate.** Harmless while entries were read
+  whole; not harmless once v0.9.17 interpolated between them, where a blend from `H` to a real road
+  height is a brow sweeping the whole screen in one segment. The sentinel is `Infinity` now
+  ([RLG-041](../fragments/RLG-041.md)).
+- Fixed: **the cull was a cliff four pixels wide.** A car under the brow draws nothing through the
+  clip anyway, so culling it is an optimisation, not a decision - and its threshold sat one sliver
+  from visible. It is `H*0.05` now, so the flip happens where the car is already clipped away
+  ([RLG-041](../fragments/RLG-041.md)).
+- Measured: **flickers per minute 8-24 → 0.0, 0.0, 1.3, 0.0** across four runs, and the surviving
+  silhouette steps are confined to the first two segments past the camera
+  ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-19"></a>
 ## [0.9.19] - 2026-08-29
 - Fixed: **cars appeared at the draw edge instead of arriving.** A sprite in the last sixth of the

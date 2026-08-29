@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.19';
+window.ROAD_BUILD = '0.9.20';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -7977,21 +7977,56 @@ function buildHillClip(){
      Measured (RLG-041): with the lookup interpolated but the table still built
      this way, the brow still jumped by up to 475 pixels on a 900-pixel screen.
 
-     Walking `pos + n * SEG` instead makes the table continuous in `pos`: it is
-     the crest between the CAMERA and each point ahead, and it slides with the
-     player rather than snapping with the segment grid.
+     Walking `pos + n * SEG` instead makes the table continuous in `pos`: it
+     slides with the player rather than snapping with the segment grid.
+
+     ---- AND IT STARTS AT THE EYE, WHICH `pos` IS NOT ----------------------
+     The camera sits `PLAYER_Z` ahead of `pos` - about 880 units, four and a
+     half segments. So a table walked from `pos` spent its first five entries
+     projecting points BEHIND THE CAMERA, where `proj` either refuses or
+     returns a wild value, and a sample that flickers between refused and
+     accepted poisons the running minimum for every entry after it, because a
+     minimum only ever goes down. One bad near sample moved the whole
+     silhouette.
+
+     That is what the `n < 2` guard in `crestAt` was for: the first entries
+     were known to be rubbish and were skipped rather than fixed. Measured
+     (RLG-041): 618 of 632 steps over ten pixels happened within 4,000 units of
+     the player, median 1,281 - right in front of the car, which is where those
+     poisoned entries do their damage. The owner reported the survivors as cars
+     flickering in a valley below, at a particular place.
+
+     The crest that matters is the one between the EYE and the car, so the walk
+     starts there. It runs a few segments further as well, because a table that
+     starts 880 units further out would otherwise stop short of the drawn road.
      -------------------------------------------------------------------- */
-  hillClip = new Array(DRAW+2);
+  const eye = pos + PLAYER_Z;
+  hillClip = new Array(DRAW+7);
   /* THE MINIMUM MUST EXCLUDE THE SEGMENT ITSELF. It was written as the running
      minimum INCLUDING n, so a sprite's own road height was always equal to the
      value it was tested against and the test could essentially never fire —
      which is why everything still drew through the terrain. `hillClip[n]` is
      now the highest the road has reached BEFORE n, which is what a crest
      between you and that point actually is. */
-  let minY = H;
-  for(let n=0; n<=DRAW+1; n++){
+  /* ---- "NOTHING YET" IS NOT A SCREEN COORDINATE --------------------------
+     This started the running minimum at `H`, the bottom of the screen, as a
+     stand-in for "no crest recorded yet". That reads correctly - nothing below
+     the bottom of the screen can hide anything - and it stopped being harmless
+     the moment the lookup started INTERPOLATING between entries: a blend from
+     `H` to a real road height is a brow sweeping up the whole screen over one
+     segment, and it is not a hill, it is a sentinel being read as a number.
+
+     Measured (RLG-041): the steps over ten pixels began at exactly 881 units,
+     which is `PLAYER_Z` - the camera itself, where the first entry is.
+
+     Infinity cannot be mistaken for a coordinate and cannot be blended by
+     accident: `crestAt` treats a non-finite end as "no crest at that end" and
+     uses the other one.
+     -------------------------------------------------------------------- */
+  let minY = Infinity;
+  for(let n=0; n<=DRAW+6; n++){
     hillClip[n] = minY;                       /* record BEFORE folding n in */
-    const pn = proj(0, pos + n*SEG);
+    const pn = proj(0, eye + n*SEG);
     if(pn.ok && pn.y < minY) minY = pn.y;
   }
 }
@@ -8042,7 +8077,7 @@ function crestY(worldZ){
      others. The owner reported exactly that, from a phone: at the lip of a
      dip, on some cars and not others.
      -------------------------------------------------------------------- */
-  return crestAt((worldZ - pos)/SEG);
+  return crestAt((worldZ - (pos + PLAYER_Z))/SEG);
 }
 /* ---- THE SILHOUETTE IS A LINE, NOT A STAIRCASE ---------------------------
    `hillClip` holds one value per road segment, and this returned the value for
@@ -8066,9 +8101,19 @@ function crestY(worldZ){
 function crestAt(f){
   if(!hillClip.length) return null;
   const n = Math.floor(f);
-  if(n < 2 || n + 1 >= hillClip.length) return null;
-  const a = hillClip[n], b = hillClip[n+1];
+  /* `n < 2` used to sit here, skipping the entries that were rubbish because
+     the table started behind the camera. The table starts AT the camera now, so
+     every entry is a real point on the road in front of it and only a car
+     actually behind the eye is out of range. */
+  if(n < 0 || n + 1 >= hillClip.length) return null;
+  let a = hillClip[n], b = hillClip[n+1];
   if(a === undefined || b === undefined) return null;
+  /* an end with no crest recorded is not a value to blend toward - it is the
+     absence of one, and the other end is the whole answer */
+  const fa = isFinite(a), fb = isFinite(b);
+  if(!fa && !fb) return null;
+  if(!fa) a = b;
+  if(!fb) b = a;
   const v = a + (b - a) * (f - n);
   return v >= H ? null : v;
 }
@@ -8458,6 +8503,22 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      it. Only the last one costs a clip.
      ------------------------------------------------------------------- */
   const brow = crestY(worldZ);
+  /* ---- THE CULL IS AN OPTIMISATION, AND IT WAS A CLIFF ---------------------
+     A car entirely under the brow draws nothing through the clip below - the
+     clip keeps what is ABOVE the crest line, and there is nothing of the car up
+     there. So culling it is a saving, not a decision, and the exact point at
+     which the saving starts should be somewhere the picture cannot tell.
+
+     It was `H*0.004` - four pixels below the brow, which is a place where the
+     car is one thin sliver from being visible. The brow moves fast over the rim
+     of a dip, so a car near that line flipped between drawn and gone from one
+     frame to the next. The owner reported it as cars flickering in a valley
+     below while driving down toward it.
+
+     A wider margin puts the flip where the car has already been clipped away to
+     nothing, so crossing it costs a drawImage that paints no pixels instead of
+     a car that blinks.
+     -------------------------------------------------------------------- */
   /* the brow itself, so the harness can see how far it MOVES between frames. A
      silhouette that steps is a car appearing or disappearing at the brow of a
      hill, and the size of the step is the whole measurement. It replaced a
@@ -8466,7 +8527,7 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      that can only ever read zero is not a check. */
   if(drawWatch) drawBrow = brow === null ? null : +brow.toFixed(1);
   /* even the roof is under the crest - genuinely out of sight */
-  if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; drawWhy = 'crest'; return null; }
+  if(brow !== null && p.y - h > brow + H*0.05){ spriteStats.culled++; drawWhy = 'crest'; return null; }
   if(brow !== null && p.y > brow){
     ctx.save();
     /* keep what is ABOVE the crest line; the ground in front covers the rest */
