@@ -8018,6 +8018,7 @@ function drawRoad(){
   buildHillClip();
   spriteStats = { drawn:0, culled:0, clipped:0 };
   roadY = []; emitted = {};
+  if(drawWatch) skipBy = {};
   let groundMax = -1e9;
   const lamp = lampsOn();
   const base = Math.floor(pos/SEG);
@@ -8079,23 +8080,45 @@ function drawRoad(){
        whose y has gone back UP relative to the nearest ground painted. So
        the test is `y2 > groundMax`, and groundMax only ever advances toward
        the camera. */
+    if(drawWatch && y2 <= groundMax) skipBy[n] = +(groundMax - y2).toFixed(2);
     if(y2 > groundMax){
       ctx.fillRect(0, y2, W, H - y2);
       groundMax = y2;
       roadY[n] = y1;
-      emitBucket(n);
-      /* ---- AND THE ONE BEHIND IT --------------------------------------
-         A car sits at a z that rounds to one segment, but which segment
-         "covers" it shifts by one as `pos` advances — so a car near a
-         boundary was landing alternately on a painted slice and a culled
-         one, twice a second. Emitting the bucket one further out along with
-         this slice removes the oscillation: if THIS slice is visible, the
-         one immediately behind it is too, because nothing can hide between
-         two adjacent slices. */
-      if(!emitted[n+1]) emitBucket(n+1);
     }
-    /* if the slice WAS behind a crest, its bucket stays unemitted — that is
-       the occlusion, and the only case where a sprite is legitimately lost */
+    /* ---- THE SPRITES COME OUT WHETHER OR NOT THE GROUND WAS PAINTED -------
+       This used to sit INSIDE the fill above, so a slice skipped as being
+       behind a crest took its cars with it. That is a second occlusion test,
+       and the engine already has a real one: `crestY` builds the silhouette of
+       the nearest crest from `hillClip` at the top of every frame, and every
+       sprite passes through it in `drawSprite` - drawn whole, cut off at the
+       brow, or culled entirely.
+
+       Two tests for one thing, and the coarse one flickered. Measured for
+       RLG-041: cars winking out for three or four frames sat on slices that
+       missed being painted by a MEDIAN OF UNDER ONE PIXEL - 0.3 and 0.9 across
+       two runs. A slice on the tangent of a rise crosses that line back and
+       forth as the road moves, and the car went with it. None of them was
+       behind a hill.
+
+       So the bucket is always emitted and `crestY` is the only thing that
+       hides a car behind terrain. The proof that the coarse test was doing the
+       work is in `occlusion-test`: it reported `culled=0` with `clipped=14`
+       before this change, because cars fully behind a crest were being lost by
+       the bucket gate before the real test ever saw them.
+
+       `groundMax` and the ground fill are untouched. The terrain is drawn
+       exactly as it was; only the question "was anything standing here" is
+       answered by the test that can actually answer it.
+
+       AND THE ONE BEHIND IT, still. A car sits at a z that rounds to one
+       segment, but which segment covers it shifts by one as `pos` advances, so
+       a car near a boundary alternated between two slices. Nothing can hide
+       between two adjacent slices, so emitting the next one out with this one
+       removes that oscillation.
+       -------------------------------------------------------------------- */
+    emitBucket(n);
+    if(!emitted[n+1]) emitBucket(n+1);
 
     /* every eighth segment carries a lamp, alternating sides, throwing an
        ellipse of sodium light across the near lanes */
@@ -8262,6 +8285,14 @@ let spriteStats = { drawn:0, culled:0, clipped:0 };
    Off - which is always, in the product - it costs one boolean test per sprite.
    -------------------------------------------------------------------------- */
 let drawWatch = 0, drawWhy = '', drawSeen = [], drawFrameNo = 0, drawVid = 0;
+/* BY HOW MUCH a slice missed being painted, per segment, this frame. A slice is
+   skipped when its top has gone back UP relative to the nearest ground already
+   painted - it is behind a crest - and its sprites go with it. A slice that
+   misses by two pixels and one that misses by a hundred are the same event to
+   `unemitted` and they are not the same thing at all: the first is a car on a
+   crest tangent winking out for three frames, the second is a car genuinely
+   behind a hill. Recorded only under the watch. */
+let skipBy = {};
 function noteSprite(o, why){
   if(!drawWatch) return;
   if(!o.__vid) o.__vid = ++drawVid;
@@ -8427,8 +8458,16 @@ function sweepUnemitted(){
   if(!drawWatch) return;
   for(const n in spriteBuckets){
     if(emitted[n]) continue;
+    /* HOW NEARLY IT WAS DRAWN. The bucket is emitted by its own slice or by the
+       one in front of it, so the margin that matters is the smaller of the two
+       misses. A car is only really behind a hill if BOTH of them are behind it. */
+    const a = skipBy[n], b = skipBy[+n - 1];
+    const miss = (a === undefined) ? b : (b === undefined) ? a : Math.min(a, b);
     for(const it of spriteBuckets[n])
-      if(it.kind==='t' || it.kind==='g' || it.kind==='k') noteSprite(it.o, 'unemitted');
+      if(it.kind==='t' || it.kind==='g' || it.kind==='k'){
+        noteSprite(it.o, 'unemitted');
+        drawSeen[drawSeen.length-1].miss = (miss === undefined) ? null : miss;
+      }
   }
 }
 

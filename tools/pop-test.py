@@ -153,10 +153,11 @@ COLLECTOR = r"""
         /* it stopped being painted and it is STILL IN THE ARRAY: a draw fault by definition,
            whatever the reason turns out to be */
         was.goneAt = frames; was.goneWhy = why; was.goneDz = e ? e.dz : null;
+        was.goneMiss = (e && e.miss !== undefined) ? e.miss : null;
       }
       if(was && was.goneAt && painted){
         pops.push({ why: was.goneWhy, dz: was.goneDz, frames: frames - was.goneAt,
-                    kind: 'in-array' });
+                    miss: was.goneMiss, kind: 'in-array' });
         was.goneAt = 0;
       }
       last[id] = last[id] || {};
@@ -275,6 +276,16 @@ def report(game, out, seconds):
             dzs = [p['dz'] for p in flick if p['why'] == why and p['dz'] is not None]
             print('        %-11s %5d   median %s units ahead'
                   % (why, n, ('%d' % statistics.median(dzs)) if dzs else 'n/a'))
+        # HOW NEARLY THE SLICE WAS PAINTED. A car behind a hill and a car on a crest tangent are
+        # the same `unemitted` event and are not the same thing. The engine records the smaller of
+        # the two misses that would have emitted the bucket, in screen pixels.
+        miss = [p['miss'] for p in flick if p['why'] == 'unemitted' and p['miss'] is not None]
+        if miss:
+            tight = [m for m in miss if m <= 4]
+            print('        the slice missed being painted by: median %.1f px, min %.1f, max %.1f'
+                  % (statistics.median(miss), min(miss), max(miss)))
+            print('        %d of %d missed by 4 pixels or fewer - a crest tangent, not a hill'
+                  % (len(tight), len(miss)))
     print('    LEFT THE ARRAY while being painted (a cull or a spawn, not a draw):  %d'
           % len(out['vanish']))
     if out['vanish']:

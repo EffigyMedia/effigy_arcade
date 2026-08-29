@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-12"></a>
+## [0.9.12] — 2026-08-28
+- Fixed: **cars winked out for three or four frames at mid-distance.** The engine had two occlusion
+  tests for terrain: `crestY`, a real silhouette built from the hill clip every frame, and a coarse
+  one that dropped a whole sprite bucket whenever its road slice was skipped. Measured, every
+  flickering car sat on a slice that missed being painted by a **median of under one pixel** — a
+  crest tangent, not a hill. The bucket is always emitted now and `crestY` is the only thing that
+  hides a car behind terrain ([RLG-041](../fragments/RLG-041.md)).
+- Changed: `occlusion-test` now reports **culled 0 → 167, clipped 14 → 160**. Cars fully behind a
+  crest were being lost by the bucket gate before the real test ever saw them, which is why the
+  engine reported zero culls while occlusion visibly worked
+  ([RLG-041](../fragments/RLG-041.md)).
+- Measured: flickers fell from 16–28 per minute to 8–12, and every survivor is at the draw-distance
+  edge rather than on the road. Zero cull faults, before and after
+  ([RLG-041](../fragments/RLG-041.md)).
+- Known: the second mechanism is characterized and not fixed — the sprite bucket range runs to
+  `DRAW+1` and the road pass walks to `DRAW`, so a car at ~30,000 units flickers for a median of one
+  frame at about a pixel wide. Changing anything at the draw edge risks a worse pop-in
+  ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-11"></a>
 ## [0.9.11] — 2026-08-28
 - Added: **the engine can say why a vehicle was not drawn.** A ledger behind `API.watchDraw()`
