@@ -14,6 +14,29 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-26"></a>
+## [0.9.26] - 2026-08-29
+- Fixed: **the van has one brake light and one indicator above it, per side.** It was a single tall
+  red lamp with an amber band across its top - one object that read as two - and two earlier attempts
+  each adjusted the wrong part of it ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **on every laterally-clustered car the indicator is OUTBOARD** - roadster, tuner, cruiser,
+  coupe, saloon, cab. Inboard put the two ambers together in the middle of the car, where they read
+  as one central lamp rather than as a side being signalled. Carved out of the cluster, so the tail
+  is the width it always was ([RLG-053](../fragments/RLG-053.md)).
+- Changed: the fleet sheet names each vehicle once. **There is no garage version and traffic version
+  - it is one car** ([RLG-053](../fragments/RLG-053.md)).
+
+<a id="v0-9-25"></a>
+## [0.9.25] - 2026-08-29
+- Fixed: **the van had two indicators.** Its cluster has always carried an amber band across the top
+  of each red lamp; the conversion added a bulb above it. The band is declared as the indicator now
+  and the added bulb is gone - the art was already right and nothing was reading it
+  ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **the lorry's roof row lit pale yellow when asked to light red.** A lit lamp composites with
+  `lighter`, which adds, and amber plus red is yellow. The row is dark red when off and bright red
+  when braking, which is what a lorry's rear roof markers are
+  ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-24"></a>
 ## [0.9.24] - 2026-08-29
 - Changed: **STALLION keeps all four rings as brake lights**, and the indicator is the dot inside the

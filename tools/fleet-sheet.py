@@ -109,11 +109,8 @@ SHEET = r"""() => {
     g.fillText(r.who[0], PAD, y + CELL/2 - 10);
     g.fillStyle = '#8d93a8';
     g.font = '500 12px system-ui, sans-serif';
-    if (r.who.length > 1) g.fillText('also ' + r.who.slice(1).join(', '), PAD, y + CELL/2 + 8);
-    /* the painter, so two rows that look alike in white can be told apart */
-    g.fillStyle = '#4a4f60';
-    g.font = '500 10px system-ui, sans-serif';
-    g.fillText(r.sig, PAD, y + CELL/2 + 40);
+    /* ONE OF EACH VEHICLE. There is no such thing as a garage version and a
+       traffic version - it is one car, and the sheet says its name once. */
     g.fillStyle = '#5f6579';
     g.font = '500 11px system-ui, sans-serif';
     g.fillText(Object.keys(L).join('  '), PAD, y + CELL/2 + 26);

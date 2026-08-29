@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.24';
+window.ROAD_BUILD = '0.9.26';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1451,10 +1451,18 @@ function decl(g, lamps, id, draw){
 const AMBER_OFF = '#7a4f12', AMBER_OFF_HI = '#a06a1c';
 const AMBER_ON  = '#ffb02e', AMBER_ON_HI  = '#ffe4a8';
 
-function turnBulb(x, y, bw, bh){
+function turnBulb(x, y, bw, bh, flat){
+  /* ---- A HIGHLIGHT NEEDS ROOM TO BE A HIGHLIGHT -------------------------
+     The inner band reads as glass on a lamp with some size to it. On a short
+     wide bulb it is nearly as big as the bulb itself, and the two bands read as
+     TWO LAMPS - which is what the owner saw on the van: "the indicators on the
+     van are weird, we only need a single indicator above each brake light."
+     `flat` draws the one lozenge and nothing inside it.
+     -------------------------------------------------------------------- */
   return (g, on) => {
     g.fillStyle = on ? AMBER_ON : AMBER_OFF;
     rr(g, x, y, bw, bh, Math.min(bw, bh)*0.35); g.fill();
+    if(flat) return;
     g.fillStyle = on ? AMBER_ON_HI : AMBER_OFF_HI;
     rr(g, x + bw*0.20, y + bh*0.16, bw*0.60, bh*0.34, Math.min(bw, bh)*0.22); g.fill();
   };
@@ -2164,7 +2172,15 @@ function paintRig(kind, o){
         gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#b8371f');
         rr(gg, w*0.10, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
         rr(gg, w*0.74, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
-        gg.fillStyle = on ? '#ffd9a2' : (P.lamp2 || '#ffb066');
+        /* ---- RED, AND DARK RED WHEN IT IS OFF ---------------------------
+           Owner, 2026-08-29: the roof row illuminates bright red like the brake
+           lights. The first attempt lit it red over the AMBER the row was
+           painted in, and the lit pass composites additively - amber plus red is
+           yellow, so it came out pale. A lamp that lights red has to be a red
+           lamp when it is dark, which is also what a lorry's rear roof markers
+           are. The amber ones are on the front.
+           -------------------------------------------------------------- */
+        gg.fillStyle = on ? '#ff5a52' : '#7d1f22';
         for(const mx of [0.16,0.34,0.5,0.66,0.84]){
           rr(gg, w*mx-w*0.018, top-h*0.014, w*0.036, h*0.016, 2); gg.fill();
         }
@@ -2197,19 +2213,29 @@ function paintRig(kind, o){
       g.fillStyle='#3a3d44';
       g.fillRect(w*0.44, top+(bot-top)*0.55, w*0.045, h*0.016);
       g.fillRect(w*0.515, top+(bot-top)*0.55, w*0.045, h*0.016);
-      /* tall narrow lamps up the corners, as vans have */
+      /* ---- ONE BRAKE LIGHT, AND ONE INDICATOR ABOVE IT -------------------
+         Owner, 2026-08-29, for the third time and correctly: "a single brake
+         light and above it a single indicator lamp. One of each on each side of
+         the vehicle."
+
+         What was there was one TALL red lamp with an amber band painted across
+         its top - one object that read as two, and then as three when a bulb was
+         added above it. It is two separate lamps now, with air between them: the
+         amber sits above, the red below, on each corner.
+         ------------------------------------------------------------------- */
+      const VX = [w*0.07, w*0.855], VW = w*0.075;
+      decl(g, lamps, 'turn.l', (gg, on) => {
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(gg, VX[0], bot-h*0.150, VW, h*0.042, 2); gg.fill();
+      });
+      decl(g, lamps, 'turn.r', (gg, on) => {
+        gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
+        rr(gg, VX[1], bot-h*0.150, VW, h*0.042, 2); gg.fill();
+      });
       decl(g, lamps, 'tail', (gg, on) => {
         gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
-        rr(gg, w*0.07, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
-        rr(gg, w*0.855, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
+        for(const x of VX){ rr(gg, x, bot-h*0.092, VW, h*0.072, 2); gg.fill(); }
       });
-      /* Owner, 2026-08-29: ABOVE the brake lights, and only there. A van's
-         corner cluster stacks upward and that is where the amber sits. */
-      decl(g, lamps, 'turn.l', turnBulb(w*0.07, bot-h*0.175, w*0.075, h*0.034));
-      decl(g, lamps, 'turn.r', turnBulb(w*0.855, bot-h*0.175, w*0.075, h*0.034));
-      g.fillStyle='rgba(255,190,120,.85)';
-      rr(g, w*0.07, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
-      rr(g, w*0.855, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
       /* and none on the van's doors either — front only */
       /* bumper */
       g.fillStyle='#2b2e34';
@@ -2404,17 +2430,29 @@ function paintRig(kind, o){
       decl(g, lamps, 'turn.r', (gg, on) =>
         box4(gg, 0.665, BOXK[3], on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
     } else {
+    /* ---- THE INDICATOR IS THE OUTBOARD END OF THE CLUSTER ----------------
+       Owner, 2026-08-29: on every car with a lateral cluster - roadster, tuner,
+       cruiser, coupe, saloon, cab - the indicator goes on the OUTSIDE rather
+       than the inside. It was inboard, which put the two ambers close together
+       in the middle of the car where they read as one central lamp rather than
+       as a side being signalled.
+
+       It is carved out of the cluster rather than added beside it, so the tail
+       is the same width it always was and the amber is the outermost segment -
+       the same shape of answer as MATADOR's outermost chevron and MUSCLE's
+       outermost box.
+       ------------------------------------------------------------------- */
+    const CL = w*0.055, CR = w*0.685, CW = w*0.26, TW = w*0.048;
     decl(g, lamps, 'tail', (gg, on) => {
       gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
-      rr(gg, w*0.055, ly, w*0.26, lh, 3); gg.fill();
-      rr(gg, w*0.685, ly, w*0.26, lh, 3); gg.fill();
+      rr(gg, CL + TW, ly, CW - TW, lh, 3); gg.fill();
+      rr(gg, CR, ly, CW - TW, lh, 3); gg.fill();
       gg.fillStyle = on ? 'rgba(255,222,214,.85)' : 'rgba(255,255,255,.30)';
-      rr(gg, w*0.065, ly+lh*0.14, w*0.24, lh*0.30, 2); gg.fill();
-      rr(gg, w*0.695, ly+lh*0.14, w*0.24, lh*0.30, 2); gg.fill();
+      rr(gg, CL + TW + w*0.010, ly+lh*0.14, CW - TW - w*0.020, lh*0.30, 2); gg.fill();
+      rr(gg, CR + w*0.010, ly+lh*0.14, CW - TW - w*0.020, lh*0.30, 2); gg.fill();
     });
-    /* inboard of each cluster, where a saloon puts it */
-    decl(g, lamps, 'turn.l', turnBulb(w*0.325, ly, w*0.048, lh));
-    decl(g, lamps, 'turn.r', turnBulb(w*0.627, ly, w*0.048, lh));
+    decl(g, lamps, 'turn.l', turnBulb(CL, ly, TW, lh, true));
+    decl(g, lamps, 'turn.r', turnBulb(CR + CW - TW, ly, TW, lh, true));
     /* ---- the boot spoiler, at the FRONT's height ------------------------
        The front draws it at `roofY + 0.030`; this was at `deckY - 0.055`,
        which with roofY 0.22 and deckY 0.52 is most of the car apart. Same
@@ -11359,7 +11397,7 @@ requestAnimationFrame(frameLoop);
          For a rig body that is the rig; for a painted body it is the body key
          itself, because SUPERCRUISER and the police super cruiser are the same
          car and keying on `rear` would have split them - it is MATADOR's tail. */
-      out.push({ name:'garage ' + k, sig: rs.rig ? 'rig:'+rs.rig : 'car:'+k, spr:spr });
+      out.push({ name:k, sig: rs.rig ? 'rig:'+rs.rig : 'car:'+k, spr:spr });
     }
     const traf = { sedan:SP.sedan, sedan2:SP.sedan2, coupe:SP.coupe, van:SP.van,
                    pickup:SP.pickup, truck:SP.truck, taxi:(TRAFFIC_SP.taxi||[])[0],
@@ -11367,9 +11405,9 @@ requestAnimationFrame(frameLoop);
     const trafRig = { sedan:'sedan', sedan2:'sedan', coupe:'coupe', van:'van', pickup:'pickup',
                       truck:'truck', taxi:'taxi', muscle:'muscle', tuner:'tuner' };
     for(const k in traf)
-      if(traf[k]) out.push({ name:'traffic ' + k, sig:'rig:'+trafRig[k], spr:traf[k] });
-    if(SP.cop) out.push({ name:'police cruiser', sig:'rig:cop', spr:SP.cop });
-    if(SP.superCop) out.push({ name:'police super', sig:'car:SUPERCRUISER', spr:SP.superCop });
+      if(traf[k]) out.push({ name:k, sig:'rig:'+trafRig[k], spr:traf[k] });
+    if(SP.cop) out.push({ name:'CRUISER', sig:'rig:cop', spr:SP.cop });
+    if(SP.superCop) out.push({ name:'SUPERCRUISER', sig:'car:SUPERCRUISER', spr:SP.superCop });
     return out;
   };
   API.holdBlink = function(v){ blinkHold = !!v; return blinkHold; };
