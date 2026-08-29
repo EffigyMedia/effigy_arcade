@@ -14,6 +14,17 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-30"></a>
+## [0.9.30] - 2026-08-29
+- Changed: **each vehicle is drawn in the paint it is allowed to wear.** The fleet sheet built every
+  body in white, so the cab was white and both patrol cars were white. The cab takes its forced
+  yellow, and each patrol car appears twice - once in each of the force's two liveries, built from
+  `COP_PAINT` rather than the garage palette. Everything else stays white
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **a stripes frame on every row.** Stripes are paint rather than a body, so any car can wear
+  them except one already wearing a livery of its own - the formula car and both cruisers, whose
+  cells are empty ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-29"></a>
 ## [0.9.29] - 2026-08-29
 - Fixed: **the utility vehicles have windscreen wipers.** The pickup, the van and the lorry were the

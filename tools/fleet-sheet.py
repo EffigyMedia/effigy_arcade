@@ -9,8 +9,12 @@ numbers; this is the version you can look at.
 Each vehicle gets TWO rows, back then front, and the sheet ends with the steering wheels - one per
 car, which nothing outside the cockpit has ever shown side by side.
 
-  back    dark, braking, indicating right, indicating left, bar
-  front   dark, headlights, indicating right, indicating left, wipers parked and at full sweep
+  back    dark, braking, indicating right, indicating left, bar, all, striped
+  front   dark, headlights, indicating right, indicating left, wipers parked, wipers swept, striped
+
+A car is drawn in the paint it is ALLOWED to wear, which is white for almost all of them: a cab is
+yellow, and each patrol car appears twice, once in each of the force's two liveries. The striped cell
+is empty where a car already wears a livery of its own.
 
 ONE ROW PER VEHICLE, NOT PER LIVERY. The garage car and the traffic car are the same painter with
 different paint - there is no garage version of anything - so rows are grouped by painter and each
@@ -66,7 +70,7 @@ SHEET = r"""(cls) => {
   }
 
   const CELL = 300, PAD = 18, LABEL = 240;
-  const cols = 6;
+  const cols = 7;
   const W = LABEL + cols*CELL + PAD*2;
   const H = PAD*3 + 52 + rows.length*(CELL*2 + PAD*2) + CELL + PAD*4;
   const c = document.createElement('canvas');
@@ -140,6 +144,10 @@ SHEET = r"""(cls) => {
     cell(back, LABEL + 3*CELL, y, ['turn.l'], null, 'left');
     cell(back, LABEL + 4*CELL, y, bar, null, bar.length ? 'bar' : '');
     cell(back, LABEL + 5*CELL, y, Object.keys(bL), null, 'all');
+    /* stripes are paint rather than a body, and a car already wearing a livery
+       does not take them - so this cell is empty for the formula car and for
+       both patrol cars, which is the answer rather than a missing frame */
+    cell(r.sprS, LABEL + 6*CELL, y, [], null, 'stripes');
 
     const y2 = y + CELL + PAD;
     cell(front, LABEL + 0*CELL, y2, [], 0, 'front - dark');
@@ -148,6 +156,7 @@ SHEET = r"""(cls) => {
     cell(front, LABEL + 3*CELL, y2, ['turn.l'], 0, 'left');
     cell(front, LABEL + 4*CELL, y2, fbar, 0, 'wipers parked');
     cell(front, LABEL + 5*CELL, y2, fbar, 1, 'wipers swept');
+    cell(r.frontS, LABEL + 6*CELL, y2, [], 0, 'stripes');
 
     y += CELL*2 + PAD*2;
   }
@@ -157,8 +166,12 @@ SHEET = r"""(cls) => {
   g.font = '600 16px system-ui, sans-serif';
   g.fillText('THE WHEELS', PAD, y + 22);
   let wx = LABEL, wy = y;
+  const shown = {};
   for (const v of rows) {
-    const wheel = R.wheelOf(v.name);
+    /* two liveries of one patrol car are one car, and it has one wheel */
+    if (shown[v.key || v.name]) continue;
+    shown[v.key || v.name] = 1;
+    const wheel = R.wheelOf(v.key || v.name);
     if (!wheel) continue;
     g.fillStyle = '#15171e';
     g.fillRect(wx + 3, wy + 3, CELL - 6, CELL - 6);
@@ -167,7 +180,7 @@ SHEET = r"""(cls) => {
                 wheel.width*s, wheel.height*s);
     g.fillStyle = '#8d93a8';
     g.font = '500 10px system-ui, sans-serif';
-    g.fillText(v.name, wx + 8, wy + 15);
+    g.fillText(v.key || v.name, wx + 8, wy + 15);
     wx += CELL;
     if (wx + CELL > W - PAD) { wx = LABEL; wy += CELL + PAD; }
   }

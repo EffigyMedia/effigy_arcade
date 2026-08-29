@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.29';
+window.ROAD_BUILD = '0.9.30';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -11839,27 +11839,57 @@ requestAnimationFrame(frameLoop);
                   taxi:'production', tuner:'sport', muscle:'sport',
                   PICKUP:'utility', VAN:'utility', LORRY:'utility',
                   pickup:'utility', van:'utility', truck:'utility' };
-    const add = (name, sig, rear, front) =>
-      out.push({ name:name, sig:sig, cls:CLS[name] || 'production', spr:rear, front:front });
+    /* `key` is the body this row was built from, and `name` is what a reader
+       prints. They part company where one body has two liveries: the name says
+       CRUISER . BLACK and the key is still CRUISER, which is what the class
+       table and the steering wheel are looked up with. */
+    const add = (name, sig, rear, front, key, rearS, frontS) =>
+      out.push({ name:name, key:key || name, sig:sig, cls:CLS[key || name] || 'production',
+                 spr:rear, front:front, sprS:rearS || null, frontS:frontS || null });
+    /* ---- A CAR IS DRAWN IN THE PAINT IT IS ALLOWED TO WEAR ----------------
+       Owner, 2026-08-29. Every body on this sheet was built in WHITE, which is
+       correct for the ten cars that come in a dozen colours and wrong for the
+       three that do not. The cab came out white - and a cab is yellow, which is
+       the whole of how you recognise one - and both patrol cars came out white
+       when the force runs a black-and-white and a white-on-black.
+
+       These are the same restrictions `paintChoices()` puts on the garage, read
+       from the one place they are decided rather than copied. A body with more
+       than one entry here gets ONE ROW PER LIVERY, because two liveries of a
+       patrol car is what the owner asked to see and a reader grouping by `sig`
+       would otherwise keep the first and drop the rest.
+
+       The force wears COP_PAINT rather than the garage palette: those are the
+       two paints an on-duty cruiser is actually built with, and its white is a
+       little cooler than the garage's.
+       ------------------------------------------------------------------- */
+    const LIVERY = { CAB:[['GOLD', PAINT.GOLD]],
+                     CRUISER:[['WHITE', COP_PAINT.WHITE], ['BLACK', COP_PAINT.BLACK]],
+                     SUPERCRUISER:[['WHITE', COP_PAINT.WHITE], ['BLACK', COP_PAINT.BLACK]] };
     for(const k in BODY){
       const rs = BODY[k];
+      const liv = LIVERY[k] || [['WHITE', PAINT.WHITE]];
+      for(let li = 0; li < liv.length; li++){
+        const pKey = liv[li][0], pCol = liv[li][1];
       /* the cache only holds bodies a rival can be given, so an unlockable is
          not in it. Build it the way the cache does rather than leaving a hole. */
       /* the LORRY's trailer takes a much darker shade of the chosen colour and
          its CAB takes the colour itself, so the sheet has to build it the way
          `buildSprites` does or it shows a vehicle nobody can drive */
-      const pt0 = PAINT.WHITE;
+      const pt0 = pCol;
       const rigPt = rs.rig === 'truck'
         ? Object.assign({}, pt0, { body:shade(pt0.body,0.34), hi:shade(pt0.hi,0.34),
                                    lo:shade(pt0.lo,0.34),
                                    cab:{ body:pt0.body, hi:pt0.hi, lo:pt0.lo } })
         : pt0;
-      const rear = RIVAL_SP[k+'|WHITE'] || (rs.rig
+      /* the rival cache is keyed by paint, and it only holds the ordinary
+         white one - a livery that is not in it is built here the same way */
+      const rear = (pKey === 'WHITE' && !LIVERY[k] && RIVAL_SP[k+'|WHITE']) || (rs.rig
         ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
             bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
-            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE))));
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));
       const front = rs.rig
         ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
@@ -11869,8 +11899,34 @@ requestAnimationFrame(frameLoop);
            nose on five cars. The size is the one the garage uses, 230x215,
            because a front is taller than a back. */
         : sprite(230,215, paintFront(Object.assign({ bodyType:k, marque:rs.rear,
-            player:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)));
-      add(k, rs.rig ? 'rig:'+rs.rig : 'car:'+k, rear, front);
+            player:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol)));
+      /* ---- STRIPES ARE PAINT, AND NOT EVERY CAR TAKES THEM --------------
+         `stripesAllowed()` is the garage's rule and it reads `optBody`, so it
+         cannot answer for a car it is not looking at. The rule itself is short
+         and it is stated here rather than duplicated by hand: a FORMULA car and
+         a patrol car already wear a livery, and a second set of markings over
+         the top of one is not a thing either of them does.
+
+         A striped frame is built only where it is allowed. Everywhere else the
+         sheet shows an empty cell, which is the answer to "does this car take
+         stripes" rather than the absence of one.
+         ---------------------------------------------------------------- */
+      const striped = k !== 'FORMULA' && k !== 'CRUISER' && k !== 'SUPERCRUISER';
+      const rearS = !striped ? null : (rs.rig
+        ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
+            stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
+        : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
+            bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
+            stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));
+      const frontS = !striped ? null : (rs.rig
+        ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
+            stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
+        : sprite(230,215, paintFront(Object.assign({ bodyType:k, marque:rs.rear,
+            player:true, stripes:true, lamp:'#d61b3c', lamp2:'#ff7a86' }, pCol))));
+      const base = rs.rig ? 'rig:'+rs.rig : 'car:'+k;
+      add(liv.length > 1 ? k + ' \u00B7 ' + pKey : k,
+          li ? base + '|' + pKey : base, rear, front, k, rearS, frontS);
+      }
     }
     const traf = { sedan:SP.sedan, sedan2:SP.sedan2, coupe:SP.coupe, van:SP.van,
                    pickup:SP.pickup, truck:SP.truck, taxi:(TRAFFIC_SP.taxi||[])[0],
