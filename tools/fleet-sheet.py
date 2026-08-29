@@ -225,7 +225,9 @@ def main():
                 if not url:
                     print('  %-11s no vehicles in this class' % cls)
                     continue
-                out = ROOT / 'docs' / ('fleet-%s.png' % cls)
+                # they live in their own folder: six pictures beside the prose
+                # is a folder you have to read past to find a document 
+                out = ROOT / 'docs' / 'fleet' / ('%s.png' % cls)
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(base64.b64decode(url.split(',', 1)[1]))
                 made.append(out)
