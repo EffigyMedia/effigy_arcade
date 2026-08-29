@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-59"></a>
+## [0.9.59] - 2026-08-29
+- Changed: **thunder is a crack and a rumble, and distance eats the crack.** High frequencies are
+  absorbed and scattered over distance and low ones are not, so a strike overhead is a crack with a
+  rumble under it and the same strike a mile off is the rumble alone. The crack falls away as the
+  nearness squared - it keeps 22% of its level at half distance and is gone entirely past two thirds
+  - while the rumble falls in a straight line and never below 0.20. The far rumble also runs longer,
+  2.8s overhead against 4.6s across the valley, because what reaches you has come by several paths
+  ([RLG-060](../fragments/RLG-060.md)).
+- Fixed: **the weather harness pins the time of day.** A run started at DUSK drifted into the night
+  branch part way through, where the ground is already dark and the rain darkening has almost no room
+  to show, and the verge check went red on one run in six at a margin of about three. Loosening the
+  threshold would have hidden a real thing about the effect; measuring in daylight is what makes the
+  number mean anything ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-58"></a>
 ## [0.9.58] - 2026-08-29
 - Changed: **thunder is loud enough to be thunder.** It was mixed as a background texture, under

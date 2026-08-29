@@ -123,13 +123,26 @@ GEO = """() => {
 # It also calls `snd.thunder` rather than `API.strike`. `strike` is the LIGHTNING - it sets the flash
 # and its magnitude and returns, and the sound is scheduled seconds later by the step loop from
 # `thunderIn`. A harness that strikes and then listens hears nothing it caused.
-THUNDER_BEDS = """(mag) => {
+# The two sounds are told apart by their FILTER, which is what makes them two sounds: the rumble is
+# lowpass and the crack is highpass. Reading the gains alone could not say which was which, and a
+# check that cannot name what it measured cannot tell a quiet crack from a quiet rumble.
+THUNDER_BEDS = """([mag, far]) => {
   const AR = window.Arcade, R = window.__probe.road;
   const beds = [], real = AR.sfx.noise;
-  AR.sfx.noise = function(o){ beds.push(o.gain); return real.call(AR.sfx, o); };
-  try { R.snd.thunder(mag); } finally { AR.sfx.noise = real; }
+  AR.sfx.noise = function(o){
+    beds.push({ gain: o.gain, filter: o.filter, freq: o.freq, dur: o.dur });
+    return real.call(AR.sfx, o);
+  };
+  try { R.snd.thunder(mag, far); } finally { AR.sfx.noise = real; }
   return beds;
 }"""
+
+
+def split(beds):
+    """The rumble is everything lowpassed; the crack is the highpassed bed, or nothing."""
+    rumble = [b for b in beds if b['filter'] == 'lowpass']
+    crack = [b for b in beds if b['filter'] == 'highpass']
+    return rumble, crack
 
 SAMPLE = """(spots) => {
   const S = window.__probe.sample, out = {};
@@ -193,6 +206,21 @@ def main():
         page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
         page.click('[data-act="play"]')
         page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+        # THE TIME OF DAY IS PINNED, and it has to be. A run started at DUSK drifts
+        # into the night branch part way through, where the ground is already dark
+        # and the rain darkening has almost no room to show - the verge check went
+        # red on one run in six for exactly that reason, at a margin of about three.
+        # Loosening the threshold would have hidden a real thing about the effect;
+        # measuring it in daylight is what makes the number mean anything.
+        for _ in range(6):
+            label = page.eval_on_selector('[data-act="time"] b', 'el => el.textContent').strip()
+            if label == 'MIDDAY':
+                break
+            page.click('[data-act="time"]')
+            page.wait_for_timeout(70)
+        res.check(page.eval_on_selector('[data-act="time"] b',
+                                        'el => el.textContent').strip() == 'MIDDAY',
+                  'the run is pinned to MIDDAY, so the readings are comparable')
         page.click('[data-act="drive"]')
         page.wait_for_timeout(1600)
 
@@ -347,22 +375,55 @@ def main():
         # reports a healthy value quite happily, and counting rebuilds read zero on
         # a build that was working. `AR.sfx.noise` is wrapped here and the gains it
         # is handed are recorded, which is the number the mix is actually made of.
-        beds = sorted(page.evaluate(THUNDER_BEDS, 1.0), reverse=True)
-        near = sorted(page.evaluate(THUNDER_BEDS, 0.25), reverse=True)
-        res.check(len(beds) >= 2, 'a near strike lays down its beds of noise', str(beds))
-        if len(beds) >= 2:
-            # the committed values before this change were 0.26 and 0.20 at m=1
-            res.check(beds[0] >= 0.40, 'the main bed is well above the 0.26 it used to be',
-                      '%.3f' % beds[0])
-            res.check(beds[1] >= 0.32, 'and the roll under it above its old 0.20',
-                      '%.3f' % beds[1])
-            total = sum(beds)
+        overhead = page.evaluate(THUNDER_BEDS, [1.0, 0.0])
+        r_near, c_near = split(overhead)
+        res.check(len(r_near) >= 2 and len(c_near) == 1,
+                  'a strike overhead is a rumble and a crack',
+                  '%d rumble bed(s), %d crack' % (len(r_near), len(c_near)))
+        if r_near and c_near:
+            loudest = max(b['gain'] for b in r_near)
+            # the committed values before the level was raised were 0.26 and 0.20
+            res.check(loudest >= 0.40, 'the rumble is well above the 0.26 it used to be',
+                      '%.3f' % loudest)
+            res.check(c_near[0]['gain'] >= 0.25, 'and the crack is above its old 0.20',
+                      '%.3f' % c_near[0]['gain'])
+            total = sum(b['gain'] for b in overhead)
             res.check(total * 0.85 < 0.98,
                       'and the beds together stay under the master bus, so it cannot clip',
                       'sum %.3f, %.3f through a master of 0.85' % (total, total*0.85))
-            res.check(len(near) >= 2 and max(near) < max(beds),
-                      'a distant strike is still quieter than a near one - it is not just louder',
-                      'far %s vs near %s' % (near, beds))
+
+        print('    the roll-off, near to far')
+        rows = []
+        for far in (0.0, 0.25, 0.5, 0.75, 1.0):
+            r, c = split(page.evaluate(THUNDER_BEDS, [1 - far*0.62, far]))
+            rows.append((far,
+                         max([b['gain'] for b in r] or [0]),
+                         max([b['gain'] for b in c] or [0]),
+                         max([b['dur'] for b in r] or [0])))
+            print('      far %.2f   rumble %.3f   crack %.3f   rumble runs %.2fs'
+                  % rows[-1])
+        rumbles = [r for _, r, _, _ in rows]
+        cracks = [c for _, _, c, _ in rows]
+        durs = [d for _, _, _, d in rows]
+        res.check(all(a > b for a, b in zip(rumbles, rumbles[1:])),
+                  'distance lowers the rumble at every step',
+                  ' '.join('%.3f' % v for v in rumbles))
+        res.check(all(a >= b for a, b in zip(cracks, cracks[1:])),
+                  'and it lowers the crack at every step too',
+                  ' '.join('%.3f' % v for v in cracks))
+        # the whole of what was asked for: BOTH fall, the crack much harder
+        res.check(cracks[0] > 0 and rumbles[0] > 0
+                  and (cracks[2] / cracks[0]) < (rumbles[2] / rumbles[0]) * 0.5,
+                  'the crack is rolled off far harder than the rumble - the air eats the top end',
+                  'at half distance the crack keeps %.0f%% and the rumble %.0f%%'
+                  % (100*cracks[2]/cracks[0], 100*rumbles[2]/rumbles[0]))
+        res.check(cracks[-1] == 0, 'and a strike across the valley has no crack left at all',
+                  '%.4f' % cracks[-1])
+        res.check(rumbles[-1] > 0.15, 'while its rumble is still clearly there',
+                  '%.3f' % rumbles[-1])
+        res.check(durs[-1] > durs[0],
+                  'the far rumble runs LONGER, because it arrives by several paths',
+                  '%.2fs overhead, %.2fs across the valley' % (durs[0], durs[-1]))
 
         print()
         print('  DISTANCE - the gap between the flash and the sound is how far away it is')

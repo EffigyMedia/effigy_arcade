@@ -839,31 +839,53 @@ var snd = {
      Three overlapping noise beds rather than one, because a single burst reads
      as a door slamming. They are seconds apart at the low end, which is what
      makes it roll. */
-  thunder: function(mag){
+  thunder: function(mag, far){
     if (!AR) return;
     var t = AR.audio.now(), m = Math.max(0.2, Math.min(1, mag || 0.6));
-    /* ---- AND IT IS LOUD. Owner, 2026-08-29: turn it way up -------------
-       It was mixed as a background texture - 0.26 and 0.20 at the top of its
-       range, under `dead` at 0.26 and `copDown` at 0.22, which are ordinary
-       event sounds. Thunder is not an ordinary event sound. It is the loudest
-       thing in a storm and it is supposed to make you look up.
+    /* ---- TWO SOUNDS, AND DISTANCE TREATS THEM DIFFERENTLY (RLG-060) -----
+       Owner, 2026-08-29: "we could split the thunder into two sounds: a
+       mid/high frequency crack, and a low/mid frequency rumble. Distance will
+       lower the volume of both but the mid/high frequency crack will be rolled
+       off more heavily based on distance."
 
-       THE HEADROOM WAS COUNTED RATHER THAN GUESSED. The master bus is 0.85
-       with no compressor after it, so the ceiling is real and clipping is what
-       is on the other side of it. The three beds peak at 0.46, 0.37 and 0.20,
-       and they do not peak together - the second starts 0.12s after the first
-       and the crack is a fifth of a second long. Worst case through the master
-       is about 0.71, which leaves the engine and the tyres room to be heard
-       under it.
+       That is what air does to sound and it is why distant thunder has no edge
+       on it. High frequencies are absorbed over distance and scattered by
+       everything they pass; low ones are not. A strike overhead is a crack with
+       a rumble under it. The same strike a mile off is the rumble alone, and it
+       is longer, because what reaches you has come by several paths.
+
+       So the crack falls away as `near` squared and a bit - by half distance it
+       is under a quarter of its close level, and past two thirds it is gone
+       entirely - while the rumble falls away in a straight line and never below
+       0.20. The rumble also gets LONGER with distance rather than shorter, for
+       the same scattering reason.
+
+       THE HEADROOM STILL HOLDS. Peak sum is 0.46 + 0.36 + 0.30 = 1.12, and the
+       master bus is 0.85 with no compressor, so the worst case is 0.95. The
+       three do not peak together in any case: the second bed starts 0.12s in and
+       the crack is a fifth of a second long.
        ------------------------------------------------------------------ */
-    AR.sfx.noise({ t:t, freq:220 + 380*m, to:40, dur:1.1 + 1.6*m,
-                   gain:0.18 + 0.28*m, filter:'lowpass', q:0.9 });
-    AR.sfx.noise({ t:t + 0.12, freq:120, to:30, dur:1.8 + 2.2*m,
-                   gain:0.15 + 0.22*m, filter:'lowpass', q:0.7 });
-    /* the crack, only when it is close */
-    if(m > 0.7)
-      AR.sfx.noise({ t:t, freq:2600, to:600, dur:0.22, gain:0.20*(m-0.7)/0.3,
-                     filter:'highpass' });
+    /* the distance, given by the strike. A caller with only a magnitude - which
+       is `API.strike` and anything older - has it read back off that instead. */
+    var d = (far === undefined) ? Math.max(0, Math.min(1, (1 - m) / 0.62))
+                                : Math.max(0, Math.min(1, far));
+    var near = 1 - d;
+
+    /* THE RUMBLE, low and mid. Two overlapping beds rather than one, because a
+       single burst reads as a door slamming; seconds apart at the bottom end is
+       what makes it roll. This is the half that survives the distance. */
+    AR.sfx.noise({ t:t, freq:170 + 430*near, to:40, dur:1.2 + 1.0*near + 2.2*d,
+                   gain:0.18 + 0.28*near, filter:'lowpass', q:0.9 });
+    AR.sfx.noise({ t:t + 0.12, freq:120, to:30, dur:1.6 + 1.2*near + 3.0*d,
+                   gain:0.14 + 0.22*near, filter:'lowpass', q:0.7 });
+
+    /* THE CRACK, mid and high, and this is the half the distance eats. Both its
+       level and its brightness fall with distance: a far crack is not merely a
+       quiet one, it is a dull one. */
+    var crack = 0.30 * Math.pow(near, 2.2);
+    if(crack > 0.008)
+      AR.sfx.noise({ t:t, freq:800 + 2400*near, to:260 + 420*near,
+                     dur:0.12 + 0.16*near, gain:crack, filter:'highpass', q:1.1 });
   },
   copDown: function(){
     if (!AR) return;
@@ -6178,6 +6200,10 @@ function stepBiome(dt){
    ------------------------------------------------------------------------- */
 let cloud = 0.15, cloudTarget = 0.15, cloudNext = 0, storm = 0;
 let boltT = 0, boltNext = rnd(6, 18), boltMag = 0, thunderIn = -1;
+/* how far away the last strike was, 0 overhead and 1 across the valley. It is
+   kept because the SOUND needs it and the magnitude cannot carry it: two
+   different distances can want the same level and a different roll-off. */
+let boltFar = 0;
 function stepSky(dt){
   cloudNext -= dt;
   if(cloudNext <= 0){
@@ -6203,7 +6229,7 @@ function stepSky(dt){
   if(boltT > 0) boltT -= dt;
   if(thunderIn > 0){
     thunderIn -= dt;
-    if(thunderIn <= 0){ thunderIn = -1; if(snd && snd.thunder) snd.thunder(boltMag); }
+    if(thunderIn <= 0){ thunderIn = -1; if(snd && snd.thunder) snd.thunder(boltMag, boltFar); }
   }
   const stormy = wet > 0.5 && cloud > 0.55 && !snowy;
   boltNext -= stormy ? dt : dt * 0.15;
@@ -6230,6 +6256,7 @@ function stepSky(dt){
    ------------------------------------------------------------------------- */
 function rollStrike(){
   const far = Math.random();              /* 0 overhead, 1 across the valley */
+  boltFar = far;
   boltMag = 1 - far * 0.62;
   boltT = 0.42;
   thunderIn = 0.25 + far * 4.75;          /* 250ms to 5s, which is the distance */
