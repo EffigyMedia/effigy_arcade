@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.35';
+window.ROAD_BUILD = '0.9.36';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -12100,6 +12100,7 @@ requestAnimationFrame(frameLoop);
        whether it is wrecking, and a test that cannot see those two numbers
        cannot tell a clean lap from thirty seconds of scraping a wall. */
     playerX:  { get: function(){ return playerX; } },
+    targetX:  { get: function(){ return targetX; } },
     dmg:      { get: function(){ return dmg; } },
     /* the cars in front. Read-only, and here for the same reason as the two
        above: a test driver that cannot see traffic drives into it, and a
@@ -12333,6 +12334,33 @@ requestAnimationFrame(frameLoop);
   API.billboard = function(z){ return billboard(z); };
   API.jumpTo = function(z){ pos = z - PLAYER_Z; rebuildBend(); };
   API.setMode = function(m){ mode = m; };
+  /* ---- THE INSTRUMENTS FOR BRAKE AND GRIP -------------------------------
+     RLG-055 is blocked on a measurement nobody has taken: `brake` and `grip`
+     are declared on every body and nothing has ever checked what they DO.
+     Both are effects rather than readings, so the harness needs to be able to
+     stand on the brake and to read the corner it is standing in.
+
+     `setBrake` is the same call the brake button makes - not a shortcut past
+     it - so what the harness measures is what a thumb gets. `curvatureAt`
+     reports the bend at a world position, which is what turns a drift into a
+     number instead of an anecdote. */
+  API.setBrake = function(on){ setBrake(!!on); return braking; };
+  /* the bend the car is ACTUALLY being pushed by, and where it is being
+     pushed to. `pushK` lags the road by CORNER_LAG, so a measurement that
+     integrates the road's curvature is integrating the wrong number for the
+     first half-second of every corner; and `targetX` is what the corner moves,
+     with `playerX` following it a moment later. Measuring the follower adds a
+     lag that has nothing to do with grip. */
+  API.pushK = function(){ return pushK; };
+  /* put the car back in the middle of the road between measurements. Without
+     it each car starts wherever the last one was left, and a car that starts
+     against the barrier gets `targetX = playerX*0.7` snapped into it by the
+     verge - a jump of a third of a lane that has nothing to do with grip and
+     lands in the measurement as though it did. */
+  API.setLane = function(x){ targetX = playerX = camX = (x || 0); return playerX; };
+  API.curvatureAt = function(z){
+    return curvatureAt(z === undefined ? pos + PLAYER_Z : z);
+  };
   API.playerSprite = function(){ return SP.player; };
   API.hasNos = function(){ return hasNos(); };
   API.roundRim = function(){

@@ -38,6 +38,27 @@ THREE EXPERIMENTS
 3. TRAFFIC     What the traffic on the road is actually doing, by type, against what `BODY` says
                that vehicle can do. If traffic never reads `BODY`, these two columns are unrelated
                numbers and lowering one will not move the other.
+
+4. STOP & TURN RLG-055 is blocked on this one. Every body declares a `brake` and a `grip` and
+               nothing has ever measured either, so the fleet table cannot be rewritten without
+               changing numbers whose honesty is unknown - which is exactly the trap RLG-042 found,
+               where the top-speed column was true and three comments around it were false.
+
+               BRAKE is a stopping distance. From 140mph, brake held, in cleared air, to 40mph:
+               the distance covered and the time taken. Distance is the figure that matters,
+               because a corner arrives at a place rather than at a moment.
+
+               GRIP is measured WITHOUT A DRIVER, and that is the whole design of it. The engine
+               pushes the car to the outside of a bend at a rate set by `cornerG()`, which is
+               `0.42 / grip`. So the car is pinned at one position on the road - one constant
+               curvature - held at one speed, and NOBODY TOUCHES THE WHEEL. The time it takes to
+               drift a fixed distance across the road is the grip, and no steering input can
+               contaminate it.
+
+               That matters here more than anywhere. The project has already been told once that
+               Raceway's tyres died in twenty seconds, when the cause was the drive-test autopilot
+               sawing at the wheel: lateral load is what wears a tyre, and a driver in the loop is
+               the thing being measured. There is no driver in this loop.
 """
 
 import argparse
@@ -209,6 +230,157 @@ GEARBOX = r"""
 """
 
 
+# --- experiment 4: what do `brake` and `grip` actually do? -------------------
+
+STOPTURN = r"""
+(async function(cfg){
+  var P = window.__probe, R = P.road, out = [];
+  var MPH = 200/15333;
+  var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  /* the same cleared air the 0-60 runs in: a stopping distance measured into
+     the back of a van is a measurement of the van */
+  var sweep = setInterval(function(){
+    if(R.traffic) R.traffic.length = 0;
+    var c = R.cops && R.cops(); if(c) c.length = 0;
+  }, 50);
+  /* ---- SACK THE DRIVER --------------------------------------------------
+     THE FIRST RUN OF THIS EXPERIMENT REPORTED NO DRIFT AT ALL, for all
+     sixteen cars, and it looked like a clean result. It was the autopilot:
+     `__probe.drive()` is a centre-seeker holding the arrow keys, so it was
+     steering out every bit of push as fast as the corner made it. A grip
+     measurement with a driver in it measures the driver.
+
+     It also holds the throttle, which has no place in a braking distance.
+     So the driver is stopped for the whole experiment, and `stop()` releases
+     every key it was holding.
+     ------------------------------------------------------------------- */
+  if(P.stop) P.stop();
+  await sleep(200);
+  /* ---- FIND ONE CORNER, AND USE IT FOR EVERY CAR ------------------------
+     The seed is fixed, so a world position is the same bend for every body in
+     this session. The tightest bend within the scan is chosen and its
+     curvature is reported, so the numbers below are comparable to each other
+     and honest about what they were measured on. */
+  var z0 = R.pos + R.PLAYER_Z, best = 0, bestZ = z0;
+  for(var z = z0 + 4000; z < z0 + cfg.scan; z += 400){
+    var k = Math.abs(R.curvatureAt(z));
+    if(k > best){ best = k; bestZ = z; }
+  }
+  try {
+    for(var i = 0; i < cfg.bodies.length; i++){
+      var key = cfg.bodies[i];
+      if(R.state !== 'driving')
+        throw new Error('the run left `driving` before ' + key + ' (state=' + R.state + ')');
+      R.setBody(key);
+      await sleep(200);
+
+      /* ---- 1. STOPPING ------------------------------------------------- */
+      var stops = [];
+      for(var a = 0; a < cfg.reps; a++){
+        R.setBrake(false);
+        R.setSpd(cfg.fromMph / MPH);
+        await sleep(120);
+        var p0 = R.pos, t0 = performance.now();
+        R.setBrake(true);
+        var d = 0, t = 0;
+        while(performance.now() - t0 < 15000){
+          await sleep(16);
+          if(R.spd * MPH <= cfg.toMph){
+            t = (performance.now() - t0)/1000; d = R.pos - p0; break;
+          }
+        }
+        R.setBrake(false);
+        if(t > 0) stops.push({ t: t, d: d });
+        await sleep(120);
+      }
+
+      /* ---- 2. TURNING, WITH NOBODY DRIVING ------------------------------
+         Pinned at one place on the road so the curvature cannot change under
+         the measurement, and at one speed so the v-squared term is identical
+         for every car. What is left is `cornerG`, which is grip. */
+      /* THE CAR DRIVES INTO THE BEND; IT IS NOT HELD IN ONE.
+         The first version pinned the car at one world position with `jumpTo`
+         on a 16ms timer, so the curvature could not change under the
+         measurement. It drifted nowhere: `jumpTo` rebuilds the bend cache, and
+         rebuilding it sixty times a second is not a corner, it is a car being
+         teleported to the start of one. Nothing accumulates.
+
+         So the car is put on the road a little before the bend, held at one
+         speed, and left alone. Same seed, same bend, same speed for every
+         body - what differs is only the car. */
+      var drift = null, kUsed = 0;
+      R.jumpTo(bestZ - cfg.runup);
+      if(R.setLane) R.setLane(0);
+      await sleep(250);
+      if(R.setLane) R.setLane(0);
+      var pin = setInterval(function(){ R.setSpd(cfg.cornerMph / MPH); }, 16);
+      /* wait until the car is IN the bend rather than approaching it */
+      var tw = performance.now();
+      while(performance.now() - tw < 8000){
+        await sleep(16);
+        if(Math.abs(R.curvatureAt()) > cfg.kMin) break;
+      }
+      kUsed = R.curvatureAt();
+      /* ---- A RATE, NOT A TIME TO A THRESHOLD -----------------------------
+         Timing the car to a fixed drift reported nothing twice, because that
+         shape cannot tell "this car did not move" from "the bend ended first" -
+         both come back as "did not reach it". A RATE reports either way: how
+         far across the road per second, with the mean curvature it happened in
+         and why the window closed, so a short window is still a number.
+         --------------------------------------------------------------- */
+      /* ---- INTEGRATE THE PUSH, DIVIDE THE DRIFT BY IT --------------------
+         A rate in lanes per second is only comparable between two cars if they
+         were pushed by the same amount, and they never are: a bend is entered
+         at a different point every time and `pushK` lags the road by
+         CORNER_LAG, so the first half-second of any corner is a different push
+         from the rest of it.
+
+         So the push is integrated as the engine applies it -
+         `pushK * v^2 * dt`, exactly the expression in `stepCar` - and the
+         drift is divided by it. What comes out is `cornerG` as MEASURED, and
+         `cornerG` is 0.42/grip by definition. Multiply the measurement by the
+         declared grip and every car should read 0.42. Any car that does not is
+         a car whose grip is not doing what it says.
+
+         `targetX` and not `playerX`: the corner moves the target and the car
+         follows it a moment later, so measuring the follower measures a lag
+         that has nothing to do with grip.
+         --------------------------------------------------------------- */
+      var td = performance.now(), x0 = R.targetX, xEnd = x0;
+      var push = 0, kSum = 0, kN = 0, why = 'window', tPrev = performance.now();
+      while(performance.now() - td < cfg.window){
+        await sleep(16);
+        var now = performance.now(), dtS = (now - tPrev)/1000; tPrev = now;
+        var v = R.spd / R.MAX_SPD;
+        push += Math.abs(R.pushK()) * v * v * dtS;
+        kSum += Math.abs(R.pushK()); kN++;
+        xEnd = R.targetX;
+        if(Math.abs(xEnd - x0) >= cfg.driftLanes){ why = 'ran wide'; break; }
+        if(Math.abs(R.curvatureAt()) < cfg.kMin*0.5){ why = 'left the bend'; break; }
+      }
+      var dt2 = (performance.now() - td)/1000;
+      /* a window with almost no push in it divides a small drift by a smaller
+         number and reports anything at all - refused rather than reported */
+      drift = (push > cfg.minPush) ? Math.abs(xEnd - x0)/push : null;
+      kUsed = kN ? kSum/kN : kUsed;
+      clearInterval(pin);
+      await sleep(150);
+
+      var B = R.BODY[key] || {};
+      out.push({ key: key,
+                 brake: B.brake || 1, grip: B.grip || 1, mass: B.mass || null,
+                 stopT: stops.length ? Math.min.apply(null, stops.map(function(o){ return o.t; })) : null,
+                 stopD: stops.length ? Math.min.apply(null, stops.map(function(o){ return o.d; })) : null,
+                 runs: stops.length,
+                 cornerG: drift, driftX: Math.abs(xEnd - x0), driftFor: dt2,
+                 push: push, why: why, k: kUsed, mph: R.spd*MPH });
+    }
+  } finally { clearInterval(sweep); }
+  return out;
+})
+"""
+
+
 # --- experiment 3: is traffic reading the table? -----------------------------
 
 TRAFFIC = r"""
@@ -273,8 +445,8 @@ def main():
     console_utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument('--reps', type=int, default=4, help='recovery runs per gearbox arm')
-    ap.add_argument('--only', choices=('cars', 'gearbox', 'traffic'), action='append',
-                    help='run just these experiments (repeatable)')
+    ap.add_argument('--only', choices=('cars', 'gearbox', 'traffic', 'stopturn'),
+                    action='append', help='run just these experiments (repeatable)')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
 
@@ -292,8 +464,8 @@ def main():
                 p, headless=not args.headed,
                 args=['--autoplay-policy=no-user-gesture-required', '--mute-audio'])
 
-            want = set(args.only or ('cars', 'gearbox', 'traffic'))
-            cars, claims, seen, arms = [], [], {}, []
+            want = set(args.only or ('cars', 'gearbox', 'traffic', 'stopturn'))
+            cars, claims, seen, arms, st = [], [], {}, [], []
 
             # ---- 1. the cars ------------------------------------------------
             if 'cars' in want:
@@ -306,6 +478,19 @@ def main():
              claims = page.evaluate(
                 '(ks) => ks.map(k => ({ key:k, card: window.__probe.road.zeroSixty(k),'
                 ' vmax: window.__probe.road.BODY[k].vmax }))', bodies)
+             ctx.close()
+
+            # ---- 4. stopping and turning ------------------------------------
+            if 'stopturn' in want:
+             ctx, page = new_page(browser, dt)
+             boot(page, base, race=False)
+             bodies4 = page.evaluate(
+                '() => Object.keys(window.__probe.road.BODY)'
+                '.filter(k => !window.__probe.road.BODY[k].npc)')
+             st = page.evaluate(STOPTURN + '(%s)' % json.dumps(
+                {'bodies': bodies4, 'reps': 2, 'fromMph': 140, 'toMph': 40,
+                 'cornerMph': 120, 'driftLanes': 0.60, 'scan': 60000,
+                 'runup': 9000, 'kMin': 1.2, 'window': 4000, 'minPush': 0.05}))
              ctx.close()
 
             # ---- 3. the traffic (same session shape, cheap) -----------------
@@ -337,8 +522,44 @@ def main():
         report_gearbox(arms)
     if seen:
         report_traffic(seen, src)
+    if st:
+        report_stopturn(st)
     return 0
 
+
+def report_stopturn(rows):
+    """Braking distance and cornering drift, per body, against what each declares."""
+    print('\n  4. STOPPING AND TURNING   (air cleared; nobody touches the wheel)')
+    print('     brake: 140 to 40 mph, best of two, no throttle.')
+    print('     turn: driven into one bend at 120mph with NO steering input; drift across')
+    print('           the road in lanes per second, and that rate multiplied by `grip`.')
+    row = '    {:<12} {:>6} {:>8} {:>7}   {:>5} {:>8} {:>8} {:>6}  {}'
+    print(row.format('BODY', 'brake', 'stop(m)', 'stop(s)', 'grip',
+                     'cornerG', 'x grip', 'drift', 'window ended'))
+    print('    ' + '-' * 88)
+    xs = []
+    for r in sorted(rows, key=lambda r: -(r.get('brake') or 0)):
+        d = r.get('stopD')
+        dist = ('%.0f' % (d / 12.0)) if d else '-'   # about twelve units to the metre
+        secs = ('%.2f' % r['stopT']) if r.get('stopT') else '-'
+        cg = r.get('cornerG')
+        cgs = ('%.3f' % cg) if cg is not None else '-'
+        xg = None
+        if cg is not None:
+            xg = cg * (r.get('grip') or 1)
+            xs.append(xg)
+        print(row.format(r['key'], '%.2f' % (r.get('brake') or 0), dist, secs,
+                         '%.2f' % (r.get('grip') or 0), cgs,
+                         ('%.3f' % xg) if xg is not None else '-',
+                         '%.2f' % (r.get('driftX') or 0), r.get('why', '')))
+    print('\n    `cornerG` is the measured push: the drift divided by the integrated')
+    print('    `pushK * v^2 * dt` the engine applied. The engine defines it as 0.42/grip, so')
+    print('    `x grip` should read 0.42 for every car.')
+    if xs:
+        import statistics as _st
+        print('    measured: mean %.3f, spread %.3f to %.3f%s'
+              % (_st.mean(xs), min(xs), max(xs),
+                 '' if len(xs) < 2 else ', sd %.3f' % _st.pstdev(xs)))
 
 def report_cars(cars, claim):
     print('\n  1. WHAT EACH CAR ACTUALLY DOES   (air cleared: no traffic, no police)')

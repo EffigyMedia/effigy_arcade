@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-36"></a>
+## [0.9.36] - 2026-08-29
+- Added: **`stat-test` measures braking and cornering.** RLG-055 was blocked on it: every body
+  declares a `brake` and a `grip` and nothing had ever checked what they do. Braking is a stopping
+  distance from 140 to 40mph; cornering is the drift through one bend with **no steering input at
+  all**, divided by the push the engine applied. Both stats turn out honest - braking spreads four to
+  one, and the measured `cornerG` times the declared grip is 0.420 with a standard deviation of 0.006
+  across sixteen bodies. Both halves were watched failing with the stats removed
+  ([RLG-055](../fragments/RLG-055.md)).
+- Added: **five probe instruments** the measurement needed - `setBrake`, `pushK`, `targetX`,
+  `curvatureAt` and `setLane` ([RLG-055](../fragments/RLG-055.md)).
+
 <a id="v0-9-35"></a>
 ## [0.9.35] - 2026-08-29
 - Added: **the garage shows both ends of the car.** Only the tail was ever built for the player, and
