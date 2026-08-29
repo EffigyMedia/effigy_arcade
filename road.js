@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.33';
+window.ROAD_BUILD = '0.9.34';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6447,14 +6447,20 @@ function stepRacers(dt){
             AR.save.merge((GAME_ID + '-opts'), { cruiser:true });
           if(st === 1 && !optEasy && classOf(optBody) === 'super')
             AR.save.merge((GAME_ID + '-opts'), { supercruiser:true });
-          /* The silver and bronze prizes were the TUNER and the MUSCLE car.
-             Both are in the starting class now, so there is nothing left for
-             them to hand over. The merges stay because a save may already hold
-             the flags and nothing should start rewriting old saves; they gate
-             nothing. What silver and bronze should pay INSTEAD is an open
-             question for the owner rather than something to invent here. */
-          if(st <= 2)  AR.save.merge((GAME_ID + '-opts'), { tuner:true });
-          if(st <= 3)  AR.save.merge((GAME_ID + '-opts'), { muscle:true });
+          /* ---- SILVER AND BRONZE PAY NOTHING, FOR NOW --------------------
+             They paid the TUNER and the MUSCLE car. Both are in the starting
+             class since the ladder was built, so the merges were writing flags
+             that gate nothing - and a reward that hands over a car the player
+             already has is worse than no reward, because it teaches them that
+             second place is a lie.
+
+             Removed rather than left dead, on the owner's instruction. What
+             they should pay instead is being explored (RLG-071); nothing is
+             invented here in the meantime.
+
+             An existing save keeps whatever flags it already holds. Nothing
+             reads them, and nothing rewrites them.
+             ------------------------------------------------------------- */
         }
         setTimeout(() => showTrophy(st), 700);
       } else {

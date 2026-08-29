@@ -14,6 +14,13 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-34"></a>
+## [0.9.34] - 2026-08-29
+- Removed: **the silver and bronze prizes.** They paid the TUNER and the MUSCLE car, and both are in
+  the starting class since the ladder was built - so second and third place were handing over cars
+  the player already owned. What those places should pay instead is being explored
+  ([RLG-071](../fragments/RLG-071.md)).
+
 <a id="v0-9-33"></a>
 ## [0.9.33] - 2026-08-29
 - Added: **the formula class - VECTOR, APEX and COMET.** One formula car became three, each at least
