@@ -368,7 +368,14 @@ STOPTURN = r"""
 
       var B = R.BODY[key] || {};
       out.push({ key: key,
-                 brake: B.brake || 1, grip: B.grip || 1, mass: B.mass || null,
+                 /* DERIVED now, not declared: `brake` is grip times the mechanical
+                    brakes and `accel` is power to weight. Reading `B.brake` after that
+                    change reported `undefined || 1` for every car - a table of ones,
+                    which is what a harness reading a stat that no longer exists looks
+                    like when nothing throws. */
+                 brake: R.brakeOf ? R.brakeOf(key) : (B.brake || 1),
+                 accel: R.accelOf ? R.accelOf(key) : (B.pull || 1),
+                 grip: B.grip || 1, mass: B.mass || null,
                  stopT: stops.length ? Math.min.apply(null, stops.map(function(o){ return o.t; })) : null,
                  stopD: stops.length ? Math.min.apply(null, stops.map(function(o){ return o.d; })) : null,
                  runs: stops.length,

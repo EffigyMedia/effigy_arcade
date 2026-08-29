@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-40"></a>
+## [0.9.40] - 2026-08-29
+- Changed: **the whole fleet's stat table, and acceleration and braking are derived rather than
+  declared.** Every class below the supercars comes down and the gaps between classes are equal:
+  formula 248-276, super 190-206, sports 142-160, production 100-120, utility 80-94. Acceleration is
+  `1.56 * sqrt(hp/mass) * launch` and braking is `grip * mech`, so horsepower, mass and grip are now
+  what a car IS and the two old multipliers are gone. Mass is deliberately absent from braking: in a
+  tyre-limited stop it cancels, and what makes a heavy vehicle stop badly already lives in its grip
+  ([RLG-055](../fragments/RLG-055.md)).
+- Changed: **each police car is the slowest of the class it polices, and the best-braked.** The super
+  cruiser sits 4mph under the slowest supercar, which makes its own note about the cage costing it
+  4mph true; the cruiser sits 4mph under the slowest sports car ([RLG-055](../fragments/RLG-055.md)).
+- Fixed: **the three stat comments that described numbers this change moved** - the 200mph ceiling,
+  the sports-class rungs, and the super cruiser's note ([RLG-055](../fragments/RLG-055.md)).
+
 <a id="v0-9-39"></a>
 ## [0.9.39] - 2026-08-29
 - Fixed: **the formula cars reach their own top speed.** A safety clamp at 260mph and a speedometer

@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.39';
+window.ROAD_BUILD = '0.9.40';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1590,8 +1590,10 @@ function lampsLit(box, spr, ids, alpha){
    to leap but pays for it in drag; the rear-engined one puts its weight over
    the driven wheels and sits between them.
 
-   `pull` scales acceleration, `vmax` scales top speed. They pull in opposite
-   directions on purpose so no car is simply better. */
+   `vmax` scales top speed, and ACCELERATION IS DERIVED - power to weight times
+   a gearing factor, see `accelOf`. The two pull in opposite directions on
+   purpose so no car is simply better: a car geared for the top end leaves the
+   line worse, which is what `launch` says about it. */
 const BODY = {
   /* Pushed genuinely apart. They shared a greenhouse, an arch size and a deck
      height, so only the tail treatment told them apart — which is not enough at
@@ -1606,18 +1608,28 @@ const BODY = {
                  greenhouse visibly off centre on the body. The long-nose look
                  comes from the deck height, not from moving the roof. */
               hip:0.055, wing:'lip',   nose:0.30, spoiler:true, rear:'STALLION', wide:0.075, arch:0.85, horn:1.19,
-              /* 200mph is the ceiling the whole game is scaled to, so the
-                 fastest car sits AT it and the others come down from there —
-                 anything above 1.0 was simply clamped and two cars tied. */
+              /* ---- 200MPH IS NOT THE CEILING AND NOTHING IS CLAMPED --------
+                 This said that 200 was the ceiling the game is scaled to and
+                 that anything above 1.0 was clamped. Both were true once and
+                 neither is now. `vmax` is a multiple of 200 rather than a
+                 fraction of it, the formula class runs to 1.38, and the two
+                 places that DID clamp - a hard limit at 1.30 and a speedometer
+                 face fixed at 260 - were both derived from the fleet under
+                 RLG-075 after the owner reported the cars being held back.
+
+                 What remains true is the shape: the supercars come DOWN from
+                 STALLION rather than up from MATADOR, and STALLION is the one
+                 that sits at the class ceiling. */
               /* ---- every supercar must out-run a cruiser ------------------------
-                 AI_TOP is 180 and MATADOR was 172, so a police car could simply
-                 drive away from the thing you had chosen to drive. The slowest
-                 of the three is 188 now: they still differ, but the floor is
-                 above anything else on the road. */
-              mass:1520, hp:710, grip:1.34, brake:1.30, pull:0.84, vmax:1.03, note:'SLOWER OFF THE LINE \u00B7 HIGHEST TOP END' },
+                 AI_TOP is 180, so a supercar that could not beat it would be
+                 out-driven by the police. The class floor is MATADOR at 194 and
+                 the CRUISER now sits at 142 - a patrol car is the slowest thing
+                 in the sports class it polices, not a car that runs down
+                 supercars (RLG-055). */
+              mass:1520, hp:710, grip:1.34, launch:0.88, mech:0.97, vmax:1.03, note:'SLOWER OFF THE LINE \u00B7 HIGHEST TOP END' },
   'MATADOR': { bodyTop:0.52, cabinTop:0.24, cabW:0.44, cabOff:0.00, roofR:0.02,
               hip:0.105, wing:'high',  nose:0.16, spoiler:true, rear:'MATADOR', wide:0.045, arch:1.30, horn:1.06,
-              mass:1580, hp:690, grip:1.38, brake:1.28, pull:1.24, vmax:0.97, note:'FASTEST OFF THE LINE \u00B7 LOWEST TOP END' },
+              mass:1580, hp:690, grip:1.38, launch:1.20, mech:0.93, vmax:0.97, note:'FASTEST OFF THE LINE \u00B7 LOWEST TOP END' },
   /* ---- THE PRIZE IS A CLASS, NOT A CAR ------------------------------------
      Owner, 2026-08-29. There was ONE formula car, and gold in the supercar
      tournament handed it over. There are three now, and the same gold hands
@@ -1628,12 +1640,16 @@ const BODY = {
      one runs, one sits between them. Every one of them is at least twenty per
      cent above the BEST supercar in every stat - not above the average, above
      the best - which is what makes the class a step up rather than three more
-     options. The reference points are MATADOR's 1.24 pull, STALLION's 1.03
-     top end, CREST's 1.42 grip and 1.32 brakes, and STALLION's 710hp.
+     options. The reference points are MATADOR's 1.24 acceleration, STALLION's
+     1.03 top end, CREST's 1.42 grip and 1.32 brakes, and STALLION's 710hp.
 
-         VECTOR   248mph   pull 1.86    the launch car
-         APEX     260      1.70         the one that does everything
+         VECTOR   248mph   accel 1.86   the launch car
+         APEX     260      1.71         the one that does everything
          COMET    276      1.56         the top end
+
+     Their acceleration is derived rather than declared: the three share a power
+     to weight within half a per cent of each other, and what separates them is
+     `launch`, which is how they are geared - 1.00, 0.92 and 0.84.
 
      APEX carries what the single FORMULA used to be. It keeps the shape and
      the badge; the numbers moved up with the rest of the class.
@@ -1646,17 +1662,17 @@ const BODY = {
   'VECTOR': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
               hip:0.135, wing:'high', nose:0.10, spoiler:true,
               wide:0.145, arch:1.45, horn:1.46, rear:'VECTOR', redline:15500, pitch:1.62,
-              mass:690, hp:980, grip:2.05, brake:1.95, pull:1.86, vmax:1.24,
+              mass:690, hp:980, grip:2.05, launch:1.00, mech:0.95, vmax:1.24,
               note:'VECTOR \u00B7 LEAVES THE LINE LIKE A LAUNCHED THING' },
   'APEX': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
               hip:0.135, wing:'high', nose:0.10, spoiler:true,
               wide:0.145, arch:1.45, horn:1.42, rear:'FORMULA', redline:15000, pitch:1.55,
-              mass:720, hp:1020, grip:2.00, brake:1.90, pull:1.70, vmax:1.30,
+              mass:720, hp:1020, grip:2.00, launch:0.92, mech:0.95, vmax:1.3,
               note:'APEX \u00B7 NO COMPROMISE' },
   'COMET': { bodyTop:0.52, cabinTop:0.30, cabW:0.30, cabOff:0, roofR:0.02,
               hip:0.135, wing:'high', nose:0.10, spoiler:true,
               wide:0.145, arch:1.45, horn:1.38, rear:'COMET', redline:14500, pitch:1.48,
-              mass:760, hp:1080, grip:1.92, brake:1.82, pull:1.56, vmax:1.38,
+              mass:760, hp:1080, grip:1.92, launch:0.84, mech:0.95, vmax:1.38,
               note:'COMET \u00B7 STILL PULLING WHEN THE ROAD RUNS OUT' },
   /* ---- THE TWO CONSOLATION CARS ----------------------------------------
      A silver unlocks TUNER, a bronze unlocks MUSCLE. Both are ROAD cars and
@@ -1691,6 +1707,11 @@ const BODY = {
        MUSCLE    average             BEST top speed     worst grip
        ROADSTER  worst acceleration  average top        BEST GRIP
 
+     Measured, after RLG-055: TUNER 146mph and 4.4s, MUSCLE 160 and 4.7s,
+     ROADSTER 153 and 5.2s with a grip of 1.20 against their 0.90 and 0.74. The
+     triangle survived the rescale intact, which is the whole reason the class
+     could be moved as a unit.
+
      Each is best at exactly one thing and WORST at exactly one other. My first
      pass made ROADSTER middling at both straight-line stats and best at grip,
      which is not a trade — it is simply the best car. It has to give something
@@ -1703,16 +1724,13 @@ const BODY = {
      wins; on a fast one it is nowhere. That is the whole point of a league.
      -------------------------------------------------------------------- */
   'ROADSTER': { rig:'roadster', gears:5, wide:0.005, arch:0.88,
-                horn:1.04, redline:9500, pitch:0.96, rear:'ROADSTER',
-                brake:1.12, pull:0.72, vmax:0.88, mass:1010, hp:240, grip:1.34,
+                horn:1.04, redline:9500, pitch:0.96, rear:'ROADSTER', launch:0.95, mech:0.88, vmax:0.765, mass:1010, hp:240, grip:1.20,
                 note:'ROADSTER \u00B7 LIGHT \u00B7 CARRIES SPEED THROUGH ANYTHING' },
   'TUNER': { rig:'tuner',  gears:5, wide:0.030, arch:0.95,
-              horn:0.86, redline:10000, pitch:0.78, rear:'TUNER',
-              brake:1.02, pull:1.18, vmax:0.82, mass:1290, hp:320, grip:1.00,
+              horn:0.86, redline:10000, pitch:0.78, rear:'TUNER', launch:1.18, mech:1.02, vmax:0.73, mass:1290, hp:320, grip:0.90,
               note:'TUNED \u00B7 FIVE SPEED \u00B7 QUICK, THEN DONE' },
   'MUSCLE': { rig:'muscle', gears:4, wide:0.050, arch:1.05,
-              horn:0.72, redline:10000, pitch:0.66, rear:'MUSCLE',
-              brake:0.86, pull:0.92, vmax:0.94, mass:1720, hp:480, grip:0.82,
+              horn:0.72, redline:10000, pitch:0.66, rear:'MUSCLE', launch:1.02, mech:1.04, vmax:0.8, mass:1720, hp:480, grip:0.74,
               note:'MUSCLE \u00B7 FOUR SPEED \u00B7 LONG LEGS' },
   /* ---- THE CRUISER -------------------------------------------------------
      Earned by surviving, not by winning: 20 miles on TEST DRIVE with the clock
@@ -1737,13 +1755,21 @@ const BODY = {
               bodyTop:0.52, cabinTop:0.24, cabW:0.52, cabOff:0, roofR:0.10,
               wide:0.030, arch:1.00, gears:6, redline:12000, pitch:1.02,
               horn:1.02, rear:'CRUISER', spoiler:'low',
-              mass:1770, hp:690, grip:1.38, brake:1.44,
-              pull:1.18, vmax:0.92,
+              mass:1770, hp:690, grip:1.36,
+              launch:1.17, mech:1.06, vmax:0.95,
+              /* ---- AND THE CAGE COSTS IT FOUR MILES AN HOUR ----------------
+                 The note has always said this car is a MATADOR with a cage in
+                 it, and the old numbers had it TEN mph slower - 184 against
+                 194. RLG-055 seats it at 190, four below the MATADOR it is
+                 built from, which makes the note true rather than rewriting it.
+                 It is the floor of the supercar class, exactly as the CRUISER
+                 is the floor of the sports class: a police car is the slowest
+                 car of the class it polices and the best-braked. */
               note:'INTERCEPTOR \u00B7 A MATADOR WITH A CAGE IN IT' },
 
   'CRUISER': { force:true, barY:0.122, rig:'cop', gears:5, wide:0.045, arch:1.00,
               horn:0.80, redline:11000, pitch:0.72, rear:'CRUISER',
-              mass:1810, hp:370, grip:0.92, brake:1.00, pull:0.92, vmax:0.95, note:'INTERCEPTOR \u00B7 HEAVY, AND FAST' },
+              mass:1810, hp:370, grip:0.96, launch:1.16, mech:1.15, vmax:0.71, note:'INTERCEPTOR \u00B7 HEAVY, AND FAST' },
   /* ---- THE TRAFFIC, DRIVEABLE ---------------------------------------------
      A hundred miles in TEST DRIVE, on any settings, unlocks the lot. They are
      not racers and the numbers say so: nothing here beats MUSCLE's 184mph or
@@ -1753,19 +1779,19 @@ const BODY = {
      pitch, same rev band — so a lorry sounds like a lorry whoever is in it.
      ------------------------------------------------------------------------ */
   'COUPE': { rig:'coupe',  gears:4, wide:0.010, arch:0.90, horn:1.02,
-               redline:9000, pitch:1.05, rear:'GENERIC', mass:1340, hp:210, grip:0.86, brake:0.88, pull:0.62, vmax:0.80,
+               redline:9000, pitch:1.05, rear:'GENERIC', mass:1340, hp:210, grip:0.73, launch:0.87, mech:1.03, vmax:0.6,
                note:'COUPE \u00B7 THE QUICKEST THING THAT IS NOT A RACER' },
   'SALOON': { rig:'sedan',  gears:4, wide:0.020, arch:0.92, horn:0.96,
-               redline:8500, pitch:0.92, rear:'GENERIC', mass:1480, hp:160, grip:0.78, brake:0.80, pull:0.54, vmax:0.74,
+               redline:8500, pitch:0.92, rear:'GENERIC', mass:1480, hp:160, grip:0.66, launch:0.92, mech:1.03, vmax:0.56,
                note:'SALOON \u00B7 ENTIRELY UNREMARKABLE' },
   'CAB': { rig:'taxi',   gears:4, wide:0.020, arch:0.92, horn:0.90,
-               redline:7500, pitch:0.80, rear:'GENERIC', mass:1620, hp:130, grip:0.70, brake:0.72, pull:0.46, vmax:0.66,
+               redline:7500, pitch:0.80, rear:'GENERIC', mass:1620, hp:130, grip:0.60, launch:0.91, mech:1.02, vmax:0.5,
                note:'CAB \u00B7 THREE HUNDRED THOUSAND MILES' },
   'PICKUP': { rig:'pickup', gears:4, wide:0.045, arch:1.05, horn:0.84,
-               redline:7000, pitch:0.70, rear:'GENERIC', mass:2150, hp:220, grip:0.64, brake:0.68, pull:0.44, vmax:0.68,
+               redline:7000, pitch:0.70, rear:'GENERIC', mass:2150, hp:220, grip:0.52, launch:1.04, mech:1.08, vmax:0.47,
                note:'PICKUP \u00B7 CARRIES THINGS, SLOWLY' },
   'VAN': { rig:'van',    gears:4, wide:0.060, arch:1.00, horn:0.78,
-               redline:6500, pitch:0.58, rear:'GENERIC', mass:2400, hp:140, grip:0.58, brake:0.62, pull:0.36, vmax:0.60,
+               redline:6500, pitch:0.58, rear:'GENERIC', mass:2400, hp:140, grip:0.48, launch:1.17, mech:1.06, vmax:0.43,
                note:'VAN \u00B7 A BOX WITH A STEERING WHEEL' },
     /* ---- FOUR SPEEDS, AND A LORRY DOES 80 ---------------------------------
      Every ordinary traffic car is a four-speed — only the tuner, the muscle
@@ -1773,11 +1799,11 @@ const BODY = {
      `vmax` is a fraction of 200, so 0.40.
      -------------------------------------------------------------------- */
   'LORRY': { rig:'truck',  gears:4, wide:0.120, arch:1.10, horn:0.52,
-               redline:5000, pitch:0.42, rear:'GENERIC', mass:14000, hp:420, grip:0.42, brake:0.40, pull:0.24, vmax:0.40,
+               redline:5000, pitch:0.42, rear:'GENERIC', mass:14000, hp:420, grip:0.42, launch:1.11, mech:0.95, vmax:0.4,
                note:'LORRY \u00B7 NOTHING GETS OUT OF ITS WAY TWICE' },
   'CREST': { bodyTop:0.40, cabinTop:0.10, cabW:0.48, cabOff:0, roofR:0.30,
               hip:0.085, wing:'ducktail', nose:0.24, spoiler:true, rear:'CREST', wide:0.010, arch:1.15, dome:true, horn:0.94,
-              mass:1450, hp:640, grip:1.42, brake:1.32, pull:1.02, vmax:1.00, note:'BALANCED' }
+              mass:1450, hp:640, grip:1.42, launch:1.04, mech:0.93, vmax:1, note:'BALANCED' }
 };
 /* ---- HORSEPOWER --------------------------------------------------------
    `pull` is torque: how hard the car leaves a corner. HORSEPOWER is what a
@@ -5342,7 +5368,7 @@ function zeroSixty(key){
        uses: strong low down, tailing off toward the top of each ratio */
     const frac = v / (MAX_SPD * B.vmax);
     const g = Math.max(0.30, 1.55 - Math.min(1, frac * (6 / gt)) * 1.05);
-    v += 1000 * g * B.pull * DT;
+    v += 1000 * g * accelOf(key) * DT;
     t += DT;
   }
   /* NO SCALING. The card prints what the car does — which is the whole reason
@@ -5382,7 +5408,65 @@ function fleetTop(){
 
 function gearCountFor(k){ return (BODY[k] && BODY[k].gears) || 6; }
 function redlineFor(k){ return (BODY[k] && BODY[k].redline) || REDLINE; }
-function pullOf(k){ return (BODY[k] && BODY[k].pull) || 1; }
+/* ---- ACCELERATION AND BRAKING ARE DERIVED, NOT DECLARED -----------------
+   Owner, 2026-08-29: "Acceleration is a function of horsepower and mass.
+   Braking is a function of grip and mass (and admittedly the mechanical brakes
+   too)." The table used to carry a `pull` and a `brake` multiplier beside the
+   horsepower and the mass, so a car could be given four hundred horsepower and
+   the acceleration of a van and nothing would notice. These two functions are
+   what stop that.
+
+   ---- ACCELERATION -------------------------------------------------------
+   Power to weight, compressed by a square root, times a bounded character
+   factor. The square root is not decoration: a LINEAR power-to-weight model
+   says a formula car at 1.42hp/kg accelerates three times as hard as a
+   supercar at 0.47, which would put it at 0-60 in about 1.2 seconds against
+   the supercar's 3.8. Reality does not do that - a real single-seater does
+   about 2.5s and a real supercar about 2.9 - because a car cannot deploy power
+   it cannot put down, and the more it has per kilogram the smaller the
+   fraction of it that reaches the road. Fitting the exponent freely against
+   the whole fleet gives 0.473; a clean square root is within a per cent of it
+   everywhere and can be read at a glance.
+
+   `launch` IS GEARING AND TRACTION and nothing else. It is what makes three
+   cars with the same engine and the same weight different: the three formula
+   cars are within half a per cent of each other on power to weight, and their
+   entire trade is how they are geared - VECTOR short for the launch, COMET
+   tall for the top end. The fleet spans 0.84 to 1.20. ANYTHING OUTSIDE ABOUT
+   0.80 TO 1.25 IS THE MODEL SAYING THE HORSEPOWER OR THE MASS IS WRONG, and it
+   should be read that way rather than dialled around - otherwise this is
+   `pull` again under a better name.
+
+   ---- BRAKING ------------------------------------------------------------
+   Grip times the mechanical brakes, and MASS IS DELIBERATELY ABSENT. In a
+   tyre-limited stop the deceleration is the coefficient of friction times
+   gravity: the mass appears on both sides and cancels. A heavy car needs more
+   force to stop and its weight presses the tyres down proportionally harder to
+   provide it, which is why a loaded lorry and an empty one stop in similar
+   distances.
+
+   What makes a heavy vehicle stop badly is brake capacity against mass, tyre
+   load sensitivity, and hard compounds - and ALL THREE OF THOSE ARE ALREADY IN
+   `grip`, which is 0.42 for the lorry against 1.34 for a supercar. A second
+   mass term here would count the same physics twice. The measurement says so
+   too: fitting `brake / grip` across the fleet gives 0.88 to 1.15 with no
+   trend against mass at all - the lorry reads 0.95 at 14,000kg and a formula
+   car reads 0.95 at 690.
+   ------------------------------------------------------------------------- */
+const ACCEL_K = 1.56;
+function accelOf(k){
+  const B = BODY[k];
+  if(!B) return 1;
+  const hp = B.hp || 300, m = B.mass || 1400;
+  return ACCEL_K * Math.sqrt(hp / m) * (B.launch === undefined ? 1 : B.launch);
+}
+function brakeOf(k){
+  const B = BODY[k];
+  if(!B) return 1;
+  return (B.grip || 1) * (B.mech === undefined ? 1 : B.mech);
+}
+/* the old name, kept as the one word the rest of the engine calls it by */
+function pullOf(k){ return accelOf(k); }
 function vmaxOf(k){ return MAX_SPD * ((BODY[k] && BODY[k].vmax) || 1); }
 /* Cut tables are cached by gear count. `stepRacers` runs this for eleven cars
    every frame, and building a fresh array of objects each time - which the
@@ -6182,7 +6266,7 @@ function buildField(){
     r.body  = deck[i];
     const B = BODY[r.body];
     r.vmax  = MAX_SPD * B.vmax;
-    r.pull  = B.pull;
+    r.pull  = accelOf(r.body);
     /* skill spread stays, so the grid is strung out rather than identical */
     r.base  = r.vmax * (0.99 - i*0.008 + rnd(-0.006,0.006));
     r.spd   = r.base * 0.92;
@@ -7721,7 +7805,7 @@ function step(dt){
      a road car most sharply.
 
      `brake` multiplies the base rate, so 1.0 is what every car used to have. */
-  const rate = braking ? 9000 * bodyStat('brake') * wetBrake()
+  const rate = braking ? 9000 * brakeOf(optBody) * wetBrake()
              : overRun ? 5200         /* aero drag above the limiter is brutal */
              : !onGas ? 420           /* neutral: it rolls, it does not stop */
              /* It felt sluggish because the base rate FELL as you gained speed
@@ -7742,7 +7826,7 @@ function step(dt){
 
                 NOS scales with it and keeps its edge — 2.6x the base shove
                 rather than 2.5x, so the bottle is still worth the button. */
-             : spd < top ? (nosOn ? 2600 : 1000) * gearFactor() * bodyStat('pull')
+             : spd < top ? (nosOn ? 2600 : 1000) * gearFactor() * accelOf(optBody)
              : (offRoad ? 11000 : 2400);
   /* Approach the target without crossing it. It used to add or subtract a
      fixed step, so on the brakes the car overshot the floor and juddered
@@ -12253,6 +12337,10 @@ requestAnimationFrame(frameLoop);
   API.redline = function(){ return redline(); };
   API.setWet = function(v){ wet = wetTarget = v; };
   API.hp = function(){ return bodyHp(); };
+  /* the two derived stats, so a harness reads what the car HAS rather than
+     what the table declares - there is nothing left in the table to declare */
+  API.accelOf = function(k){ return +accelOf(k).toFixed(3); };
+  API.brakeOf = function(k){ return +brakeOf(k).toFixed(3); };
   API.setBody = function(k){ optBody = k; buildSprites(); syncBoxClass(); };
   API.launchKick = function(){ return launchKick; };
   API.cops = function(){ return cops; };
