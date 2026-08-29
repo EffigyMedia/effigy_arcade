@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.51';
+window.ROAD_BUILD = '0.9.52';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -7035,7 +7035,10 @@ function scatter(chance, fromZ, fromLane){
     c.mergeLane = to;
     c.mergeT    = 1.3;
     c.mergeCool = 0;
+    /* a car getting out of the way of a siren indicates as it goes rather
+       than announcing it first - there is no polite version of this */
     c.blink     = 0.9;
+    c.blinkDir  = to > c.lane ? 1 : -1;
     c.swerve    = 1;
     scattered++;
     /* it moved, so it is not the one being stubborn */
@@ -8584,15 +8587,53 @@ function step(dt){
         if(gain > bestGain + 200){ bestGain = gain; best = l; }
       }
       if(best >= 0){
-        c.fromLane = here; c.mergeLane = best; c.mergeT = TRAF_HOLD;
-        mergesMade++;
-        /* an indicator, for the two seconds before it moves - the mirror and
-           the forward view both already draw brake lights, and a car that
-           moves across without warning is the thing that makes traffic feel
-           malicious rather than busy */
-        c.blink = 1.2;
+        /* ---- IT SIGNALS FIRST, THEN IT MOVES (RLG-052) ------------------
+           This set the indicator and started the lane change in the same
+           frame, which is not signalling - it is a lamp coming on as the car
+           arrives in your lane. `c.blink` has been set here since the merge
+           logic was written and NOTHING HAS EVER DRAWN IT, so the effect was
+           invisible either way.
+
+           A car announces the move, waits, and then makes it. The wait is what
+           gives you time to lift, and it is the whole difference between
+           traffic that feels busy and traffic that feels malicious.
+
+           One driver in five does not bother, which is `c.signals` - decided
+           once when the car is built rather than rolled per manoeuvre, because
+           it is a habit rather than a coin toss. That is the same rule the rest
+           of this engine follows: the car is capable, the DRIVER decides.
+           ------------------------------------------------------------- */
+        c.blinkDir = best > here ? 1 : -1;
+        if(c.signals === undefined) c.signals = Math.random() > 0.22;
+        c.mergeWant = best;
+        c.mergeWait = c.signals ? rnd(1.1, 1.8) : 0;
+        c.blink = c.signals ? c.mergeWait + 1.1 : 0;
+        if(!c.mergeWait){
+          c.fromLane = here; c.mergeLane = best; c.mergeT = TRAF_HOLD;
+          mergesMade++;
+        }
       } else {
         c.mergeCool = rnd(0.8, 1.6);      /* nothing doing; look again shortly */
+      }
+    }
+    /* ---- THE ANNOUNCED MOVE, WHEN THE WAIT IS UP ----------------------
+       The gap is re-checked at the moment of committing rather than trusted
+       from a second ago: a car that announced a move into a space somebody
+       else has taken since must not move into it anyway. It gives up and looks
+       again shortly, with its indicator still running down - which is also
+       what a real one does.
+       --------------------------------------------------------------- */
+    if(c.mergeWait > 0){
+      c.mergeWait -= dt;
+      if(c.mergeWait <= 0){
+        const want = c.mergeWant;
+        if(want !== undefined && laneClear(c, want, 0.45) && !wouldBlock(c, want)){
+          c.fromLane = c.lane; c.mergeLane = want; c.mergeT = TRAF_HOLD;
+          mergesMade++;
+        } else {
+          c.mergeCool = rnd(0.6, 1.2);
+        }
+        c.mergeWait = 0; c.mergeWant = undefined;
       }
     }
     if(c.blink > 0) c.blink -= dt;
@@ -10176,6 +10217,16 @@ function emitBucket(n){
          moment a car is actually shedding speed. Same rule for everything on
          the road, seen from in front or behind. */
       tailLights(box, it.o.braking, img);
+      /* ---- AND THE INDICATOR, WHICH NOTHING HAS EVER DRAWN --------------
+         RLG-052. Every vehicle has declared a wired indicator since RLG-053
+         and `c.blink` has been set on every merge decision since the merge
+         logic was written, and no renderer had ever put the two together.
+         `blinkPhase` is the same flash the player's own indicator uses, so
+         everything on the road blinks together rather than each car keeping
+         its own time.
+         ------------------------------------------------------------- */
+      if(it.o.blink > 0 && box && box.w >= 10 && Math.sin(blinkPhase) > 0)
+        lampsLit(box, img, [it.o.blinkDir < 0 ? 'turn.l' : 'turn.r'], 1, 2);
     } else if(it.kind==='k'){
       /* a SUPER CRUISER is a MATADOR in force colours — same two paints the
          driveable cruiser gets, so the fleet reads as one force */
@@ -12602,6 +12653,20 @@ requestAnimationFrame(frameLoop);
   API.setBar = function(v){ barOn = v; };
   API.blockedAhead = function(){ return blockedAhead; };
   API.mergesMade = function(){ return mergesMade; };
+  /* RLG-052's instrument: how many cars are announcing a move right now, how
+     many have announced one at all, and how many drivers never signal. A check
+     that only counted blinking cars could not tell "nobody signals" from
+     "nobody is merging". */
+  API.signalling = function(){
+    let now = 0, waiting = 0, never = 0, seen = 0;
+    for(const c of traffic){
+      seen++;
+      if(c.blink > 0) now++;
+      if(c.mergeWait > 0) waiting++;
+      if(c.signals === false) never++;
+    }
+    return { now:now, waiting:waiting, never:never, seen:seen };
+  };
   API.trafficCount = function(){ return traffic.length; };
   /* WHERE THE LANES ARE, read by tools/merge-test.py. A harness that carries
      its own copy of LANE_X measures a road that RLG-024 is going to widen, and

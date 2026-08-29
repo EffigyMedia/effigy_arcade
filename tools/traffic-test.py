@@ -36,6 +36,21 @@ BASE = f'http://127.0.0.1:{PORT}'
 SECONDS = 45
 
 
+COUNT_AMBER = r'''() => {
+  const cv = document.querySelector('canvas');
+  const c = document.createElement('canvas');
+  c.width = cv.width; c.height = cv.height;
+  const g = c.getContext('2d'); g.drawImage(cv, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+  /* amber: red high, green mid, blue low. Nothing else on this road is that shape. */
+  for (let i = 0; i < d.length; i += 4)
+    if (d[i] > 232 && d[i+1] > 148 && d[i+1] < 202 && d[i+2] < 74) n++;
+  return n;
+}'''
+SET_BLINK = r'''(v) => { for (const c of window.__road.traffic) { c.blink = v; c.blinkDir = 1; } return window.__road.traffic.length; }'''
+
+
 def main():
     bad = 0
 
@@ -99,6 +114,32 @@ def main():
         ok(tight < 9, 'the road was measured under real traffic',
            f'narrowest corridor {tight:.3f} lane units (need 0.34)')
         ok(tight >= 0.34, 'and it never went under a car width', f'{tight:.3f}')
+
+        # ---- IT SIGNALS BEFORE IT MOVES, AND SOMETHING DRAWS IT (RLG-052) ----
+        # Two claims, and the second was false for months: `c.blink` has been set on every merge
+        # decision since the merge logic was written, and no renderer ever read it. So this checks
+        # the ENGINE and then checks the SCREEN.
+        #
+        # The screen half forces every car to blink and counts amber pixels against a frame with
+        # none. A check that only read the engine would have passed the entire time the feature was
+        # invisible, which is exactly what happened.
+        sig = page.evaluate("() => window.__road.signalling()")
+        ok(isinstance(sig, dict) and sig.get('seen', 0) > 0,
+           'the engine reports what is signalling', str(sig))
+        cars = page.evaluate(SET_BLINK, 0)
+        page.wait_for_timeout(120)
+        amber_off = page.evaluate(COUNT_AMBER)
+        best = 0
+        for _ in range(14):
+            page.evaluate(SET_BLINK, 5)
+            page.wait_for_timeout(55)
+            best = max(best, page.evaluate(COUNT_AMBER))
+        page.evaluate(SET_BLINK, 0)
+        ok(cars > 0, 'there was traffic to signal', f'{cars} cars')
+        # a MARGIN, not just a difference: at distance an indicator is a few pixels, and a
+        # check that passes on one pixel of noise is not evidence of anything.
+        ok(best >= amber_off + 8, 'an indicating car puts amber on the screen',
+           f'{amber_off} amber pixels with every blink off, {best} with them on')
         # TRAFFIC THAT ONLY BRAKES IS NOT TRAFFIC. Civilians followed the car
         # in front and never once considered the lane beside them, so the road
         # silted up into rolling walls. A merge count of zero over a long run
