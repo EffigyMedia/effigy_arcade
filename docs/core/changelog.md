@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-41"></a>
+## [0.9.41] - 2026-08-29
+- Fixed: **every vehicle in the mirror is the real car.** The police were still drawn as the
+  placeholder block, and no car fades to a simplified render any more: the level of detail, the
+  cross-fade and the MIRROR setting are all gone, and the mirror is always the full one. The two
+  police cars gained the fronts they never had ([RLG-074](../fragments/RLG-074.md)).
+- Added: **`tools/face-test.py`** - asks the engine what the mirror would draw for every vehicle in
+  the game, and fails if any of them has no face or a blank one. Three vehicles have been found in
+  this state by eye, on a phone, weeks after shipping ([RLG-074](../fragments/RLG-074.md)).
+
 <a id="v0-9-40"></a>
 ## [0.9.40] - 2026-08-29
 - Changed: **the whole fleet's stat table, and acceleration and braking are derived rather than

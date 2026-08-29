@@ -4254,7 +4254,7 @@ function trafficPaint(seed){
   return { body:c.body, hi:c.hi, lo:c.lo, lamp:'#c8102e' };
 }
 let optWeather = 'mixed';
-let optPaint = 'WHITE', optEasy = true, optMirror = 'FULL';   /* no cops unless HOT PURSUIT is on */
+let optPaint = 'WHITE', optEasy = true;   /* no cops unless HOT PURSUIT is on */
 /* the cars a RIVAL may be given: the three you start with, and nothing else.
    An unlock you had to win a tournament for should not be sitting on the grid
    opposite you. */
@@ -4444,6 +4444,14 @@ function buildSprites(){
       cabin:true, spoiler:true, shape:SC,
       bodyKey:'SUPERCRUISER', marque:'CRUISER', stripes:false, force:true
     })));
+    /* and its face, for the mirror. `paintFront` reads the body from
+       `bodyType`, not from `shape` - the same field that once put one nose on
+       five supercars. */
+    SP.superCopFront = sprite(230,215, paintFront(Object.assign({}, SC, {
+      body:'#eceff4', hi:'#ffffff', lo:'#9aa3b0',
+      lamp:'#d61b3c', lamp2:'#ff7a86',
+      bodyType:'SUPERCRUISER', marque:'CRUISER', player:true, stripes:false, force:true
+    })));
   }
   /* ---- one sprite per body type PER COLOUR -----------------------------
      Ten paints across five civilian shapes is fifty small canvases, built once
@@ -4464,11 +4472,21 @@ function buildSprites(){
      shapes, one sprite each — cached at build time like the rears rather than
      painted per frame.
 
-     THIS COVERS THE TRAFFIC ONLY, and that was the whole of the fault the
-     owner reported: every RACER in the mirror was the simplified drawn block,
-     because a racer has a `body` and a `paint` and no `type` at all, so the
-     lookup below found nothing and the code fell back. See `rivalFront`. */
+     This cache is keyed by traffic TYPE. A racer has a body and a paint and no
+     type at all, so it is served by `rivalFront` instead - which is where the
+     fault came from that made every rival in the mirror a drawn block. */
   FRONT_SP = {};
+  /* ---- EVERY VEHICLE THAT CAN BE BEHIND YOU HAS A FACE --------------------
+     Owner, 2026-08-29: the police were still showing the placeholder front in
+     the mirror, and no car should ever fade to a simplified render.
+
+     Two vehicles had no face and each was missing for its own reason, which is
+     why the fault kept coming back one vehicle at a time: the POLICE were
+     excluded by a test in the mirror itself, and the RACERS are keyed by body
+     and paint rather than by type (RLG-074). The lorry and the cab were
+     already covered further down. Both gaps are closed here, and the block
+     renderer they were falling back to is gone.
+     ------------------------------------------------------------------- */
   for(const kind of ['sedan','sedan2','coupe','tuner','muscle','pickup','van']){
     const rig = kind === 'sedan2' ? 'sedan' : kind;
     const size = kind === 'van'    ? [200,196]
@@ -4483,6 +4501,11 @@ function buildSprites(){
   const CAB = { body:'#f2b32c', hi:'#ffd45e', lo:'#8f6408', lamp:'#c8102e' };
   TRAFFIC_SP.taxi = [ sprite(200,164, paintRig('taxi', CAB)) ];
   FRONT_SP.taxi   = [ sprite(200,164, paintRigFront('taxi', CAB)) ];
+  /* the patrol car, and the lorry, which were the two the mirror had no face
+     for. One livery each: a lorry's cab takes a traffic paint but its FACE is
+     the same shape whatever colour it is, and a patrol car is white. */
+  FRONT_SP.cop = [ sprite(206,168, paintRigFront('cop',
+    { body:'#eceff4', hi:'#ffffff', lo:'#9aa3b0', lamp:'#c8102e' })) ];
 
   /* ---- A TRACTOR UNIT AND A TRAILER ARE TWO THINGS ----------------------
      The four liveries were painting the WHOLE vehicle, so a blue lorry had a
@@ -10619,38 +10642,37 @@ function drawMirrorFull(mx, my, mw, mh){
     const sh = sw * 0.60;
     const x0 = p1.x - sw/2, y0 = p1.y - sh;
 
-    /* ---- THE REAL NOSE, once it is big enough to read -------------------
-       Below about 26px wide the sprite is mush and the drawn block is
-       cleaner, so the simplified version stays for distant cars. Close up
-       you get the actual front — which is the whole reason the painters
-       exist.
+    /* ---- THE REAL CAR, AT EVERY DISTANCE ------------------------------
+       Owner, 2026-08-29: no car fades to a simplified render, and the mirror
+       setting goes with it - full, always.
 
-       ---- AND IT USED TO POP -------------------------------------------
-       That was a hard switch at exactly 26px: one frame a car was a drawn
-       block, the next it was a painted sprite, and the two do not look alike.
-       Every car crossed that line at the same screen width, so the change was
-       not just visible - it was visible in the same place every time, which is
-       what made it read as a fault rather than as detail arriving.
+       What was here was a level of detail: a drawn block of colour for a
+       distant car, the painted sprite once it was about 34 pixels wide, and a
+       cross-fade between them. Every part of that reasoning was sound and the
+       result was still wrong, because the block and the sprite are not the
+       same car. A vehicle changed identity as it closed, and the only reason
+       the fade was added was to smear the moment it happened.
 
-       Both renderings are right; the reasoning above still holds at both ends.
-       What was missing was the middle. The sprite now fades IN across a band
-       rather than appearing, drawn over the block instead of instead of it, so
-       the detail arrives gradually and there is no frame where the car changes
-       identity. A blend costs one extra draw on a handful of cars in a strip
-       of screen the size of a mirror.
+       Drawing the sprite at three pixels wide costs a scaled `drawImage` that
+       the browser resolves in hardware, on the handful of cars in a strip of
+       screen the size of a mirror. The block was never a performance win worth
+       having; it was a placeholder that outlived its excuse.
+
+       The block remains for ONE case only, below, and it is a defensive one: a
+       vehicle with no front sprite at all. Nothing in the fleet is in that
+       state any more, and if something ever is, a grey lozenge is a better
+       failure than an empty mirror.
        ------------------------------------------------------------------- */
-    /* a traffic car is keyed by type and a racer by body and paint. The second
-       line is the one that was missing, and without it every rival in the
-       mirror stayed a drawn block however close it came. */
-    const fs = it.cop ? null
+    /* a traffic car is keyed by type, a racer by body and paint, and the two
+       police cars by which of them it is */
+    const fs = it.cop
+        ? (it.o.superc ? (SP.superCopFront || null) : (FRONT_SP.cop || [])[0] || null)
       : (it.o.type && FRONT_SP[it.o.type])
         ? FRONT_SP[it.o.type][(it.o.paintN|0) % FRONT_SP[it.o.type].length]
       : it.o.body ? rivalFront(it.o.body, it.o.paint)
       : null;
-    /* fully the block below FADE_LO, fully the sprite above FADE_HI */
-    const FADE_LO = 20, FADE_HI = 34;
-    const spriteMix = fs ? clamp((sw - FADE_LO) / (FADE_HI - FADE_LO), 0, 1) : 0;
-    if(spriteMix >= 1){
+
+    if(fs){
       const fh = sw * fs.height / fs.width;
       ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
       /* ---- THE WIPERS ARE DRAWN, NOT BAKED (RLG-053) --------------------
@@ -10670,65 +10692,23 @@ function drawMirrorFull(mx, my, mw, mh){
         if(fs.overWipers) fs.overWipers(ctx);
         ctx.restore();
       }
+      /* the light bar still goes on top of a patrol car: it is the one part of
+         a police car that is not in the sprite, because it flashes */
+      if(it.cop){
+        const on2 = Math.floor(sirenPhase*1.4) % 2;
+        ctx.fillStyle = on2 ? '#3b6bff' : '#ff2b4a';
+        ctx.fillRect(x0, p1.y - fh - Math.max(1, fh*0.06), sw, Math.max(1, fh*0.06));
+      }
       continue;
     }
 
-    /* body */
+    /* ---- the fallback, for a vehicle with no face ---------------------- */
     ctx.fillStyle = it.tint;
     ctx.beginPath(); ctx.roundRect(x0, y0, sw, sh, Math.max(0.5, sw*0.10)); ctx.fill();
-    /* windscreen: dark glass across the upper half, raked in */
     ctx.fillStyle = 'rgba(14,20,30,.86)';
     ctx.beginPath();
     ctx.roundRect(x0 + sw*0.14, y0 + sh*0.10, sw*0.72, sh*0.38, Math.max(0.4, sw*0.05));
     ctx.fill();
-    /* grille */
-    ctx.fillStyle = 'rgba(0,0,0,.45)';
-    ctx.fillRect(x0 + sw*0.24, y0 + sh*0.70, sw*0.52, sh*0.16);
-
-    if(sw > 3){
-      /* headlights, lit on the street-lamp schedule */
-      const hw = sw*0.20, hh = sh*0.17, hy = y0 + sh*0.54;
-      /* A headlight is not on at noon. `lampNow` is the same ramp the street
-         lamps use, so anything above a real dusk threshold means dark enough
-         to need them — 0.01 let a sliver of daylight count. */
-      const on = lampNow > 0.30;
-      for(const hx of [x0 + sw*0.06, x0 + sw - sw*0.06 - hw]){
-        ctx.fillStyle = on ? 'rgba(255,248,222,.98)' : 'rgba(190,198,210,.75)';
-        ctx.beginPath(); ctx.roundRect(hx, hy, hw, hh, hh*0.4); ctx.fill();
-        if(on){
-          ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          const gl = ctx.createRadialGradient(hx+hw/2, hy+hh/2, 0, hx+hw/2, hy+hh/2, hw*2.4);
-          gl.addColorStop(0,'rgba(255,250,225,'+(0.55*lampNow)+')');
-          gl.addColorStop(1,'rgba(255,240,200,0)');
-          ctx.fillStyle = gl;
-          ctx.beginPath(); ctx.arc(hx+hw/2, hy+hh/2, hw*2.4, 0, 6.2832); ctx.fill();
-          ctx.restore();
-        }
-      }
-      /* AMBER markers, not red. Brake lights face rearward — you cannot see
-         them from in front of a car, and putting red lamps on a grille made
-         every car in the mirror look like it was reversing at you. */
-      if(lampNow > 0.30){
-        ctx.fillStyle = 'rgba(255,176,72,'+(0.50*lampNow)+')';
-        ctx.fillRect(x0 + sw*0.02, y0 + sh*0.34, sw*0.05, sh*0.13);
-        ctx.fillRect(x0 + sw*0.93, y0 + sh*0.34, sw*0.05, sh*0.13);
-      }
-    }
-    if(it.cop){
-      const on2 = Math.floor(sirenPhase*1.4) % 2;
-      ctx.fillStyle = on2 ? '#3b6bff' : '#ff2b4a';
-      ctx.fillRect(x0, y0 - Math.max(1, sh*0.12), sw, Math.max(1, sh*0.12));
-    }
-
-    /* the detail arriving, over the block that is already there */
-    if(spriteMix > 0){
-      const fh = sw * fs.height / fs.width;
-      ctx.save();
-      ctx.globalAlpha = spriteMix;
-      ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
-      ctx.restore();
-    }
   }
   ctx.restore();
 }
@@ -10778,59 +10758,20 @@ function drawMirror(){
   gl.addColorStop(0,'#141a24'); gl.addColorStop(0.5,'#0e131b'); gl.addColorStop(1,'#0a0e15');
   ctx.fillStyle = gl;
   ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 5); ctx.fill();
-  if(optMirror === 'FULL'){
-    drawMirrorFull(mx, my, mw, mh);
-    /* the housing sheen still goes on top */
-    const sh2 = ctx.createLinearGradient(mx, my, mx+mw*0.5, my+mh);
-    sh2.addColorStop(0,'rgba(255,255,255,.07)');
-    sh2.addColorStop(0.5,'rgba(255,255,255,0)');
-    ctx.fillStyle = sh2;
-    ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 5); ctx.fill();
-    ctx.restore();
-    return;
-  }
-  ctx.save();
-  ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 5); ctx.clip();
+  /* ---- ONE MIRROR, ALWAYS THE FULL ONE --------------------------------
+     There was a CHEAP mirror behind here - a few lines for the road and a
+     coloured lozenge per car - and a setting to choose between it, the full
+     one and nothing at all. Owner, 2026-08-29: keep full, always use the
+     appropriate renders.
 
-  /* the road receding AWAY from you, so it narrows downward */
-  ctx.strokeStyle = 'rgba(150,170,200,.14)'; ctx.lineWidth = 1;
-  for(let i=0;i<=LANES;i++){
-    const f = i/LANES;
-    ctx.beginPath();
-    ctx.moveTo(mx + mw*(0.10 + f*0.80), my + mh);
-    ctx.lineTo(mx + mw*(0.36 + f*0.28), my + 4);
-    ctx.stroke();
-  }
-
-  /* anything behind the player, nearest drawn largest and lowest */
-  const back = [];
-  for(const c of traffic){ const d = pos - c.z; if(d > 0 && d < 5200) back.push({d, x:c.x, cop:false}); }
-  for(const k of cops){ if(k.wreck>0) continue; const d = pos - k.z; if(d > 0 && d < 5200) back.push({d, x:k.x, cop:true}); }
-  back.sort((a,b)=>b.d-a.d);
-  for(const o of back){
-    const f = 1 - o.d/5200;                     /* 1 = right behind you */
-    const sw = mw * (0.045 + f*0.075);
-    const sh = sw * 0.62;
-    const px = mx + mw*0.5 + (o.x/1.18) * mw * (0.16 + f*0.30);
-    const py = my + 6 + f*(mh - sh - 10);
-    if(o.cop){
-      ctx.fillStyle = 'rgba(210,220,235,.9)';
-      ctx.fillRect(px-sw/2, py, sw, sh);
-      /* the bar, alternating */
-      const on = Math.floor(sirenPhase*1.4) % 2;
-      ctx.fillStyle = on ? '#3b6bff' : '#ff2b4a';
-      ctx.fillRect(px-sw/2, py-2.5, sw, 2.5);
-    } else {
-      ctx.fillStyle = 'rgba(120,132,150,' + (0.35 + f*0.5) + ')';
-      ctx.fillRect(px-sw/2, py, sw, sh);
-      /* headlights, which is what you actually notice in a mirror */
-      ctx.fillStyle = 'rgba(255,246,214,' + (0.35 + f*0.6) + ')';
-      ctx.fillRect(px-sw/2+1, py+sh*0.28, sw*0.22, sh*0.26);
-      ctx.fillRect(px+sw/2-1-sw*0.22, py+sh*0.28, sw*0.22, sh*0.26);
-    }
-  }
-  ctx.restore();
-  /* a hint of curvature across the glass */
+     The setting went with it. Three options where two of them are "show the
+     player something worse" is a menu asking the player to debug the game's
+     performance, and the mirror is one small strip of screen drawn once a
+     frame. If it ever needs to be cheaper, the answer is to draw fewer cars in
+     it rather than to draw wrong ones.
+     ------------------------------------------------------------------- */
+  drawMirrorFull(mx, my, mw, mh);
+  /* a hint of curvature across the glass, over the top of everything */
   const sheen = ctx.createLinearGradient(mx, my, mx+mw*0.5, my+mh);
   sheen.addColorStop(0,'rgba(255,255,255,.07)');
   sheen.addColorStop(0.5,'rgba(255,255,255,0)');
@@ -11115,7 +11056,7 @@ function frameLoop(now){
      corrupt the frame. If a real smear is wanted it needs a second offscreen
      canvas, not a self-copy. */
   drawFinish();
-  if(optMirror !== 'OFF') drawMirror();
+  drawMirror();
   drawBust(); hud();
   /* ---- CFG.overlay(ctx) — the LAST thing on the frame -------------------
      `afterDraw` runs inside the world transform, before the mirror, the bust
@@ -12214,7 +12155,6 @@ reset();
 if (AR && AR.options) AR.options.define([
   { key:'side',  label:'CONTROLS', type:'cycle', of:['RIGHT','LEFT'],                    def:'RIGHT' },
   { key:'manual', label:'GEARBOX',    type:'cycle', of:['AUTO','MANUAL'],  def: optManual ? 'MANUAL' : 'AUTO' },
-  { key:'mirror', label:'MIRROR',      type:'cycle', of:['FULL','CHEAP','OFF'], def: optMirror || 'FULL' },
   { key:'touchui',label:'TOUCH CONTROLS', type:'cycle', of:['AUTO','ON','OFF'], def: optTouchUI || 'AUTO' }
 ], function(key, val){
   if(key === 'side')  document.body.classList.toggle('pedals-left', val === 'LEFT');
@@ -12228,7 +12168,6 @@ if (AR && AR.options) AR.options.define([
     if(optManual){ knobRail = 0; knobY = TOP_Y; placeKnob(); }
     else autoGear();
   }
-  if(key === 'mirror') optMirror = val;
   if(key === 'touchui'){ optTouchUI = val; applyTouchUI(); }
   if(key === 'body' && val !== optBody){ optBody = val; buildSprites(); }
   /* ---- TWO HANDLERS, AND THE SECOND ONE WON ------------------------------
@@ -12539,6 +12478,22 @@ requestAnimationFrame(frameLoop);
     return (w2 < 1.2 || w2 > W*3.4) ? null : w2;
   };
   API.rivalSprite = function(k){ return RIVAL_SP[k]; };
+  /* ---- WHAT THE MIRROR WOULD DRAW FOR THIS VEHICLE ----------------------
+     The same lookup `drawMirrorFull` makes, exposed so a harness can ask it
+     about every vehicle in the game rather than about the two somebody
+     happened to drive past. Three times now a vehicle has been found with no
+     face in the mirror - the racers, then the police - and each time it was
+     found by eye, on a device, weeks later.
+
+     Returns the sprite, or null. `kind` is a traffic type, a body key, or one
+     of the two police cases. */
+  API.frontOf = function(kind, paint){
+    if(kind === 'cop') return (FRONT_SP.cop || [])[0] || null;
+    if(kind === 'supercop') return SP.superCopFront || null;
+    if(FRONT_SP[kind]) return FRONT_SP[kind][0] || null;
+    if(BODY[kind]) return rivalFront(kind, paint || 'WHITE');
+    return null;
+  };
   API.yawTo = function(z){ return yawTo(z); };
   API.billboard = function(z){ return billboard(z); };
   API.jumpTo = function(z){ pos = z - PLAYER_Z; rebuildBend(); };
