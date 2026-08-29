@@ -36,7 +36,58 @@ PORT = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 BASE = f'http://127.0.0.1:{PORT}'
 
-SECONDS = 22
+SECONDS = 12
+STINTS = 3
+# ---- ONE STINT IS NOT A MEASUREMENT --------------------------------------
+# The terrain is generated fresh on every load and a short stint either meets hills or does not.
+# Three runs on ONE unchanged build gave culled = 0, 40 and 147, and the 0 run also failed the
+# `drawn > 200` assertion - so this harness was both a flaky gate and an unrepeatable number, and a
+# before-and-after comparison made from single runs of it was worth nothing. Measured while fixing
+# RLG-041, where exactly that mistake was made and had to be withdrawn from the record.
+#
+# So: several short stints, each from a fresh page and therefore a fresh road, summed. The per-stint
+# figures are printed as well, because the SPREAD is the thing a reader needs to see before quoting
+# any of it.
+
+
+def stint(browser, secs):
+    """Drive one fresh road and return what the sprite pass did."""
+    ctx = browser.new_context(viewport={'width': 480, 'height': 900})
+    page = ctx.new_page()
+    errs = []
+    page.on('pageerror', lambda e: errs.append(str(e)))
+    try:
+        page.goto(f'{BASE}/games/sw/interstate.html', wait_until='load')
+        # THE FIRST VISIT RELOADS ITSELF. sw.js claims the client on activate, arcade.js reloads on
+        # controllerchange, and anything clicked before that lands on a document that is about to be
+        # thrown away - which is why the first version of this test reached the title and no further.
+        try:
+            page.wait_for_function(
+                '() => navigator.serviceWorker && navigator.serviceWorker.controller',
+                timeout=5000)
+            page.wait_for_timeout(1200)
+        except Exception:
+            pass
+        page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
+        page.click('[data-act="play"]')
+        page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+        page.click('[data-act="drive"]')
+        page.wait_for_timeout(1200)
+        if not page.evaluate("() => !!(window.__road && window.__road.spriteStats)"):
+            return None, 0, errs
+        page.evaluate("() => { window.__road.setSpd && window.__road.setSpd(9000); }")
+        tot = {'drawn': 0, 'clipped': 0, 'culled': 0}
+        frames = 0
+        for _ in range(int(secs * 4)):
+            page.wait_for_timeout(250)
+            st = page.evaluate("() => window.__road.spriteStats()")
+            if st and (st['drawn'] or st['clipped'] or st['culled']):
+                frames += 1
+                for k in tot:
+                    tot[k] += st[k]
+        return tot, frames, errs
+    finally:
+        ctx.close()
 
 
 def main():
@@ -51,52 +102,22 @@ def main():
     with sync_playwright() as p:
         b = launch_chromium(p, headless=True,
                             args=['--mute-audio', '--autoplay-policy=no-user-gesture-required'])
-        page = b.new_context(viewport={'width': 480, 'height': 900}).new_page()
-        errs = []
-        page.on('pageerror', lambda e: errs.append(str(e)))
-        page.goto(f'{BASE}/games/sw/interstate.html', wait_until='load')
-        # THE FIRST VISIT RELOADS ITSELF. sw.js claims the client on activate,
-        # arcade.js reloads on controllerchange, and anything clicked before
-        # that lands on a document that is about to be thrown away - which is
-        # why the first version of this test reached the title and no further.
-        try:
-            page.wait_for_function(
-                '() => navigator.serviceWorker && navigator.serviceWorker.controller',
-                timeout=5000)
-            page.wait_for_timeout(1200)
-        except Exception:
-            pass
-
-        # title -> garage -> drive, by the same handles the drive harness uses
-        try:
-            page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
-            page.click('[data-act="play"]')
-            page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
-            page.click('[data-act="drive"]')
-            page.wait_for_timeout(1200)
-        except Exception as e:
-            ok(False, 'could reach the drive', f'{type(e).__name__}: {e}')
-            b.close(); srv.shutdown(); return 1
-
-        has = page.evaluate("() => !!(window.__road && window.__road.spriteStats)")
-        ok(has, 'the engine exposes spriteStats')
-        if not has:
-            b.close(); srv.shutdown(); return 1
-
-        # hold the throttle so the road actually passes under us
-        page.evaluate("() => { window.__road.setSpd && window.__road.setSpd(9000); }")
-
         tot = {'drawn': 0, 'clipped': 0, 'culled': 0}
-        frames = 0
-        for _ in range(SECONDS * 4):
-            page.wait_for_timeout(250)
-            st = page.evaluate("() => window.__road.spriteStats()")
-            if st and (st['drawn'] or st['clipped'] or st['culled']):
-                frames += 1
-                for k in tot:
-                    tot[k] += st[k]
+        frames, errs, per = 0, [], []
+        for i in range(STINTS):
+            st, f, e = stint(b, SECONDS)
+            errs += e
+            if st is None:
+                ok(False, 'could reach the drive', f'stint {i + 1} never started')
+                b.close(); srv.shutdown(); return 1
+            per.append(st)
+            frames += f
+            for k in tot:
+                tot[k] += st[k]
+            print(f"  ..    stint {i + 1}: drawn={st['drawn']} clipped={st['clipped']} "
+                  f"culled={st['culled']}   (a fresh road each time)")
 
-        ok(frames > 0, 'the sprite pass ran', f'{frames} sampled frames')
+        ok(frames > 0, 'the sprite pass ran', f'{frames} sampled frames over {STINTS} roads')
         ok(tot['drawn'] > 200, 'sprites are drawn, in quantity',
            f"drawn={tot['drawn']} clipped={tot['clipped']} culled={tot['culled']}")
         seen = tot['drawn'] + tot['clipped']
@@ -106,6 +127,11 @@ def main():
         ok(tot['clipped'] > 0,
            'some cars are CUT OFF by a crest rather than deleted',
            f"clipped={tot['clipped']}")
+        # THE SPREAD, SAID OUT LOUD. Anyone comparing this run with another needs to know how much
+        # of the difference is the road rather than the code.
+        cul = [x['culled'] for x in per]
+        print(f"  ..    culled per stint: {', '.join(str(c) for c in cul)} - "
+              f"the road, not the code. Do not compare single runs")
         ok(errs == [], 'no page errors', errs[0][:100] if errs else '')
         b.close()
 

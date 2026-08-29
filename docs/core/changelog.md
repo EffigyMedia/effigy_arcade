@@ -14,6 +14,16 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-14"></a>
+## [0.9.14] — 2026-08-29
+- Changed: `occlusion-test` drives **three shorter stints on three fresh roads** and sums them,
+  instead of one stint on one road. The terrain is generated per load, so its numbers swung
+  `culled` 0 → 40 → 147 on a single unchanged build and one of those runs failed its own
+  `drawn > 200` assertion. The per-stint figures are printed and the report says plainly that one
+  run cannot be compared with another ([RLG-062](../fragments/RLG-062.md)).
+- **No product file changed in this version.** It is a harness fix, found by quoting that harness
+  wrongly in v0.9.12 ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-13"></a>
 ## [0.9.13] — 2026-08-29
 - Fixed: **cars flickered at the lip of a crest**, reported from the device after v0.9.12.
