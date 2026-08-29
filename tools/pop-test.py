@@ -113,7 +113,7 @@ COLLECTOR = r"""
   var P = window.__probe, R = P.road;
   var PAINTED = { drawn:1, clipped:1 };
   var last = {}, frames = 0, gaps = 0, lastN = null;
-  var pops = [], vanish = [], reasons = {}, offered = 0, inArrayNotOffered = 0;
+  var pops = [], vanish = [], reasons = {}, offered = 0, inArrayNotOffered = 0, skew = 0;
 
   P.pop = { on:true };
   R.watchDraw(true);
@@ -141,6 +141,7 @@ COLLECTOR = r"""
       now[e.id] = e;
       offered++;
       reasons[e.why] = (reasons[e.why] || 0) + 1;
+      if(e.skew) skew++;
     }
 
     /* every vehicle the engine knows about, whether or not the painter saw it */
@@ -182,7 +183,7 @@ COLLECTOR = r"""
   P.pop.collect = function(){
     P.pop.on = false;
     R.watchDraw(false);
-    return { frames:frames, gaps:gaps, pops:pops, vanish:vanish, reasons:reasons,
+    return { frames:frames, gaps:gaps, pops:pops, vanish:vanish, reasons:reasons, skew:skew,
              offered:offered, notOffered:inArrayNotOffered };
   };
   return true;
@@ -248,6 +249,14 @@ def report(game, out, seconds):
     print('    what the painter did, per vehicle-frame:')
     for why, n in order:
         print('      %-11s %8d  %5.1f%%' % (why, n, 100.0 * n / total))
+
+    # THE INDEX CONVENTIONS. `buildHillClip` fills by absolute segment and `crestY` looks up by
+    # segments-ahead-of-the-player. Where the two disagree about whether a car is behind the brow,
+    # that car's verdict flips once per segment crossing - which is the flicker the owner reports
+    # at the lip of a dip. Reported per vehicle-frame; it is rare by construction, because the two
+    # entries hold the same value everywhere the road is flat.
+    print('    the two crest-index conventions disagreed on %d of %d vehicle-frames  (%.3f%%)'
+          % (out['skew'], out['offered'], 100.0 * out['skew'] / max(1, out['offered'])))
 
     pops = out['pops']
     mins = max(seconds, 1) / 60.0

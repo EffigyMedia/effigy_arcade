@@ -7987,8 +7987,29 @@ function crestY(worldZ){
      sits just above every sprite's own base, so nothing is clipped, which is
      the behaviour that broke last time.
      -------------------------------------------------------------------- */
+  /* ---- THE INDEX MUST BE THE ONE THE TABLE WAS FILLED WITH ---------------
+     `buildHillClip` fills `hillClip[n]` for the segment `base + n`, where
+     `base` is `floor(pos/SEG)`. This looked it up with the count of segments
+     AHEAD of the player - `floor((worldZ - pos)/SEG)` - which is the same
+     number only when the car and the player sit at the same offset inside
+     their segments. Otherwise it is one lower, and which of the two it is
+     flips every time `pos` crosses a segment boundary: about 57 times a second
+     at speed.
+
+     On flat road the two entries hold the same value and nothing shows. AT A
+     CREST THEY DIFFER SHARPLY, so a car near the brow flipped between hidden
+     and drawn several times a second. Measured before the change (RLG-041):
+     the two conventions disagreed on 24 vehicle-frames in 45 seconds, twice
+     over - about one flicker every two seconds, on cars at a crest and on no
+     others. The owner reported exactly that, from a phone: at the lip of a
+     dip, on some cars and not others.
+     -------------------------------------------------------------------- */
+  return crestAt(Math.floor(worldZ/SEG) - Math.floor(pos/SEG));
+}
+/* the same lookup, by index. Split out so the watch can ask the question with
+   the other index convention and report where the two disagree - RLG-041. */
+function crestAt(n){
   if(!hillClip.length) return null;
-  const n = Math.floor((worldZ - pos)/SEG);
   if(n < 2 || n >= hillClip.length) return null;
   const v = hillClip[n];
   return (v === undefined || v >= H) ? null : v;
@@ -8293,11 +8314,23 @@ let drawWatch = 0, drawWhy = '', drawSeen = [], drawFrameNo = 0, drawVid = 0;
    crest tangent winking out for three frames, the second is a car genuinely
    behind a hill. Recorded only under the watch. */
 let skipBy = {};
+/* `buildHillClip` fills `hillClip[n]` for the segment `base + n`, where `base`
+   is `floor(pos/SEG)`. `crestY` looks it up with `floor((worldZ - pos)/SEG)`,
+   which is the count of segments AHEAD of the player rather than that index -
+   and the two differ by one whenever the car sits earlier in its segment than
+   the player does in his. That flips once per segment crossing, about 57 times
+   a second at speed. Wherever the two entries hold the same value, which is
+   most of a flat road, nothing shows. AT A CREST THEY DIFFER SHARPLY.
+
+   The owner reports the flicker at the lip of a dip, on some cars and not
+   others, which is the signature. Measured before it is changed. */
+let drawSkew = 0;
 function noteSprite(o, why){
   if(!drawWatch) return;
   if(!o.__vid) o.__vid = ++drawVid;
-  drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why,
+  drawSeen.push({ id:o.__vid, why:why === undefined ? drawWhy : why, skew:drawSkew,
                   dz:Math.round(o.z - pos), x:+(o.x || 0).toFixed(3) });
+  drawSkew = 0;
 }
 
 function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
@@ -8341,6 +8374,14 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
      it. Only the last one costs a clip.
      ------------------------------------------------------------------- */
   const brow = crestY(worldZ);
+  if(drawWatch){
+    /* the same question with the RETIRED index, so the record can keep saying
+       how far the old convention reached rather than asserting it from memory */
+    const b2 = crestAt(Math.floor((worldZ - pos)/SEG));
+    const h0 = w * img.height/img.width;
+    const verdict = (b) => b === null ? 0 : (p.y - h0 > b + H*0.004 ? 2 : (p.y > b ? 1 : 0));
+    drawSkew = verdict(brow) === verdict(b2) ? 0 : 1;
+  }
   /* even the roof is under the crest - genuinely out of sight */
   if(brow !== null && p.y - h > brow + H*0.004){ spriteStats.culled++; drawWhy = 'crest'; return null; }
   if(brow !== null && p.y > brow){

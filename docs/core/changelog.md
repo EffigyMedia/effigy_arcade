@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-13"></a>
+## [0.9.13] — 2026-08-29
+- Fixed: **cars flickered at the lip of a crest**, reported from the device after v0.9.12.
+  `buildHillClip` fills its table by absolute segment; `crestY` looked it up by *segments ahead of
+  the player*, which is one lower whenever the car sits earlier in its segment than the player does
+  — and which of the two it is flips **every time the road crosses a segment boundary, ~57 times a
+  second at speed**. On flat road the two entries agree; at a crest they differ sharply, so a car
+  near the brow flipped between hidden and drawn. Measured: the two conventions disagreed on 24
+  vehicle-frames in 45 seconds, twice over, and only ever on cars at a crest
+  ([RLG-041](../fragments/RLG-041.md)).
+- Measured after: flickers 14.7 and 1.3 per minute, **all of them at the draw edge**, none mid-road
+  ([RLG-041](../fragments/RLG-041.md)).
+- Corrected: v0.9.12 cited `occlusion-test` going from `culled 0` to `culled 167` as proof. **That
+  is withdrawn** — three runs on one unchanged build gave 0, 40 and 147. The terrain is generated
+  fresh each run and that figure measures how hilly the road happened to be. The change stands on
+  its own reasoning and on the sub-pixel measurement; the occlusion numbers were not evidence for it
+  ([RLG-041](../fragments/RLG-041.md)).
+
 <a id="v0-9-12"></a>
 ## [0.9.12] — 2026-08-28
 - Fixed: **cars winked out for three or four frames at mid-distance.** The engine had two occlusion
