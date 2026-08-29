@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.37';
+window.ROAD_BUILD = '0.9.38';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -11136,16 +11136,61 @@ function drawGarageCar(){
      Each is fitted into its own half and stands on the same floor line, so the
      two ends read as one car rather than as two pictures.
      ------------------------------------------------------------------- */
-  const FLOOR = 124, HALF = 150, PAD = 12;
-  const put = (img, cx) => {
-    if(!img) return;
-    const bw = Math.min(HALF - PAD*2, (FLOOR - 6) * img.width/img.height);
-    const bh = bw * img.height/img.width;
-    g2.drawImage(img, cx - bw/2, FLOOR - bh, bw, bh);
+  /* ---- ALIGNED BY THE CAR, NOT BY THE CANVAS ----------------------------
+     Bottom-aligning the two sprite BOXES did not align the two cars. The boxes
+     are different shapes - a rear is 220x168 and a supercar's front is 230x215
+     - and each car sits somewhere different inside its own box, so one end
+     floated above the other and they were drawn at different sizes.
+
+     So the painted CONTENT of each sprite is measured, once, and cached on the
+     sprite. Both are then drawn at ONE scale, chosen so the larger of the two
+     fits, with their content bottoms on the same line. A car is the same size
+     from both ends and stands on the same floor, which is the whole of what
+     the owner asked for.
+     ------------------------------------------------------------------- */
+  const bounds = (img) => {
+    if(img.__box) return img.__box;
+    let bx = { x:0, y:0, w:img.width, h:img.height };
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const gg = c.getContext('2d');
+      gg.drawImage(img, 0, 0);
+      const d = gg.getImageData(0, 0, c.width, c.height).data;
+      let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+      for(let y = 0; y < c.height; y++){
+        for(let x = 0; x < c.width; x++){
+          /* 24 rather than 0: a sprite's shadow fades to nothing at its edge,
+             and counting the last transparent pixel of it as the car puts the
+             floor line somewhere no part of the car reaches */
+          if(d[(y*c.width + x)*4 + 3] > 24){
+            if(x < x0) x0 = x; if(x > x1) x1 = x;
+            if(y < y0) y0 = y; if(y > y1) y1 = y;
+          }
+        }
+      }
+      if(x1 >= 0) bx = { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
+    } catch(e){ /* a tainted canvas would throw; the box is the sprite */ }
+    img.__box = bx;
+    return bx;
   };
-  if(!front){ put(back, 150); return; }
-  put(back,  75);
-  put(front, 225);
+
+  const FLOOR = 124, HALF = 150, PAD = 12;
+  const pair = front ? [back, front] : [back];
+  const boxes = pair.map(bounds);
+  const maxW = Math.max.apply(null, boxes.map(b => b.w));
+  const maxH = Math.max.apply(null, boxes.map(b => b.h));
+  const sc = Math.min((HALF - PAD*2) / maxW, (FLOOR - 8) / maxH);
+  const put = (img, box, cx) => {
+    if(!img) return;
+    /* place the CONTENT: its centre on cx, its bottom on the floor */
+    const dx = cx - (box.x + box.w/2)*sc;
+    const dy = FLOOR - (box.y + box.h)*sc;
+    g2.drawImage(img, dx, dy, img.width*sc, img.height*sc);
+  };
+  if(!front){ put(back, boxes[0], 150); return; }
+  put(back,  boxes[0],  75);
+  put(front, boxes[1], 225);
 }
 function showGarage(){
   document.body.classList.remove('titling');

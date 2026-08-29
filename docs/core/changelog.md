@@ -14,6 +14,13 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-38"></a>
+## [0.9.38] - 2026-08-29
+- Fixed: **the garage's two views stand on one floor at one scale.** They were bottom-aligned by
+  their sprite boxes, which are different shapes with the car in a different place inside each - so
+  one end floated and the two were different sizes. The painted content of each sprite is measured
+  and the pair is placed by that ([RLG-072](../fragments/RLG-072.md)).
+
 <a id="v0-9-37"></a>
 ## [0.9.37] - 2026-08-29
 - Fixed: **the racers have faces in the mirror.** The mirror fades a painted nose in over a
