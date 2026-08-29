@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-10"></a>
+## [0.9.10] — 2026-08-28
+- Fixed: **traffic that gave way was never given back.** `keepLaneOpen` leans the car furthest ahead
+  toward the verge to hold a corridor open and set a flag that **nothing ever cleared** — so a car
+  that once made room was slowed for life, barred from merging again, and left standing between two
+  lanes. It was 42–46% of every lateral move on the road, and it is what the owner reported as a car
+  merging a fraction of a lane. Giving way is a timed state now: it ends, the car pulls fully into
+  the nearest lane, and it recovers its cruising speed. Cars at rest between two lanes fell from
+  **7.8% to 1.3%** of at-rest samples ([RLG-040](../fragments/RLG-040.md)).
+- Fixed: a merge aimed at `c.x + 0.50` clamped to `0.86`, which from the outermost lane is a fifth of
+  a lane onto the verge. It targets a **lane index**, one lane at a time, from the lane the car is in
+  ([RLG-040](../fragments/RLG-040.md)).
+- Changed: **every lateral number in the engine is now in lane widths** — merge rate, arrival,
+  idle drift, spawn jitter, and the verge a yielding car leans onto. `LANE_W` sits beside `LANE_X`,
+  shared by traffic and rivals, so full merging survives the road getting wider
+  ([RLG-040](../fragments/RLG-040.md), [RLG-024](../fragments/RLG-024.md)).
+- Changed: `cruiseFloor` was set on rogue cars every frame and read by nothing. It is the pace a car
+  returns to after it has been made to slow down, which is the job it was created for
+  ([RLG-040](../fragments/RLG-040.md)).
+- Added: `tools/merge-test.py` — does traffic change a whole lane? It reads lateral position over
+  time and no engine state, so a merge that is recorded and never carried out cannot pass it. Run
+  against the engine as it was, it fails ([RLG-040](../fragments/RLG-040.md)).
+- Known: the Interstate is slower for the player, because the lanes are genuinely fuller now —
+  `drive-test` peak speed over eight runs 126–182mph (mean 156) against 150–188 (mean 175) before.
+  **The threshold was not lowered** ([RLG-056](../fragments/RLG-056.md)).
+
 <a id="v0-9-9"></a>
 ## [0.9.9] — 2026-08-28
 - Fixed: **rivals never finished an overtake.** Steering was a per-frame lateral pressure that lasted

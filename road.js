@@ -77,6 +77,17 @@ const FOV = 100;
 const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
 const LANE_X = [-0.75,-0.25,0.25,0.75];
+/* ---- ONE LANE, and the unit every lateral move is written in ---------------
+   Traffic, rivals and a car giving way all move sideways, and every rate,
+   threshold and bound in that motion is a multiple of THIS rather than a
+   distance across the road. RLG-040 is the reason: the owner requires full
+   merging to still be full merging after RLG-024 widens the road, and a number
+   written as `0.5` stops meaning "one lane" the moment the road changes.
+
+   It sits beside LANE_X because it is derived from it. Widen the lanes and
+   everything downstream widens with them, with nothing to remember.
+   -------------------------------------------------------------------------- */
+const LANE_W = Math.abs(LANE_X[1] - LANE_X[0]);
 
 /* ---- NOTHING ARRIVES IN VIEW --------------------------------------------
    The road is drawn to `DRAW * SEG` - 30,000 units. Anything placed nearer
@@ -3782,6 +3793,27 @@ function laneFree(z, lane, gap){
   return true;
 }
 
+/* ---- HOW A CAR IN TRAFFIC CHANGES LANE -----------------------------------
+   The same idea as the rivals' model further down, and RLG-040 says so in as
+   many words: traffic and rivals are two code paths and one design. A lateral
+   move is a DECISION with a target LANE, committed to and finished, and never a
+   pressure that stops when whatever caused it goes away.
+
+   Every number here is in lanes or in lane widths. None of it is a distance
+   across the road, because the road is going to get wider (RLG-024) and the
+   owner's ruling is that full merging has to survive that.
+   -------------------------------------------------------------------------- */
+const TRAF_ARRIVE = 0.04;         /* within this fraction of a lane: arrived */
+const TRAF_HOLD   = 2.4;          /* seconds a merge stays committed */
+const TRAF_BACK   = 0.6;          /* seconds granted to go back, if it is abandoned */
+const TRAF_DRIFT  = 0.12;         /* lanes of idle wander either side of the centre */
+const TRAF_JITTER = 0.06;         /* lanes a spawning car sits off its lane centre */
+/* how far onto the verge a car giving way will go, past the outermost lane.
+   This is NOT a lane and is not meant to end on a centre: it is road that no
+   lane occupies, and using it is the only way a car in the outermost lane can
+   make width that was not there before. See RLG-037. */
+const VERGE = LANE_X[LANES-1] + LANE_W * 0.34;
+
 /* ---- what a merging driver needs to know ---------------------------------
    Two questions, asked about a LATERAL POSITION rather than a lane index,
    because a lane index is an assignment and the road is a width.
@@ -3961,15 +3993,27 @@ function keepLaneOpen(dt, pz){
       if(d > wd){ wd = d; worst = c; }
     }
     if(worst){
+      if(worst.cruiseFloor === undefined) worst.cruiseFloor = worst.cruise;
       worst.cruise = Math.max(0.24 * MAX_SPD,
                              worst.cruise - MAX_SPD * (0.20 + 0.70*urge) * dt);
+      /* ---- A YIELD HAS AN END NOW ---------------------------------------
+         This set a flag that nothing ever cleared. A car that once gave way
+         was slowed for the rest of its life, could never merge again - the
+         decision in the traffic step tests `!c.yielding` - and was left
+         standing wherever the lean had pushed it, which is between two lanes.
+
+         So it is a TIMER, renewed for as long as this window still needs the
+         room. When it runs out the traffic step finishes the move: the car
+         pulls fully into the lane it is nearest and picks its speed back up,
+         the way a driver does once you have gone past. */
+      worst.yieldT = 0.5;
       worst.yielding = true;
       /* AND IT MOVES OVER. Slowing alone only opens the wall once the car has
          fallen out of the window, which at a small speed difference is a long
          way down the road - long enough for the player to arrive first. Leaning
          it toward the nearer verge opens a corridor in the same second. */
       const side = worst.x >= 0 ? 1 : -1;
-      worst.x = clamp(worst.x + side * (0.25 + 0.85*urge) * dt, -0.92, 0.92);
+      worst.x = clamp(worst.x + side * (0.5 + 1.7*urge) * LANE_W * dt, -VERGE, VERGE);
       /* Its lane is a lie once it has been moved bodily, and the drift logic
          would otherwise haul it straight back into the wall it just left. So
          the lane is REASSIGNED to whichever one it is now nearest, rather than
@@ -4011,7 +4055,7 @@ function spawnBehind(){
           : roll<0.72 ? 'taxi'
           : roll<0.86 ? 'sedan'  : 'sedan2';
   traffic.push({
-    z, lane, x: LANE_X[lane] + rnd(-0.03,0.03),
+    z, lane, x: LANE_X[lane] + rnd(-TRAF_JITTER, TRAF_JITTER) * LANE_W,
     /* it must actually be quicker than you or it will never arrive */
     /* a car coming up BEHIND has to be quicker than you or it never arrives,
        but 1.25x your speed at 190 is 237mph. Capped to something a road car
@@ -4067,7 +4111,7 @@ function spawnWave(z){
     const rogue = (t === 'tuner' || t === 'muscle') && Math.random() < 0.20;
     traffic.push({
       z: z + rnd(-600,600), lane,
-      x: LANE_X[lane] + rnd(-0.03,0.03),
+      x: LANE_X[lane] + rnd(-TRAF_JITTER, TRAF_JITTER) * LANE_W,
       /* ---- TRAFFIC IS TRAFFIC, NOT A FIELD -----------------------------
          0.42-0.60 of MAX_SPD is 84-120mph. That was survivable when the
          player did 0-60 in a second; after the acceleration retune it means
@@ -5309,7 +5353,8 @@ function buildField(){
    numbers are in LANES and lane widths, never in absolute distance across the
    road, because RLG-040 requires full merging to survive RLG-024 widening it.
    ------------------------------------------------------------------------- */
-const LANE_W      = Math.abs(LANE_X[1] - LANE_X[0]);
+/* LANE_W is declared beside LANE_X - traffic gives way, and merges, in the same
+   units, and two copies of one lane width is a thing to get out of step. */
 const LANE_RATE   = 2.2;          /* lanes per second while changing */
 const LANE_HOME   = 0.12;         /* within this fraction of a lane = arrived */
 const LANE_SETTLE = 0.45;         /* seconds held after arriving, before deciding again */
@@ -5757,15 +5802,18 @@ function scatter(chance, fromZ, fromLane){
     if(c.lane > 0) room.push(c.lane - 1);
     if(c.lane < LANES - 1) room.push(c.lane + 1);
     if(!room.length) continue;
-    const pick = LANE_X[room[(Math.random()*room.length)|0]];
+    const to   = room[(Math.random()*room.length)|0];
+    const pick = LANE_X[to];
     /* asked to move, so it accepts a tighter gap than it would choose */
     if(!laneClear(c, pick, 0.45) || wouldBlock(c, pick)) continue;
-    c.mergeFrom = c.x;
-    c.mergeX    = pick;
+    /* the same committed move the traffic AI makes, and it keeps its own lane
+       index until it ARRIVES - writing the new one here was how a car that
+       never finished the move ended up claiming a lane it was not in */
+    c.fromLane  = c.lane;
+    c.mergeLane = to;
     c.mergeT    = 1.3;
     c.mergeCool = 0;
     c.blink     = 0.9;
-    c.lane      = nearestLane(pick);
     c.swerve    = 1;
     scattered++;
     /* it moved, so it is not the one being stubborn */
@@ -7001,9 +7049,13 @@ function step(dt){
   }
   const pz = pos + PLAYER_Z;
 
-  /* a rogue does not sit behind you at your speed — it is going somewhere */
+  /* a rogue does not sit behind you at your speed — it is going somewhere.
+     `cruiseFloor` was written here and read by NOTHING, on rogues alone. It is
+     the pace a car should come back to after it has been made to slow down,
+     and now that giving way ends rather than lasting forever it has that job -
+     for every car, because every car can be asked to give way. */
   for(const c of traffic)
-    if(c.rogue && c.cruiseFloor === undefined) c.cruiseFloor = c.cruise;
+    if(c.cruiseFloor === undefined) c.cruiseFloor = c.cruise;
 
   // --- traffic follows the car in front and queues at roadblocks ---
   keepLaneOpen(dt, pz);
@@ -7068,18 +7120,58 @@ function step(dt){
        hole beside me, is it still going to be a hole when I get there, and is
        the car in it closing on me. Not "is that lane index free".
        -------------------------------------------------------------------- */
+    /* ---- A YIELD IS A MOVE, SO IT HAS TO FINISH TOO ----------------------
+       `keepLaneOpen` leans a car toward the verge to hold a corridor open, and
+       that lean used to set a flag nothing ever cleared. Measured under
+       RLG-040: 46% of every lateral move traffic made was a yield, the average
+       one covered half a lane, and two thirds of them came to rest between two
+       lanes. That is the fraction of a lane the owner reported seeing.
+
+       The lean itself is untouched, because the corridor guarantee depends on
+       it (RLG-037) and it is deliberately allowed onto road that no lane
+       covers. What is fixed is the END of it: the timer runs out, the car
+       commits to the lane it is nearest and drives fully into it, and its
+       cruise comes back to what it was before it was asked to give way.
+       ------------------------------------------------------------------- */
+    if(c.yieldT > 0){
+      c.yieldT -= dt;
+      if(c.yieldT <= 0){
+        c.yielding = false;
+        if(!(c.mergeT > 0)){
+          c.fromLane  = c.lane;
+          c.mergeLane = nearestLane(c.x);
+          c.mergeT    = TRAF_HOLD;
+        }
+      }
+    }
+    /* and it gets its pace back, at the rate it lost it, rather than carrying
+       a permanent penalty for having once been polite */
+    if(c.cruiseFloor !== undefined && !c.yielding && c.cruise < c.cruiseFloor)
+      c.cruise = Math.min(c.cruiseFloor, c.cruise + MAX_SPD * 0.20 * dt);
+
     if(c.mergeCool > 0) c.mergeCool -= dt;
     if(c.mergeT > 0){
       c.mergeT -= dt;
-      /* carry it out - and if the hole closed while we were moving, abort back
-         to where we came from rather than pressing on into an occupied lane */
-      if(!laneClear(c, c.mergeX)){
-        c.mergeX = c.mergeFrom; c.mergeT = Math.min(c.mergeT, 0.9);
+      /* carry it out - and if the hole closed while we were moving, go BACK to
+         the lane we came from. Not stop where we are: a car that stops half way
+         across is standing in two lanes and belongs to neither, which is the
+         whole of RLG-040. */
+      if(!laneClear(c, LANE_X[c.mergeLane]) && c.fromLane !== undefined
+         && c.fromLane !== c.mergeLane){
+        const back = c.fromLane;
+        c.fromLane = c.mergeLane; c.mergeLane = back;
+        c.mergeT = Math.max(c.mergeT, TRAF_BACK);
       }
-      c.x += clamp(c.mergeX - c.x, -1.1*dt, 1.1*dt);
-      if(Math.abs(c.mergeX - c.x) < 0.02 || c.mergeT <= 0){
-        c.x = c.mergeX; c.mergeT = 0; c.mergeCool = rnd(2.2, 4.5);
-        c.lane = nearestLane(c.x);
+      const tx = LANE_X[c.mergeLane];
+      const step = LANE_RATE * LANE_W * dt;      /* lanes per second, not road widths */
+      c.x += clamp(tx - c.x, -step, step);
+      if(Math.abs(tx - c.x) < LANE_W * TRAF_ARRIVE || c.mergeT <= 0){
+        /* ARRIVED. The position and the lane index are set together and to the
+           same lane - the old model set `x` to wherever it had got to and then
+           guessed the index from it, which is how a car ended up standing off a
+           centre with its own idea of which lane it was in. */
+        c.x = tx; c.lane = c.mergeLane; c.mergeT = 0;
+        c.mergeCool = rnd(2.2, 4.5);
         c.drift = Math.abs(c.drift || 0.0004) * (Math.random() < 0.5 ? -1 : 1);
       }
       /* `!(x > 0)` rather than `x <= 0`: a freshly spawned car has no
@@ -7087,20 +7179,28 @@ function step(dt){
          meant no car ever merged until something had set the field, and
          nothing ever would. */
     } else if(!(c.mergeCool > 0) && !c.yielding && want < c.cruise * 0.86){
-      /* held up by something. Look for a lane worth taking - the one that is
-         both clear AND actually faster, because pulling out to sit beside the
-         car you were following is worse than staying put. */
-      const here = c.x;
-      let best = null, bestGain = 0;
+      /* held up by something. Look for a LANE worth taking - one that is both
+         clear AND actually faster, because pulling out to sit beside the car
+         you were following is worse than staying put.
+
+         One lane at a time, from the lane this car is actually in. It used to
+         aim at `c.x + 0.50` clamped to 0.86, which is a position rather than a
+         lane: from the outermost lane that is a fifth of a lane onto the verge,
+         and a car that took it stood there for the rest of its life with its
+         drift flipping every frame. */
+      const here = nearestLane(c.x);
+      let best = -1, bestGain = 0;
       for(const dir of [-1, 1]){
-        const tx = clamp(here + dir * 0.50, -0.86, 0.86);
+        const l = here + dir;
+        if(l < 0 || l >= LANES) continue;        /* the road ends. There is no half lane past it */
+        const tx = LANE_X[l];
         if(!laneClear(c, tx)) continue;
         if(wouldBlock(c, tx)) continue;          /* never take the last gap */
-        const gain = laneSpeed(c, tx) - laneSpeed(c, here);
-        if(gain > bestGain + 200){ bestGain = gain; best = tx; }
+        const gain = laneSpeed(c, tx) - laneSpeed(c, LANE_X[here]);
+        if(gain > bestGain + 200){ bestGain = gain; best = l; }
       }
-      if(best !== null){
-        c.mergeFrom = here; c.mergeX = best; c.mergeT = 2.4;
+      if(best >= 0){
+        c.fromLane = here; c.mergeLane = best; c.mergeT = TRAF_HOLD;
         mergesMade++;
         /* an indicator, for the two seconds before it moves - the mirror and
            the forward view both already draw brake lights, and a car that
@@ -7131,8 +7231,14 @@ function step(dt){
   for(let i=traffic.length-1;i>=0;i--){
     const c = traffic[i];
     c.z += c.spd*dt;
-    c.x += c.drift*60*dt;
-    if(Math.abs(c.x - LANE_X[c.lane]) > 0.06) c.drift *= -1;
+    /* the idle wander inside a lane. NOT while a move is in progress: it was
+       being added on top of the merge every frame, so a car arrived a little
+       past its target and then had to be pulled back. And the bound is in lane
+       widths, so a wider road gets a wider wander rather than a tighter one. */
+    if(!(c.mergeT > 0) && !c.yielding){
+      c.x += c.drift*60*dt;
+      if(Math.abs(c.x - LANE_X[c.lane]) > LANE_W * TRAF_DRIFT) c.drift *= -1;
+    }
     /* Cars were culled at 1,200 behind — but spawnBehind drops them in at
        2,600 to 4,200 back, so every single one was deleted on the very next
        frame and nothing ever came past. Anything overtaking gets room to
@@ -10603,6 +10709,13 @@ requestAnimationFrame(frameLoop);
   API.blockedAhead = function(){ return blockedAhead; };
   API.mergesMade = function(){ return mergesMade; };
   API.trafficCount = function(){ return traffic.length; };
+  /* WHERE THE LANES ARE, read by tools/merge-test.py. A harness that carries
+     its own copy of LANE_X measures a road that RLG-024 is going to widen, and
+     it cannot tell you it is out of date - it simply reports a car in the outer
+     lane as being a long way off a lane centre. RLG-040 requires full merging to
+     survive that widening, so the instrument reads the geometry from the engine
+     rather than restating it. */
+  API.laneX = function(){ return LANE_X.slice(); };
   API.scattered = function(){ return scattered; };
   API.nearestSpawn = function(){ return Math.round(nearestSpawn); };
   API.drawDistance = function(){ return DRAW * SEG; };
