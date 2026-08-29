@@ -76,6 +76,12 @@ const CAM_H = 1050;
 const FOV = 100;
 const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
+/* WHICH BUILD THIS ENGINE CAME FROM. Read by `Arcade.buildTag()`: the service
+   worker serves scripts network-first with a cache fallback, so a device can end
+   up with a fresh shell beside a cached engine, and the tag says MIXED when it
+   does. Bumped with `Arcade.version`, in the same commit, every time. */
+window.ROAD_BUILD = '0.9.15';
+
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
    Traffic, rivals and a car giving way all move sideways, and every rate,

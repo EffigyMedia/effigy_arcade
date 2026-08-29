@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-15"></a>
+## [0.9.15] — 2026-08-29
+- Added: **the arcade says which build it is running.** A BUILD row in the launcher's SETTINGS
+  sheet, directly above FORCE UPDATE — the two are the same question — and a build line in every
+  `.ark-opts` panel, printed even when a machine has no options. The identifier is
+  `Arcade.version`, the same string every commit names, so there is no second number to maintain
+  ([RLG-063](../fragments/RLG-063.md)).
+- Added: **a MIXED warning.** `sw.js` serves scripts network-first with a cache fallback, so a slow
+  connection can hand a device a fresh `arcade.js` beside a cached `road.js`. The engine stamps
+  `window.ROAD_BUILD`, and the tag reads `BUILD 0.9.15 / ROAD 0.9.14 - MIXED` in orange when the two
+  disagree ([RLG-063](../fragments/RLG-063.md)).
+
 <a id="v0-9-14"></a>
 ## [0.9.14] — 2026-08-29
 - Changed: `occlusion-test` drives **three shorter stints on three fresh roads** and sums them,

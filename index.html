@@ -137,6 +137,7 @@ body{
   width:18px;height:18px;border-radius:50%;background:var(--cyan);border:0;
 }
 .shvol.off input[type=range]{opacity:.35}
+.shbuild{font:700 11px/1 var(--ui,inherit);letter-spacing:.18em;color:#8b8fa6}
 .shnote{font-size:14px;line-height:1.4;color:#6b6488;margin-top:10px}
 
 #snd{
@@ -460,6 +461,10 @@ footer{margin-top:30px;border-top:1px solid var(--line);padding-top:26px;text-al
   <div class="sh">
     <h2>SETTINGS</h2>
     <p>Everything here happens on this device.</p>
+    <!-- WHICH BUILD IS THIS? Asked for by the owner: a fix cannot be confirmed
+         from a phone unless the phone can say what it is running. It sits beside
+         FORCE UPDATE on purpose - the two questions are the same question. -->
+    <div class="shrow"><b>BUILD</b><span id="buildTag" class="shbuild">-</span></div>
     <div class="shrow">
       <b>OFFLINE CATALOGUE</b>
       <button class="shbtn key" id="fetchAll">FETCH ALL</button>
@@ -952,8 +957,17 @@ window.addEventListener('load', function(){
 /* the mute dots live beside their sliders now and are painted by paintVol,
    which knows about all three including the master */
 
+/* the build the device is actually running, painted every time the sheet is
+   opened rather than once at load - a device that has been open for an hour
+   through a background update should not still be claiming the old number */
+function paintBuild(){
+  var t = el('buildTag');
+  if (t && A.buildTag) t.textContent = A.buildTag().replace(/^BUILD /, '');
+}
+paintBuild();
 on('cog', 'click', function(e){
-  e.stopPropagation(); A.audio.init(); UI.tap(); paintVol(); sheet.classList.add('on');
+  e.stopPropagation(); A.audio.init(); UI.tap(); paintVol(); paintBuild();
+  sheet.classList.add('on');
 });
 on('shClose', 'click', function(){ sheet.classList.remove('on'); });
 sheet.addEventListener('click', function(e){ if (e.target === sheet) sheet.classList.remove('on'); });

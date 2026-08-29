@@ -44,7 +44,29 @@ var A = window.Arcade = window.Arcade || {};
    over would have said "nearly done" about work that has barely started. The
    version tracks THIS product. The maturity of the engine underneath it is
    recorded in the git history, which came across whole. */
-A.version = '0.9.14';
+A.version = '0.9.15';
+
+/* ---- WHICH BUILD AM I PLAYING? -------------------------------------------
+   Asked for by the owner, 2026-08-29, and it is a testing tool rather than
+   decoration: a fix cannot be confirmed or ruled out from a device unless the
+   device can say which build it is running. Every commit that changes the
+   product names this string, and `A.buildTag()` is what the arcade prints, so
+   the two can be read side by side.
+
+   IT ALSO CATCHES A STALE HALF, which is the failure this product can actually
+   have. `sw.js` serves scripts network-first with a short timeout and a cache
+   fallback, so a slow connection can hand a device a FRESH arcade.js beside a
+   CACHED road.js and nothing about the picture would say so. road.js stamps
+   `window.ROAD_BUILD` with the version it was written for; if the two disagree
+   the tag says MIXED, and that is the one case where a second copy of the
+   version number earns its place - it is not a second answer to one question,
+   it is each file stating which build it came from.
+   ------------------------------------------------------------------------ */
+A.buildTag = function(){
+  var road = window.ROAD_BUILD;
+  if (road && road !== A.version) return 'BUILD ' + A.version + ' / ROAD ' + road + ' - MIXED';
+  return 'BUILD ' + A.version;
+};
 
 /* every cabinet draws its name with the same hand */
 A.wordmark = wordmark;
@@ -831,6 +853,9 @@ function boot(){
     '.ark-act:active{background:rgba(255,255,255,.08)}',
     '.ark-act:focus-visible{outline:2px solid var(--ark);outline-offset:2px}',
     '.ark-note{margin-top:14px;font-size:9.5px;line-height:1.7;color:#7c7f95}',
+    '.ark-build{margin:14px 0 2px;text-align:center;font-size:8px;',
+    '  letter-spacing:.28em;color:#5b5e72}',
+    '.ark-build.mixed{color:#ff8a6a}',
     '.ark-sep{display:flex;align-items:center;gap:8px;margin:20px 0 12px;',
     '  font-size:8px;letter-spacing:.3em;color:#7c7f95}',
     '.ark-sep::before,.ark-sep::after{content:"";flex:1;height:1px;background:#20212c}',
@@ -940,7 +965,13 @@ function boot(){
   }
   function paintOptsInto(box){
     if (!box) return;
-    if (!optDefs.length){ box.innerHTML = ''; return; }
+    /* THE BUILD LINE IS PRINTED WHETHER OR NOT THERE ARE OPTIONS. A machine
+       with nothing to configure is still a machine somebody is testing, and a
+       panel that goes blank takes the build identifier with it. */
+    var tag = A.buildTag();
+    var foot = '<div class="ark-build' + (tag.indexOf('MIXED') >= 0 ? ' mixed' : '') +
+               '">' + tag + '</div>';
+    if (!optDefs.length){ box.innerHTML = foot; return; }
     var h = '<div class="ark-sep">OPTIONS</div>';
     for (var i=0;i<optDefs.length;i++){
       var d = optDefs[i], v = optGet(d.key), show;
@@ -952,7 +983,7 @@ function boot(){
            '" type="button" data-opt="' + d.key + '">' + d.label +
            '<b>' + show + '</b></button>';
     }
-    box.innerHTML = h;
+    box.innerHTML = h + foot;
     var btns = box.querySelectorAll('[data-opt]');
     for (var j=0;j<btns.length;j++){
       btns[j].addEventListener('click', function(){
