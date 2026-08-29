@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-47"></a>
+## [0.9.47] - 2026-08-29
+- Fixed: **brake lights are red, and they have three states.** They were drawn additively over the
+  picture underneath, which turns red into white, and their inner highlight was nearly white before
+  anything was added to it. A lamp paints its own lens opaquely now, and its highlight is a lighter
+  RED. Off is daylight idle, dim is the night-time running light, bright is the brake - and the level
+  is driven where the car is drawn rather than faked with alpha
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **a lit lamp carries a baked glow.** Rendered once at build time and blurred, drawn
+  additively behind the lens. `lamp-test` gained a check that a lit lamp covers more than its own
+  lens, which found four vehicles whose glow was being thrown off the canvas
+  ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-46"></a>
 ## [0.9.46] - 2026-08-29
 - Fixed: **a car's front now has the same silhouette as its back.** The rear body is a path with a

@@ -70,7 +70,7 @@ SHEET = r"""(cls) => {
   }
 
   const CELL = 300, PAD = 18, LABEL = 240;
-  const cols = 7;
+  const cols = 8;
   const W = LABEL + cols*CELL + PAD*2;
   const H = PAD*3 + 52 + rows.length*(CELL*2 + PAD*2) + CELL + PAD*4;
   const c = document.createElement('canvas');
@@ -86,7 +86,7 @@ SHEET = r"""(cls) => {
   g.fillText('every lamp is one drawing, run unlit into the sprite and again lit on top of it',
              PAD, PAD + 40);
 
-  const cell = (spr, x, y, ids, wipeT, label) => {
+  const cell = (spr, x, y, ids, wipeT, label, lvl) => {
     g.fillStyle = '#15171e';
     g.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
     if (label) {
@@ -107,9 +107,11 @@ SHEET = r"""(cls) => {
     g.save();
     g.translate(dx, dy); g.scale(dw/spr.width, dh/spr.height);
     if (ids && ids.length && spr.lamps) {
+      /* NOT `lighter`. A lamp carries its own baked halo and paints its own
+         lens opaquely (RLG-053), so adding the whole thing to the picture
+         underneath is what turned a bright red brake light white. */
       g.save();
-      g.globalCompositeOperation = 'lighter';
-      for (const id of ids) if (spr.lamps[id]) spr.lamps[id](g, true);
+      for (const id of ids) if (spr.lamps[id]) spr.lamps[id](g, lvl === undefined ? 2 : lvl);
       g.restore();
     }
     /* the wipers are not a lamp: they are the same drawing at a different point
@@ -139,15 +141,17 @@ SHEET = r"""(cls) => {
     g.fillText(r.sig, PAD, y + CELL + 12);
 
     cell(back, LABEL + 0*CELL, y, [], null, 'back - dark');
-    cell(back, LABEL + 1*CELL, y, ['tail'], null, 'braking');
-    cell(back, LABEL + 2*CELL, y, ['turn.r'], null, 'right');
-    cell(back, LABEL + 3*CELL, y, ['turn.l'], null, 'left');
-    cell(back, LABEL + 4*CELL, y, bar, null, bar.length ? 'bar' : '');
-    cell(back, LABEL + 5*CELL, y, Object.keys(bL), null, 'all');
+    /* the three states of a rear lamp: off, the running light, the brake */
+    cell(back, LABEL + 1*CELL, y, ['tail'], null, 'running (dim)', 1);
+    cell(back, LABEL + 2*CELL, y, ['tail'], null, 'braking (bright)');
+    cell(back, LABEL + 3*CELL, y, ['turn.r'], null, 'right');
+    cell(back, LABEL + 4*CELL, y, ['turn.l'], null, 'left');
+    cell(back, LABEL + 5*CELL, y, bar, null, bar.length ? 'bar' : '');
+    cell(back, LABEL + 6*CELL, y, Object.keys(bL), null, 'all');
     /* stripes are paint rather than a body, and a car already wearing a livery
        does not take them - so this cell is empty for the formula car and for
        both patrol cars, which is the answer rather than a missing frame */
-    cell(r.sprS, LABEL + 6*CELL, y, [], null, 'stripes');
+    cell(r.sprS, LABEL + 7*CELL, y, [], null, 'stripes');
 
     const y2 = y + CELL + PAD;
     cell(front, LABEL + 0*CELL, y2, [], 0, 'front - dark');
@@ -156,7 +160,8 @@ SHEET = r"""(cls) => {
     cell(front, LABEL + 3*CELL, y2, ['turn.l'], 0, 'left');
     cell(front, LABEL + 4*CELL, y2, fbar, 0, 'wipers parked');
     cell(front, LABEL + 5*CELL, y2, fbar, 1, 'wipers swept');
-    cell(r.frontS, LABEL + 6*CELL, y2, [], 0, 'stripes');
+    cell(front, LABEL + 6*CELL, y2, Object.keys(fL), 0, 'all');
+    cell(r.frontS, LABEL + 7*CELL, y2, [], 0, 'stripes');
 
     y += CELL*2 + PAD*2;
   }

@@ -1460,6 +1460,71 @@ function sprite(w,h,paint){
      front of a supercharger, which is what the owner saw.
      ------------------------------------------------------------------ */
   c.overWipers = parts.overWipers || null;
+  /* ---- THE GLOW IS BAKED, ONCE, HERE ------------------------------------
+     Owner, 2026-08-29: a lit lamp should have its glow baked in. It used to
+     have none of its own - the CONSUMER drew the lamp with `lighter`, adding it
+     to the picture underneath, and a bright lamp with a pale highlight in it
+     added its way to WHITE. That is where the white brake lights came from.
+
+     A lamp now paints itself opaquely and carries a halo, and the halo is made
+     here rather than by every painter: the lit lamp is rendered once into an
+     offscreen canvas, and that canvas is drawn back twice, bigger and fainter,
+     ADDITIVELY behind the lamp itself. Light adds; paint does not.
+
+     Built once per sprite, so the cost is at the garage rather than per frame.
+     ------------------------------------------------------------------- */
+  for(const id in lamps){
+    const draw = lamps[id];
+    const full = document.createElement('canvas');
+    full.width = w; full.height = h;
+    const fg = full.getContext('2d');
+    try { draw(fg, 2); } catch(e){ continue; }
+    /* ---- THE HALO IS A BLUR, NOT A BIGGER COPY --------------------------
+       Two earlier versions scaled the lit lamp up and drew it faintly behind
+       itself. That works for one round bulb and fails for everything else: a
+       lamp declaration often paints BOTH sides of the car at once, so its
+       bounding box spans the whole vehicle with a hole in the middle, and
+       scaling it about that box's centre throws both lamps off the canvas and
+       leaves the empty middle behind. The van's tail lamps were the case that
+       caught it - the check reported them flat, and they were.
+
+       A blur has no such assumption. It is baked here, once, into a canvas the
+       size of the sprite, so the wrapper just adds it: no scaling, no centre,
+       and a lamp of any shape or count glows correctly.
+
+       `filter` is not universal, so there is a fallback that accumulates the
+       same shape at a ring of small offsets - which is a box blur by another
+       name and costs nothing at build time.
+       ------------------------------------------------------------------ */
+    const halo = document.createElement('canvas');
+    halo.width = w; halo.height = h;
+    const hg = halo.getContext('2d');
+    const r = Math.max(2, Math.round(Math.min(w, h) * 0.030));
+    if(typeof hg.filter === 'string'){
+      hg.globalAlpha = 0.34; hg.filter = 'blur(' + r + 'px)';
+      hg.drawImage(full, 0, 0);
+      hg.globalAlpha = 0.24; hg.filter = 'blur(' + Math.round(r*2.4) + 'px)';
+      hg.drawImage(full, 0, 0);
+      hg.filter = 'none';
+    } else {
+      hg.globalAlpha = 0.055;
+      for(const rad of [r, r*2.2]) for(let a = 0; a < 8; a++)
+        hg.drawImage(full, Math.cos(a*0.7854)*rad, Math.sin(a*0.7854)*rad);
+    }
+    lamps[id] = function(gg, lvl){
+      /* `true` means BRIGHT: every call site that predates the third state
+         means "braking" or "indicating", and both of those are bright. */
+      const l = (lvl === true) ? 2 : (lvl === false || lvl === undefined) ? 0 : lvl;
+      if(l >= 2){
+        gg.save();
+        gg.globalCompositeOperation = 'lighter';
+        gg.drawImage(halo, 0, 0);
+        gg.restore();
+      }
+      draw(gg, l);
+    };
+    lamps[id].plain = draw;   /* the drawing itself, for anything measuring it */
+  }
   return c;
 }
 
@@ -1526,6 +1591,57 @@ function decl(g, lamps, id, draw){
 const AMBER_OFF = '#7a4f12', AMBER_OFF_HI = '#a06a1c';
 const AMBER_ON  = '#ffb02e', AMBER_ON_HI  = '#ffe4a8';
 
+/* ---- A BRAKE LIGHT HAS THREE STATES, AND THE OTHERS HAVE TWO -------------
+   Owner, 2026-08-29. A rear lamp cluster is off, DIM or BRIGHT: dim is the
+   running light that comes on with the headlights, bright is the brake. An
+   indicator and a headlight have only off and bright.
+
+   The off state is now as dark as an unlit indicator - a deep unlit red rather
+   than the mid red it was, which read as a tail light already on. That is the
+   other half of why braking did not look like an event: the difference between
+   the two states was small, and then the additive draw blew the bright one out
+   to white.
+
+   `l` is 0, 1 or 2 everywhere, and `true` from an older call site means 2.
+   ------------------------------------------------------------------------- */
+const RED_OFF = '#4a1016', RED_DIM = '#b0202a', RED_ON = '#ff2a22';
+/* ---- THE HIGHLIGHT IS RED TOO -----------------------------------------
+   Owner, 2026-08-29, twice: "you are still making the illuminated brake lights
+   white... off is a dark red, dim is slightly brighter, and bright is a bright
+   red."
+
+   The highlight is what was white. Every red lamp draws a lens and then an
+   inner band a shade lighter, and that band was `#ffd6ce`, then `#ff8f7e` -
+   pale enough that the middle of a lit lamp read as white whatever the lens
+   around it was doing. A highlight on a red lamp is a LIGHTER RED, and the
+   distance between the two is small: it is a curve of glass catching light,
+   not a bulb of a different colour.
+   -------------------------------------------------------------------- */
+const RED_OFF_HI = '#5c1a1e', RED_DIM_HI = '#c9333a', RED_ON_HI = '#ff5348';
+function redOf(l){ return l >= 2 ? RED_ON : l >= 1 ? RED_DIM : RED_OFF; }
+function redHiOf(l){ return l >= 2 ? RED_ON_HI : l >= 1 ? RED_DIM_HI : RED_OFF_HI; }
+
+/* ---- A LITTLE TYRE, UNDER EVERY VEHICLE ---------------------------------
+   Owner, 2026-08-29: a little bit of tyre showing on each vehicle. A car whose
+   bodywork runs to the ground is a slab: the eye reads a vehicle as standing on
+   something, and half an inch of black under the sill is the whole of what says
+   so.
+
+   Drawn BEFORE the body, so the sill overlaps the top of it and only the bottom
+   of the tyre shows - which is what you actually see of a tyre from behind a
+   car. `sit` is how far below the sill it reaches.
+   ------------------------------------------------------------------------- */
+function tyresUnder(g, w, h, sill, xs, tw, sit){
+  for(const tx of xs){
+    g.fillStyle = '#0b0c0f';
+    rr(g, w*tx - w*tw/2, sill - h*0.045, w*tw, h*0.045 + sit, Math.min(w*tw, sit)*0.42);
+    g.fill();
+    /* the shoulder catching what light there is, so it is a tyre and not a hole */
+    g.fillStyle = 'rgba(150,160,175,.10)';
+    rr(g, w*tx - w*tw*0.34, sill + sit*0.10, w*tw*0.68, sit*0.34, sit*0.20); g.fill();
+  }
+}
+
 function turnBulb(x, y, bw, bh, flat){
   /* ---- A HIGHLIGHT NEEDS ROOM TO BE A HIGHLIGHT -------------------------
      The inner band reads as glass on a lamp with some size to it. On a short
@@ -1551,7 +1667,7 @@ function turnBulb(x, y, bw, bh, flat){
    The sprite is the only description of where a lamp is. This scales sprite
    space onto the drawn size and re-runs the declaration, so the lit lamp lands
    on the unlit bulb by construction rather than by agreement. */
-function lampsHere(spr, x, y, w, h, ids, alpha){
+function lampsHere(spr, x, y, w, h, ids, alpha, lvl){
   if(!spr || !spr.lamps) return false;
   let any = false;
   for(const id of ids) if(spr.lamps[id]) any = true;
@@ -1559,17 +1675,19 @@ function lampsHere(spr, x, y, w, h, ids, alpha){
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(w / spr.width, h / spr.height);
-  ctx.globalCompositeOperation = 'lighter';
+  /* NOT `lighter` any more. A lamp carries its own halo and paints its own
+     lens opaquely, so adding the whole thing to what is underneath is what
+     turned a bright red brake light white. */
   if(alpha !== undefined) ctx.globalAlpha = alpha;
-  for(const id of ids){ const f = spr.lamps[id]; if(f) f(ctx, true); }
+  for(const id of ids){ const f = spr.lamps[id]; if(f) f(ctx, lvl === undefined ? 2 : lvl); }
   ctx.restore();
   return true;
 }
 
 /* the same thing for a car drawn flat from a `drawSprite` box */
-function lampsLit(box, spr, ids, alpha){
+function lampsLit(box, spr, ids, alpha, lvl){
   if(!box || box.w < 10) return false;
-  return lampsHere(spr, box.x - box.w/2, box.y - box.h, box.w, box.h, ids, alpha);
+  return lampsHere(spr, box.x - box.w/2, box.y - box.h, box.w, box.h, ids, alpha, lvl);
 }
 
 // generic rear-of-car painter
@@ -2551,7 +2669,7 @@ function paintRig(kind, o){
          which is what a lorry does, and it is the thing you actually see of one
          at night when it slows in front of you. */
       decl(g, lamps, 'tail', (gg, on) => {
-        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#b8371f');
+        gg.fillStyle = redOf(on);
         rr(gg, w*0.10, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
         rr(gg, w*0.74, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
         /* ---- RED, AND DARK RED WHEN IT IS OFF ---------------------------
@@ -2562,7 +2680,7 @@ function paintRig(kind, o){
            lamp when it is dark, which is also what a lorry's rear roof markers
            are. The amber ones are on the front.
            -------------------------------------------------------------- */
-        gg.fillStyle = on ? '#ff5a52' : '#7d1f22';
+        gg.fillStyle = redOf(on);
         for(const mx of [0.16,0.34,0.5,0.66,0.84]){
           rr(gg, w*mx-w*0.018, top-h*0.014, w*0.036, h*0.016, 2); gg.fill();
         }
@@ -2615,7 +2733,7 @@ function paintRig(kind, o){
         rr(gg, VX[1], bot-h*0.150, VW, h*0.042, 2); gg.fill();
       });
       decl(g, lamps, 'tail', (gg, on) => {
-        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+        gg.fillStyle = redOf(on);
         for(const x of VX){ rr(gg, x, bot-h*0.092, VW, h*0.072, 2); gg.fill(); }
       });
       /* and none on the van's doors either — front only */
@@ -2648,7 +2766,7 @@ function paintRig(kind, o){
       g.fillRect(w*0.44, bedTop+h*0.085, w*0.12, h*0.022);
       /* lamps on the bed corners */
       decl(g, lamps, 'tail', (gg, on) => {
-        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+        gg.fillStyle = redOf(on);
         rr(gg, w*0.075, bot-h*0.085, w*0.15, h*0.065, 2); gg.fill();
         rr(gg, w*0.775, bot-h*0.085, w*0.15, h*0.065, 2); gg.fill();
       });
@@ -2800,8 +2918,8 @@ function paintRig(kind, o){
       };
       const BOXK = [0.010, 0.075, 0.140, 0.205];
       decl(g, lamps, 'tail', (gg, on) => {
-        const c0 = on ? '#ff3a34' : (P.lamp || '#c8102e');
-        const c1 = on ? 'rgba(255,214,206,.8)' : 'rgba(255,120,110,.45)';
+        const c0 = redOf(on);
+        const c1 = redHiOf(on);
         /* the outermost box of each cluster belongs to the indicator, so the
            left cluster keeps the inner three and the right cluster the other */
         for(const k of BOXK.slice(1)) box4(gg, 0.075, k, c0, c1);
@@ -2826,10 +2944,10 @@ function paintRig(kind, o){
        ------------------------------------------------------------------- */
     const CL = w*0.055, CR = w*0.685, CW = w*0.26, TW = w*0.048;
     decl(g, lamps, 'tail', (gg, on) => {
-      gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+      gg.fillStyle = redOf(on);
       rr(gg, CL + TW, ly, CW - TW, lh, 3); gg.fill();
       rr(gg, CR, ly, CW - TW, lh, 3); gg.fill();
-      gg.fillStyle = on ? 'rgba(255,222,214,.85)' : 'rgba(255,255,255,.30)';
+      gg.fillStyle = redHiOf(on);
       rr(gg, CL + TW + w*0.010, ly+lh*0.14, CW - TW - w*0.020, lh*0.30, 2); gg.fill();
       rr(gg, CR + w*0.010, ly+lh*0.14, CW - TW - w*0.020, lh*0.30, 2); gg.fill();
     });
@@ -3990,7 +4108,7 @@ function paintCar(o){
          the one this car has. Nothing asks for it yet.
          --------------------------------------------------------------- */
       decl(g, lamps, 'tail', (gg, on) => {
-        gg.fillStyle = on ? '#ff5a62' : '#ff2f3a';
+        gg.fillStyle = redOf(on);
         gg.beginPath(); gg.arc(w*0.5, cyT + TH2*0.02, w*0.028, 0, 6.2832); gg.fill();
       });
       g.save(); g.globalCompositeOperation='lighter';
@@ -4044,8 +4162,13 @@ function paintCar(o){
       rr(g, w*0.10, ty - h*0.012, w*0.80, th*1.10, th*0.5); g.fill();
       decl(g, lamps, 'tail', (gg, on) => {
         const lg = gg.createLinearGradient(0, ty, 0, ty+th);
-        lg.addColorStop(0, on ? '#ffe0da' : lamp1);
-        lg.addColorStop(1, on ? '#ff2f3e' : lamp0);
+        /* the highlight is the top EDGE of the lens, not most of it. Two
+           stops put the pale end halfway down a bar that spans the whole car,
+           and a lamp that is pale over most of its area reads white when it
+           lights - which is what the owner saw. */
+        lg.addColorStop(0, redHiOf(on));
+        lg.addColorStop(0.22, redOf(on));
+        lg.addColorStop(1, redOf(on));
         gg.fillStyle = lg;
         rr(gg, w*0.125, ty + h*0.006, w*0.75, th*0.62, th*0.31); gg.fill();
         gg.globalAlpha = on ? .85 : .55;
@@ -4088,7 +4211,7 @@ function paintCar(o){
          intact whether the car is lit or dark. */
       decl(g, lamps, 'tail', (gg, on) => {
         for(const cx0 of [w*0.145, w*0.275, w*0.725, w*0.855])
-          ring(gg, cx0, on ? '#ff2f3e' : lamp0, on ? '#ffe0da' : lamp1);
+          ring(gg, cx0, redOf(on), redHiOf(on));
       });
       const dot = (cx0) => (gg, on) => {
         gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
@@ -6013,8 +6136,20 @@ function tailLights(box, braking, spr){
   /* below this the lamps are a pixel and a half and nobody can see them */
   if(!box || box.w < 12) return;
   const lit = lampsOn();
-  const a = braking ? 0.95 : (lit > 0.01 ? 0.40 * lit : 0);
-  if(a <= 0.01) return;
+  /* ---- OFF BY DAY, DIM BY NIGHT, BRIGHT ON THE BRAKE --------------------
+     Owner, 2026-08-29: "off is for the idle colour during the day, dim is the
+     idle colour during night-time, and bright is whenever the brake is
+     pressed."
+
+     What was here faded the BRIGHT lamp down with alpha to suggest a running
+     light, which is a different thing wearing the same face: a dimmed brake
+     light is a translucent brake light, and it went pale over whatever was
+     behind it. There is a real dim state now, so the level is chosen and the
+     alpha stays at 1.
+     ------------------------------------------------------------------- */
+  const lvl = braking ? 2 : (lit > 0.30 ? 1 : 0);
+  if(!lvl) return;
+  const a = 1;
   /* ---- THE LAMP IS THE SPRITE'S (RLG-053) -------------------------------
      This used to carry a copy of the geometry `paintCar` draws - the comment
      that stood here said so: "These MUST match what paintCar draws... copied
@@ -6027,7 +6162,7 @@ function tailLights(box, braking, spr){
      expensive thing in a 2D context.
      ------------------------------------------------------------------- */
   if(spr && spr.lamps && spr.lamps.tail){
-    lampsLit(box, spr, ['tail'], a);
+    lampsLit(box, spr, ['tail'], a, lvl);
     if(box.w > 30){
       const cxs = [box.x - box.w*0.24, box.x + box.w*0.24];
       const ly = box.y - box.h*0.30, r = box.w*0.30;
@@ -6035,7 +6170,7 @@ function tailLights(box, braking, spr){
       ctx.globalCompositeOperation = 'lighter';
       for(const cx of cxs){
         const gl = ctx.createRadialGradient(cx, ly, 0, cx, ly, r);
-        gl.addColorStop(0,'rgba(255,40,60,'+(a*0.40)+')');
+        gl.addColorStop(0,'rgba(255,40,60,'+((lvl >= 2 ? 0.38 : 0.14))+')');
         gl.addColorStop(1,'rgba(255,30,50,0)');
         ctx.fillStyle = gl;
         ctx.beginPath(); ctx.arc(cx, ly, r, 0, 6.2832); ctx.fill();
@@ -10190,9 +10325,10 @@ function drawPlayer(){
      bulb, drawn again.
      ------------------------------------------------------------------- */
   if(SP.player.lamps){
-    const glowNow = braking ? 0.90 : (lampsOn() > 0.30 ? 0.28 * lampsOn() : 0);
-    if(glowNow > 0.01)
-      lampsHere(SP.player, -w/2, -h, w, h, ['tail'], Math.min(1, glowNow));
+    /* the same three states the traffic uses - see `tailLights` */
+    const lvl = braking ? 2 : (lampsOn() > 0.30 ? 1 : 0);
+    if(lvl)
+      lampsHere(SP.player, -w/2, -h, w, h, ['tail'], 1, lvl);
     if(playerTurn && (blinkHold || Math.sin(blinkPhase) > 0))
       lampsHere(SP.player, -w/2, -h, w, h, [playerTurn < 0 ? 'turn.l' : 'turn.r'], 1);
   }

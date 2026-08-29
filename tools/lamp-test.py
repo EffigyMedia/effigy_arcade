@@ -136,7 +136,10 @@ with sync_playwright() as p:
         const c = document.createElement('canvas');
         c.width = spr.width; c.height = spr.height;
         const g = c.getContext('2d');
-        spr.lamps[side > 0 ? 'turn.r' : 'turn.l'](g, true);
+        /* the LENS, without its baked halo - a glow reaches past the bulb on
+           purpose, and this check is the claim that the BULB has not moved */
+        const f = spr.lamps[side > 0 ? 'turn.r' : 'turn.l'];
+        (f.plain || f)(g, 2);
         const d = g.getImageData(0, 0, c.width, c.height).data;
         let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1, n = 0;
         for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
@@ -173,11 +176,18 @@ with sync_playwright() as p:
            boxes. A box is too coarse for a lamp drawn in more than one piece: shifting one lamp of
            a pair sideways keeps it inside the pair's own box, and a check on boxes reports nothing.
            Measured - that exact drift went undetected until this was written per-pixel. */
+        /* ---- THE LENS, NOT THE HALO ------------------------------------
+           A lit lamp now carries a baked glow, so its lit pixels reach well
+           past the bulb ON PURPOSE - which is exactly what this check used to
+           forbid. `plain` is the lamp's own drawing without the halo, and it
+           is what "the lit lamp is the unlit bulb" is a claim about. The halo
+           is checked separately, below. */
         const mask = (spr, id, on) => {
           const c = document.createElement('canvas');
           c.width = spr.width; c.height = spr.height;
           const g = c.getContext('2d');
-          spr.lamps[id](g, on);
+          const f = spr.lamps[id];
+          (f.plain || f)(g, on ? 2 : 0);
           const d = g.getImageData(0, 0, c.width, c.height).data;
           const m = new Uint8Array(c.width * c.height);
           let n = 0;
@@ -204,7 +214,21 @@ with sync_playwright() as p:
             }
             rows.push({ id: id, offN: off.n, onN: on.n, stray: stray });
           }
-          out.push({ name: name, cls: v.cls, ids: ids, rows: rows });
+          /* and the halo: the full lit lamp must cover MORE than its own lens,
+             or the glow is not being baked at all */
+          let glow = true;
+          for(const id of ids){
+            const lens = mask(spr, id, true);
+            const c2 = document.createElement('canvas');
+            c2.width = spr.width; c2.height = spr.height;
+            const g2 = c2.getContext('2d');
+            spr.lamps[id](g2, 2);
+            const d2 = g2.getImageData(0,0,c2.width,c2.height).data;
+            let full = 0;
+            for(let i = 3; i < d2.length; i += 4) if(d2[i] >= 12) full++;
+            if(full <= lens.n) glow = false;
+          }
+          out.push({ name: name, cls: v.cls, ids: ids, rows: rows, glow: glow });
         }
         return out;
     }""")
@@ -229,6 +253,9 @@ with sync_playwright() as p:
        'missing on ' + ', '.join(notail) if notail else '%d vehicles' % len(fleet))
     ok(not noturn, 'every vehicle outside the formula class declares indicators',
        'missing on ' + ', '.join(noturn) if noturn else 'the formula class excepted by ruling')
+    noglow = [v['name'] for v in fleet if not v.get('glow')]
+    ok(not noglow, 'and a lit lamp carries a glow past its own lens',
+       'flat on ' + ', '.join(noglow[:4]) if noglow else '%d vehicles' % len(fleet))
     ok(not drifted, 'and every lit lamp stays inside its own unlit bulb',
        ', '.join(drifted[:4]) if drifted else
        '%d lamps across %d vehicles' % (sum(len(v['ids']) for v in fleet), len(fleet)))
