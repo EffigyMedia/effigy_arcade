@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.15';
+window.ROAD_BUILD = '0.9.16';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -7254,6 +7254,24 @@ function step(dt){
        as the mirror can draw it. */
     const cullAt = 34000;
     if(c.z < pos - cullAt){ traffic.splice(i,1); continue; }
+    /* ---- AND THE ONES THAT DROVE AWAY -------------------------------------
+       There was no forward cull at all. Traffic was only ever removed once it
+       had fallen 34,000 BEHIND, so anything quicker than the player simply
+       drove off up the road and stayed in the array for the rest of the run.
+
+       Standing still, that is a trap with a lock on it. Measured at a
+       standstill (RLG-064): the array pinned at 30 cars, every one of them
+       ahead, and within fifteen seconds ALL THIRTY were past the draw distance
+       - an empty road, thirty invisible cars, and a simulation still paying for
+       them every frame. The spawner that exists to make stopping feel exposed
+       is gated on `traffic.length < 26`, so it could never fire: the owner
+       reported exactly that, that nothing comes up behind you when you stop.
+
+       The wave spawner reaches to `pos + 62000`, so anything past that is
+       beyond the furthest road this run has built and is not coming back
+       without being re-spawned in front of you anyway.
+       -------------------------------------------------------------------- */
+    if(c.z > pos + 64000){ traffic.splice(i,1); continue; }
     const dz = c.z - pz, dx = Math.abs(c.x - playerX);
     const overlap = (c.w + 0.26)/2;
     if(iframe<=0 && Math.abs(dz) < (c.len+380)/2 && dx < overlap){

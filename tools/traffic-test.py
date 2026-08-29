@@ -135,6 +135,32 @@ def main():
         print(f'  ..    the horn moved {moved_over} cars this run '
               f'(stochastic - see RLG-035)')
 
+        # ---- STOPPING MUST NOT EMPTY THE ROAD -------------------------------
+        # There was no forward cull: traffic was removed only once it had fallen 34,000 BEHIND, so
+        # anything quicker than the player drove away and stayed in the array for the whole run.
+        # Standing still, the array pinned at 30 cars, all of them ahead, and within fifteen
+        # seconds every one was past the draw distance - an empty road with thirty invisible cars
+        # on it. The spawner that exists to make stopping feel exposed is gated on
+        # `traffic.length < 26` and so could never fire. Reported from the device: nothing comes
+        # up behind you when you stop.
+        #
+        # The check tags every car that exists at the moment of stopping, then asks whether any
+        # UNTAGGED car has since arrived behind the player. A car that was already behind proves
+        # nothing, and the array size alone proves nothing either.
+        page.evaluate("() => { window.__road.traffic.forEach(c => c.__wasHere = 1); }")
+        arrived, held = 0, 0
+        for _ in range(80):
+            page.evaluate("() => window.__road.setSpd(0)")
+            page.wait_for_timeout(250)
+            st = page.evaluate(
+                "() => { const R = window.__road, p = R.pos; let fresh = 0; "
+                "R.traffic.forEach(c => { if(!c.__wasHere && c.z < p) fresh++; }); "
+                "return { fresh: fresh, n: R.traffic.length }; }")
+            arrived = max(arrived, st['fresh'])
+            held = max(held, st['n'])
+        ok(arrived > 0, 'traffic still arrives from behind when you stop',
+           f'{arrived} new cars came up behind over 20s, array held {held}')
+
         merges = page.evaluate("() => window.__road.mergesMade()")
         ok(merges > 0, 'traffic decides to go round slower cars',
            f'{merges} merges over the run')

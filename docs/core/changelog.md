@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-16"></a>
+## [0.9.16] — 2026-08-29
+- Fixed: **nothing came up behind you when you stopped**, reported from the device. Traffic was
+  culled only once it had fallen 34,000 units *behind*, so anything quicker than the player drove
+  away and stayed in the array forever. Measured at a standstill: the array pinned at **30 cars, all
+  ahead, and within fifteen seconds all thirty were past the draw distance** — an empty road with
+  thirty invisible cars on it. `spawnBehind` is gated on `traffic.length < 26` and so could never
+  fire. Cars are now culled past `pos + 64000`, beyond the furthest road the run has built
+  ([RLG-064](../fragments/RLG-064.md)).
+- Added: `traffic-test` tags every car present when you stop and asserts that an **untagged** one
+  arrives behind you. A car that was already there proves nothing
+  ([RLG-064](../fragments/RLG-064.md)).
+
 <a id="v0-9-15"></a>
 ## [0.9.15] — 2026-08-29
 - Added: **the arcade says which build it is running.** A BUILD row in the launcher's SETTINGS
