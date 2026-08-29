@@ -14,6 +14,55 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-55"></a>
+## [0.9.55] - 2026-08-29
+- Fixed: **settled snow is two layers rather than one slab.** It was a single overlay filling
+  everything from the horizon down at one strength. There is a bright far field under the horizon
+  that fades downward, and a wash on the ground in front of you that fades upward, and the two
+  overlap across most of the plane so there is nowhere for a seam to be
+  ([RLG-057](../fragments/RLG-057.md)).
+
+<a id="v0-9-54"></a>
+## [0.9.54] - 2026-08-29
+- Added: **cloud cover as a range from clear to overcast.** It is a weather variable rather than a
+  consequence of rain - an overcast day with no rain in it is the commonest sky there is - and rain
+  or snow raise it. `storm` is how black the cover is and follows the rain, so heavy rain is dark and
+  heavy snow is bright ([RLG-057](../fragments/RLG-057.md)).
+- Added: **the sun and moon bleed through the cloud**, because the cover is drawn after them
+  ([RLG-057](../fragments/RLG-057.md)).
+- Added: **lightning and thunder.** A strike belongs to a heavy storm and never to snow; the flash is
+  two or three strikes in quick succession and lights the cloud rather than the ground, and thunder
+  follows at a distance. **Not verified by ear** ([RLG-060](../fragments/RLG-060.md)).
+
+<a id="v0-9-53"></a>
+## [0.9.53] - 2026-08-29
+- Added: **the wipers move, and the lens gets wet.** Every vehicle has carried a wiper since the
+  fronts were drawn and the only caller was the fleet sheet - the mirror drew them parked in all
+  weathers. One sweep clock for the whole road, at a rate set by how hard it is raining, because at
+  sprite size a road of blades each keeping its own time reads as noise and one rhythm reads as
+  weather ([RLG-060](../fragments/RLG-060.md)).
+- Added: **drops on the camera lens** that arrive with the rain and the speed, crawl, and clear
+  completely when the wiper passes - the same clock, so the lens clears on the stroke you can see on
+  the car in front ([RLG-060](../fragments/RLG-060.md)).
+
+<a id="v0-9-52"></a>
+## [0.9.52] - 2026-08-29
+- Added: **traffic signals before it merges.** A car announces the move, waits between 1.1 and 1.8
+  seconds, re-checks the gap and only then crosses - and one driver in five never bothers, decided
+  once per car because it is a habit rather than a coin toss. The indicator flag had been set on
+  every merge decision since the merge logic was written and **no renderer had ever read it**
+  ([RLG-052](../fragments/RLG-052.md)).
+- Added: **`traffic-test` checks the screen, not the engine.** It forces every car to blink and
+  counts amber pixels - 11 with the blinks off, 57 with them on. A check that read only the engine
+  state would have passed the whole time the feature was invisible
+  ([RLG-052](../fragments/RLG-052.md)).
+
+<a id="v0-9-51"></a>
+## [0.9.51] - 2026-08-29
+- Changed: **the fleet sheets live in `docs/fleet/`.** Six pictures beside the prose is a folder you
+  have to read past to find a document. Nothing was left behind to move: every render has overwritten
+  the same six paths since the class split ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-50"></a>
 ## [0.9.50] - 2026-08-29
 - Changed: **the dim state splits the difference between off and bright**, and carries a third of the
