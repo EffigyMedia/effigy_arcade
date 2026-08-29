@@ -72,10 +72,9 @@ starter blanks: `<env-root>/Templates/_Project_Template/`
 - `Performance_Testing.md` / `Audit_and_Testing.md` — perf practice; the audit workflow.
 - `Path_Policy.md` — how anything names a location. **This file carries no absolute path.**
 - `Agent_Scope.md` — how far a session may reach. This is a **project** session.
-- `Writing_Standard.md` — Simplified Technical English (ASD-STE100), American spelling. **All
-  output is written in STE** — chat, every project document, source-code comments, and commit
-  messages. Identifiers and code syntax are exempt. **The inherited source uses British spelling;
-  do not rewrite it, and do not copy it into new prose.**
+- `Writing_Standard.md` — the standard itself, stated in full in the standing policy section
+  below. **The inherited source uses British spelling; do not rewrite it, and do not copy it into
+  new prose.** That sentence is this project's own, and the generated section does not carry it.
 - **The work record is the fragment store** in `docs/fragments/`, written with
   `<env-root>/Commands/fragment.py` and never by hand. **This project keeps no `tracker.md`** — the
   view over the store is the dashboard, opened by `Dashboard.bat` / `dashboard.sh` at the root.
@@ -92,6 +91,54 @@ starter blanks: `<env-root>/Templates/_Project_Template/`
 - **Routing posture** — `ROUTING_BIAS: 2` (quality). Each of these four is meant to become a
   product, and a defect in the 9,849-line driving engine ships to two of them at once. Drop to
   efficiency only for mechanical churn.
+
+---
+
+<!-- BEGIN standing-policy - generated, do not edit here -->
+
+## Standing policy — set at the environment level
+
+> **Keep this section verbatim. Do not summarize it and do not delete it.** These rules are set at
+> the environment level and a project may not repeal them. `check-policy.py` verifies that the
+> standard is named and in force in every project (`RLG-163`, `RLG-164`). This section is generated:
+> `Commands/materialize-projects.py` writes it from the template, and an edit here is overwritten.
+
+**Write all output in Simplified Technical English (ASD-STE100).**
+`<env-root>/Process/Writing_Standard.md` is the one owning document. The rules are not repeated here.
+
+The standard covers your chat output, every document, every commit message, and every source-code
+comment. **It has one exemption: authored product prose.** That is the text which ships as the
+product — game dialogue, item and lore text, book chapters, marketing copy, user-facing narrative.
+Write that prose in the voice the project needs. Everything you write *about* the work stays in the
+standard.
+
+**A record is exempt from brevity. It is not exempt from the standard.** Keep the full meaning of a
+record. Write it in short, active, plain sentences. Cut the words that carry no meaning.
+
+**Chat output is concise. It is not terse.** Brief, and complete. Short full sentences, the
+answer first, no preamble and no recap of what was just shown. Tables over prose where a table fits.
+Do not drop articles, do not write in fragments, and do not trade grammar for length: the goal is
+fewer tokens with the meaning kept whole.
+
+**This has three registers and they are not the same.** Chat is concise. A durable record - a commit
+message, a fragment, a design document - is exempt from brevity and keeps deliberate prose, because a
+reply is read once and a record is read by every later session. Authored product prose is exempt from
+the standard altogether. Collapsing the three is the mistake this rule exists to stop.
+
+**Say what a thing is FOR before you name it.** Lead with the plain-language purpose, then the
+detail: "the tool that copies the shared rules into every project" before its filename. One clause
+is enough, and only on first mention. Identifiers stay bare - a ticket, a commit or a document ID
+needs no title unless it is ambiguous, and the owner wants them terse. The rule is that the sentence
+AROUND the reference carries meaning, not that references are removed. The test: could the reader
+repeat what was done and why it mattered, from your reply alone? If not, the purpose sentence is
+missing. Owner-decided 2026-08-28, after several sessions of reports written entirely in this
+codebase's own shorthand.
+
+**Re-entry is the thread.** `python <env-root>/Commands/thread.py show` — read it first in every
+session. **Checkpointing is the unit boundary**, which fires the context clear on its own. Do not
+write handoff documents and do not create a `docs/milestones/` folder.
+
+<!-- END standing-policy -->
 
 ## Trigger phrases
 
@@ -196,9 +243,6 @@ a picker. A fifth machine, or a real second shelf, is one entry away.
 
 ## Conventions that bite if ignored
 
-- **Chat output is terse by default; records are not.** Telegraphic style is fine in conversation.
-  **Exempt: commit messages, fragment bodies, changelog entries, and every document** — those are
-  the permanent record and keep full deliberate prose.
 - **A static check cannot tell you the game works.** The packer has passed while it shipped a syntax
   error, a missing file, and two machines that booted to a black screen. **A green build is not
   evidence.** Run the harnesses, and check the artifact rather than the source.
