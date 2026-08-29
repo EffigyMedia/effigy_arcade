@@ -4488,14 +4488,39 @@ function zeroSixty(key){
   return t;
 }
 
-function gearCount(){ return (BODY[optBody] && BODY[optBody].gears) || 6; }
-function gearTable(){
-  const n = gearCount();
+/* ---- EVERY CAR'S OWN GEARBOX, NOT THE PLAYER'S ---------------------------
+   These four read a body KEY. The un-suffixed versions below are the player's,
+   and are now thin wrappers that pass `optBody`.
+
+   The reason is measured. `aiGearFactor` used to call `gearTable()`, which
+   reads `optBody`, so every rival on the road accelerated through whatever
+   gearbox the PLAYER had chosen. Held two miles back in clean air, the same
+   rival recovered from 40% to 90% of its pace in 3.82s with the player in a
+   four-speed MUSCLE and 4.75s with the player in a six-speed FORMULA - a 24%
+   swing caused by a car it has never met. Three sessions, agreeing to within
+   0.2 of a percentage point. See RLG-042.
+   ------------------------------------------------------------------------- */
+function gearCountFor(k){ return (BODY[k] && BODY[k].gears) || 6; }
+function redlineFor(k){ return (BODY[k] && BODY[k].redline) || REDLINE; }
+function pullOf(k){ return (BODY[k] && BODY[k].pull) || 1; }
+function vmaxOf(k){ return MAX_SPD * ((BODY[k] && BODY[k].vmax) || 1); }
+/* Cut tables are cached by gear count. `stepRacers` runs this for eleven cars
+   every frame, and building a fresh array of objects each time - which the
+   player-only version did, once a frame - is a lot of garbage for a table that
+   only ever has three shapes. */
+const GEAR_TABLES = {};
+function gearTableFor(k){
+  const n = gearCountFor(k);
   if(n >= GEARS.length) return GEARS;
-  const cut = GEARS.slice(0, n).map(g => Object.assign({}, g));
-  cut[n-1] = Object.assign({}, cut[n-1], { to: 1.0 });
-  return cut;
+  if(!GEAR_TABLES[n]){
+    const cut = GEARS.slice(0, n).map(g => Object.assign({}, g));
+    cut[n-1] = Object.assign({}, cut[n-1], { to: 1.0 });
+    GEAR_TABLES[n] = cut;
+  }
+  return GEAR_TABLES[n];
 }
+function gearCount(){ return gearCountFor(optBody); }
+function gearTable(){ return gearTableFor(optBody); }
 
 const GEARS = [
   { g:1, ratio:3.82, from:0,    to:0.17, pull:1.55 },
@@ -4610,22 +4635,42 @@ function engineRpm(){
    car you are driving is the fastest thing out here.
    -------------------------------------------------------------------------- */
 const AI_TOP = MAX_SPD * (180/200);
-/* the gear an AI would be in at this speed, as a fraction of ITS top */
-function aiGearFactor(v, top){
-  const r = clamp(v / top, 0, 1);
-  let G = gearTable()[gearTable().length-1];
-  for(const g2 of gearTable()) if(r <= g2.to){ G = g2; break; }
-  const rpm = IDLE + (r / Math.max(0.01, G.to)) * (redline() - IDLE);
-  return torqueAt(Math.min(redline(), rpm)) * (G.ratio / 2.0);
+/* ---- THE GEAR AN AI CAR IS IN, IN ITS OWN GEARBOX ------------------------
+   `key` is the body it is driving. The comment above this function used to say
+   "as a fraction of ITS top" while measuring against a `top` the caller passed
+   - which for a rival was the rubber band's ceiling and for a cruiser was the
+   flat AI_TOP, never the car's own. The player's `gearRpm` has always measured
+   against `MAX_SPD * vmax`, so the two disagreed about what a gear even is.
+   Now they agree. RLG-042. */
+function aiGearFactor(v, key){
+  const table = gearTableFor(key);
+  const r = clamp(v / vmaxOf(key), 0, 1);
+  let G = table[table.length-1];
+  for(const g2 of table) if(r <= g2.to){ G = g2; break; }
+  const rl = redlineFor(key);
+  const rpm = IDLE + (r / Math.max(0.01, G.to)) * (rl - IDLE);
+  return torqueAt(Math.min(rl, rpm), rl) * (G.ratio / 2.0);
 }
-/* how hard any AI car accelerates toward a target speed */
-function aiAccel(v, want, top, dt){
+/* ---- HOW HARD ANY AI CAR ACCELERATES ------------------------------------
+   The same expression the player gets. It was `2850 * aiGearFactor(v, top)`
+   against the player's `1000 * gearFactor() * pull` - a different constant AND
+   no `pull` at all, which is why `r.pull` was assigned to every rival at grid
+   time and never read by anything. The owner's ruling is one physics for every
+   car, so this is now the player's line with the AI's gear model behind it.
+
+   `want` arrives already clamped by the caller, so the rubber band's ceiling
+   still belongs to the caller and is untouched here - the band is the one
+   named exception to the shared-physics rule (RLG-038).
+   ------------------------------------------------------------------------- */
+function aiAccel(v, want, dt, key){
   if(want <= v) return Math.max(-5200*dt, want - v);
-  return Math.min(want - v, 2850 * aiGearFactor(v, top) * dt);
+  return Math.min(want - v, 1000 * aiGearFactor(v, key) * pullOf(key) * dt);
 }
 
-function torqueAt(rpm){
-  const f = (rpm - IDLE) / (redline() - IDLE);       /* 0 at idle, 1 at redline */
+/* `rl` is the redline to measure against; it defaults to the player's car so
+   every existing caller keeps its behaviour exactly. */
+function torqueAt(rpm, rl){
+  const f = (rpm - IDLE) / ((rl || redline()) - IDLE);  /* 0 at idle, 1 at redline */
   /* The bottom has to be BRUTAL or a tall gear still hauls you off the line.
      Below a quarter of the range the engine is lugging and gives you almost
      nothing — which is why fourth from a standstill should crawl. */
@@ -5329,7 +5374,9 @@ function stepRacers(dt){
     const ceiling = AI_TOP * (1 + Math.max(0, band));
     want = Math.min(want, ceiling);
     const rWas = r.spd;
-    r.spd += aiAccel(r.spd, want, ceiling, dt);
+    /* its OWN gearbox and its OWN torque. `ceiling` still clamps `want` above:
+       the rubber band is the one exception to shared physics (RLG-038). */
+    r.spd += aiAccel(r.spd, want, dt, r.body);
     const rDec = (rWas - r.spd) / Math.max(dt, 1/240);
     if(rDec > 900) r.brakeT = 0.35; else if(r.brakeT > 0) r.brakeT -= dt;
     r.braking = (r.brakeT || 0) > 0;
@@ -7110,7 +7157,9 @@ function step(dt){
     if(spd < MAX_SPD*0.10 && dz > 0) want = Math.min(want, spd + 400);
     want = Math.min(want, AI_TOP);
     const kWas = k.spd;
-    k.spd += aiAccel(k.spd, want, AI_TOP, dt);
+    /* a cruiser is a CRUISER and an interceptor is a SUPERCRUISER - they were
+       both accelerating through the player's gearbox too (RLG-042) */
+    k.spd += aiAccel(k.spd, want, dt, k.superc ? 'SUPERCRUISER' : 'CRUISER');
     const kDec = (kWas - k.spd) / Math.max(dt, 1/240);
     if(kDec > 900) k.brakeT = 0.35; else if(k.brakeT > 0) k.brakeT -= dt;
     k.braking = (k.brakeT || 0) > 0;

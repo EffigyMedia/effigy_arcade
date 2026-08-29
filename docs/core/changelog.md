@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-8"></a>
+## [0.9.8] — 2026-08-28
+- Fixed: **every AI car accelerated through the PLAYER's gearbox.** `aiGearFactor` read `gearTable()`
+  and `redline()`, both scoped to `optBody`, so the same rival recovered in 3.82s with the player in
+  a four-speed and 4.75s in a six-speed — a 24% swing caused by a car it never met. Rivals and police
+  now use their own gearbox, redline and top speed. Measured after: **−0.4%**
+  ([RLG-042](../fragments/RLG-042.md)).
+- Fixed: **`r.pull` was assigned to every rival and never read.** AI acceleration was a flat `2850`
+  with no torque term, against the player's `1000 × gearFactor × pull`. Both now use the same
+  expression ([RLG-042](../fragments/RLG-042.md)).
+- Changed: **rivals accelerate about 3.5× less hard than they did**, because they had been pulling
+  that much harder than any car the player can buy. Recovery from 40% to 90% of pace: 3.82s → 13.5s.
+  The rubber band weakens with it — the governor from −7.80% to −3.21%, and a towed rival no longer
+  reaches the raised ceiling. **Awaiting the owner's ruling** on whether `pull` is raised in the
+  fleet table ([RLG-055](../fragments/RLG-055.md)).
+- Changed: gear tables are cached by gear count rather than rebuilt per call — eleven rivals a frame
+  made the old allocation matter ([RLG-042](../fragments/RLG-042.md)).
+
 <a id="v0-9-7"></a>
 ## [0.9.7] — 2026-08-28
 - Added: **a TIME control in the garage** — DUSK, MIDNIGHT, DAWN, MIDDAY. It sets where the day
