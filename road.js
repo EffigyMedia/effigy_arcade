@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.53';
+window.ROAD_BUILD = '0.9.54';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -828,6 +828,28 @@ var snd = {
     AR.sfx.tone({ t:t, freq:hard?140:190, to:48, dur:hard?0.42:0.24, type:'square',
                   gain:hard?0.15:0.10, cutoff:800 });
     AR.sfx.noise({ t:t+0.04, freq:3400, dur:0.16, gain:hard?0.14:0.08, filter:'highpass' });
+  },
+  /* ---- THUNDER (RLG-060) ------------------------------------------------
+     Low noise with a long tail and no attack to speak of: what reaches you from
+     a mile away is the rumble rather than the crack, and the crack is the part
+     the distance eats. `mag` is how close the strike was, which sets both the
+     level and how much high end survives - a near strike keeps some snap, a far
+     one is all bottom.
+
+     Three overlapping noise beds rather than one, because a single burst reads
+     as a door slamming. They are seconds apart at the low end, which is what
+     makes it roll. */
+  thunder: function(mag){
+    if (!AR) return;
+    var t = AR.audio.now(), m = Math.max(0.2, Math.min(1, mag || 0.6));
+    AR.sfx.noise({ t:t, freq:220 + 380*m, to:40, dur:1.1 + 1.6*m,
+                   gain:0.10 + 0.16*m, filter:'lowpass', q:0.9 });
+    AR.sfx.noise({ t:t + 0.12, freq:120, to:30, dur:1.8 + 2.2*m,
+                   gain:0.08 + 0.12*m, filter:'lowpass', q:0.7 });
+    /* the crack, only when it is close */
+    if(m > 0.7)
+      AR.sfx.noise({ t:t, freq:2600, to:600, dur:0.22, gain:0.10*(m-0.7)/0.3,
+                     filter:'highpass' });
   },
   copDown: function(){
     if (!AR) return;
@@ -6101,7 +6123,69 @@ function stepBiome(dt){
   }
 }
 
+/* ---- THE SKY HAS COVER, AND IT IS A RANGE (RLG-057) ---------------------
+   Owner: cloud cover from clear to overcast, storm and snow skies, and the sun
+   and moon bleeding through rather than being switched off.
+
+   `cloud` is that range and it is a WEATHER VARIABLE rather than a consequence
+   of rain: an overcast day with no rain in it is the commonest sky there is,
+   and a sky that is only ever grey when it is raining reads as a filter that
+   comes on with the drops. Rain and snow RAISE it - it does not rain out of a
+   clear sky - and it drifts on its own the rest of the time.
+
+   `storm` is how black the cover is, which is what separates a storm from an
+   overcast afternoon. It follows the rain rather than the cloud, so heavy rain
+   is dark and heavy snow is bright.
+   ------------------------------------------------------------------------- */
+let cloud = 0.15, cloudTarget = 0.15, cloudNext = 0, storm = 0;
+let boltT = 0, boltNext = rnd(6, 18), boltMag = 0, thunderIn = -1;
+function stepSky(dt){
+  cloudNext -= dt;
+  if(cloudNext <= 0){
+    const B = bio();
+    /* a place with weather in it is a place with cloud in it - the same roll
+       the rain uses, read as a tendency rather than as an event */
+    const base = clamp((B.rain + B.snow) * 1.6, 0.05, 0.75);
+    cloudTarget = clamp(base * rnd(0.35, 1.5), 0.02, 1);
+    cloudNext = rnd(25, 70);
+  }
+  /* rain and snow need a sky to fall out of */
+  const need = Math.max(wet, snowy ? wet : 0) * 0.9;
+  const want = Math.max(cloudTarget, need);
+  cloud += (want - cloud) * Math.min(1, dt * 0.10);
+  storm += ((snowy ? wet * 0.35 : wet) - storm) * Math.min(1, dt * 0.25);
+
+  /* ---- LIGHTNING, WHICH BELONGS TO A STORM AND NOTHING ELSE (RLG-060) ----
+     Only in heavy rain under a heavy sky. The flash is two or three strikes in
+     quick succession rather than one clean pulse, because a single white frame
+     reads as a rendering fault; thunder follows at a distance, which is the
+     part that makes it weather rather than a light.
+     ------------------------------------------------------------------- */
+  if(boltT > 0) boltT -= dt;
+  if(thunderIn > 0){
+    thunderIn -= dt;
+    if(thunderIn <= 0){ thunderIn = -1; if(snd && snd.thunder) snd.thunder(boltMag); }
+  }
+  const stormy = wet > 0.5 && cloud > 0.55 && !snowy;
+  boltNext -= stormy ? dt : dt * 0.15;
+  if(stormy && boltNext <= 0){
+    boltMag = rnd(0.45, 1);
+    boltT = 0.42;
+    thunderIn = rnd(0.8, 3.4);        /* distance, heard rather than measured */
+    boltNext = rnd(5, 22);
+  }
+}
+/* how bright the sky is being lit by a strike, this frame */
+function boltFlash(){
+  if(boltT <= 0) return 0;
+  /* three strikes inside the flash, falling away */
+  const f = boltT / 0.42;
+  const flicker = Math.max(0, Math.sin(f * 34)) * (f * f);
+  return clamp(flicker * boltMag, 0, 1);
+}
+
 function stepWeather(dt){
+  stepSky(dt);
   if(optWeather === 'dry'){ wet = wetTarget = 0; return; }
   wetNext -= dt;
   if(wetNext <= 0){
@@ -9259,6 +9343,58 @@ function drawSky(){
   const sky = celestial();
   drawBody(sky.moon, 'moon');
   drawBody(sky.sun,  'sun');
+
+  /* ---- THE CLOUD LAYER, OVER THE SUN AND THE MOON --------------------
+     Drawn AFTER both, which is the whole of "bleeding through": a body behind
+     cloud is not switched off, it is a bright patch with grey over it, and how
+     much of it survives is how heavy the cover is. Under a storm sky the cover
+     is nearly black; under snow it is pale, because snow falls out of a bright
+     sky and rain out of a dark one.
+
+     The bands are wide, slow and few. Cloud at this distance has no detail worth
+     drawing - what says overcast is that the sky stops being a clean gradient.
+     ------------------------------------------------------------------- */
+  if(cloud > 0.02){
+    const dark = mix3(hex3('#8f9db0'), hex3('#141821'), clamp(storm, 0, 1));
+    const lit  = mix3(hex3('#e6edf6'), hex3('#39424f'), clamp(storm*0.8 + n*0.7, 0, 1));
+    ctx.save();
+    ctx.globalAlpha = clamp(cloud * 0.80, 0, 0.92);
+    const cg = ctx.createLinearGradient(0, 0, 0, horizon);
+    cg.addColorStop(0,   rgb(mix3(dark, hex3('#05070c'), n)));
+    cg.addColorStop(0.62, rgb(mix3(lit,  hex3('#0a0d14'), n)));
+    cg.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = cg;
+    ctx.fillRect(0, 0, W, horizon + 2);
+    /* a few banks drifting across, so the cover moves with the road */
+    ctx.globalAlpha = clamp(cloud * 0.5, 0, 0.6);
+    ctx.fillStyle = rgb(mix3(lit, hex3('#0b0e15'), n));
+    for(let i = 0; i < 5; i++){
+      const bw = W * (0.55 + (i % 3) * 0.30);
+      const bx = ((i * 0.37 + dist * 0.0009 * (0.5 + i * 0.12)) % 1.6 - 0.3) * W - camX * W * 0.02;
+      const by = horizon * (0.10 + i * 0.13);
+      const bh = horizon * (0.10 + (i % 2) * 0.05);
+      ctx.beginPath();
+      ctx.ellipse(bx + bw / 2, by, bw / 2, bh / 2, 0, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* ---- AND THE STRIKE ------------------------------------------------
+     A bolt lights the CLOUD, not the ground: what a driver sees is the sky
+     going white for a moment and everything else catching a little of it. */
+  const bolt = boltFlash();
+  if(bolt > 0.01){
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const bg = ctx.createLinearGradient(0, 0, 0, horizon);
+    bg.addColorStop(0, 'rgba(196,214,255,' + (bolt * 0.55) + ')');
+    bg.addColorStop(0.7, 'rgba(170,195,255,' + (bolt * 0.30) + ')');
+    bg.addColorStop(1, 'rgba(150,180,255,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, horizon + 2);
+    ctx.restore();
+  }
 
   if(!skyline) buildSkyline();
   const sw = skyline.width, sh = skyline.height;
@@ -12713,6 +12849,12 @@ requestAnimationFrame(frameLoop);
   API.revs = function(){ return engineRpm(); };
   API.redline = function(){ return redline(); };
   API.setWet = function(v){ wet = wetTarget = v; };
+  /* RLG-057's instrument: the cover and how black it is, and a way to force
+     both so a harness can photograph a storm rather than wait for one */
+  API.sky = function(){ return { cloud:+cloud.toFixed(3), storm:+storm.toFixed(3),
+                                 bolt:+boltFlash().toFixed(3) }; };
+  API.setSky = function(c, st){ cloud = cloudTarget = c; if(st !== undefined) storm = st; };
+  API.strike = function(m){ boltMag = m === undefined ? 0.9 : m; boltT = 0.42; return boltT; };
   API.hp = function(){ return bodyHp(); };
   /* the two derived stats, so a harness reads what the car HAS rather than
      what the table declares - there is nothing left in the table to declare */
