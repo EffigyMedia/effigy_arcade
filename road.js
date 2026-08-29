@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.18';
+window.ROAD_BUILD = '0.9.19';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8410,6 +8410,32 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   if(w > W*3.4){ drawWhy = 'huge'; return null; }
   const h = w * img.height/img.width;
   if(p.y - h > H || p.y < horizon - h){ drawWhy = 'offscreen'; return null; }
+  /* ---- A CAR ARRIVES, IT DOES NOT APPEAR --------------------------------
+     The road is drawn to DRAW*SEG and the sprite buckets reach one segment
+     past it, so a car crossed that line and was suddenly THERE. I twice wrote
+     in the record that a car at that distance is about a pixel wide and too
+     small to notice, and both times I had inferred it from the painter
+     refusing sprites under 1.2 pixels - which is the size at which a sprite
+     stops being drawn, not the size at which one arrives. The owner said it
+     was much bigger than that and the owner was right: measured with the
+     engine's own `spriteWidthAt`, a car at the edge is 6.7 PIXELS on a
+     480-pixel screen. A seventieth of the width of the picture, from nothing.
+
+     The projection is far flatter than raw distance suggests - 20,000 units
+     gives 10.1 pixels and 34,000 still gives 6.0 - so pushing the draw
+     distance out buys much less than it looks like it should, and it costs a
+     slice and its sprites every frame on a phone. Fading the last stretch
+     costs one multiply and turns the pop into an arrival. RLG-061 holds the
+     question of how far the road should be drawn; this is not an answer to it.
+     -------------------------------------------------------------------- */
+  const FADE_IN = 0.16;                 /* the last sixth of the drawn road */
+  let a = alpha === undefined ? 1 : alpha;
+  const edge = DRAW * SEG;
+  if(worldZ - pos > edge * (1 - FADE_IN)){
+    a *= clamp((edge - (worldZ - pos)) / (edge * FADE_IN), 0, 1);
+    if(a <= 0.004){ drawWhy = 'fading'; return null; }
+  }
+  alpha = a;
   /* ---- NO OCCLUSION TEST HERE ANY MORE -------------------------------
      `hiddenBehindHill` asked whether `roadY[idx]` had been filled — but
      sprites are emitted DURING the road pass now, so for any car the slices

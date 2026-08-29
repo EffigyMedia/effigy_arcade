@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-19"></a>
+## [0.9.19] - 2026-08-29
+- Fixed: **cars appeared at the draw edge instead of arriving.** A sprite in the last sixth of the
+  drawn road fades in now. Measured: a car at the edge is **6.7 px wide on a 480 px screen**, not
+  the one pixel the record twice claimed - that figure had been inferred from the painter refusing
+  sprites under 1.2 px, which is where a sprite stops being drawn rather than where one arrives. It
+  reaches full opacity by 25,200 units, so a car comes in over about 4,800
+  ([RLG-061](../fragments/RLG-061.md)).
+- Still open: **how far the road should be drawn.** The fade changes the basis for deciding it - the
+  draw distance can now be judged on how far you can see rather than on how badly things arrive
+  ([RLG-061](../fragments/RLG-061.md)).
+
 <a id="v0-9-18"></a>
 ## [0.9.18] - 2026-08-29
 - Fixed: **looping sounds never came back after the app was backgrounded**, reported from the
