@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-37"></a>
+## [0.9.37] - 2026-08-29
+- Fixed: **the racers have faces in the mirror.** The mirror fades a painted nose in over a
+  simplified block as a car closes, but it looked the nose up by traffic TYPE - and a racer carries a
+  body and a paint instead, so every rival stayed a coloured lozenge while the van beside it had a
+  face. Rival fronts are built on demand, about eight in a race, rather than doubling a hundred
+  cached canvases on a phone ([RLG-074](../fragments/RLG-074.md)).
+
 <a id="v0-9-36"></a>
 ## [0.9.36] - 2026-08-29
 - Added: **`stat-test` measures braking and cornering.** RLG-055 was blocked on it: every body

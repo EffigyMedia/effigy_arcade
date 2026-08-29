@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.36';
+window.ROAD_BUILD = '0.9.37';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -4262,6 +4262,36 @@ function rivalBodies(){
 const RIVAL_BODIES = SPORTS_BODIES.concat(SUPER_BODIES).concat(FORMULA_BODIES);
 const RIVAL_SP = {};
 let TRAFFIC_SP = {}, FRONT_SP = {};
+/* ---- A RIVAL'S FACE, BUILT WHEN IT IS FIRST WANTED -----------------------
+   Every racer in the mirror was drawn as the simplified block: the front cache
+   is keyed by traffic TYPE, and a racer has a body key and a paint instead. So
+   the mirror showed a painted nose for a delivery van and a coloured lozenge
+   for the car that was about to overtake you.
+
+   Built on demand rather than at boot. The rears are cached for every rival
+   body in every paint - nine bodies by twelve colours - and doing the same for
+   the fronts would double a hundred and eight canvases to two hundred and
+   sixteen on a phone, for cars that mostly never appear behind the player. A
+   race puts about eight rivals on the road, so this builds about eight.
+
+   `null` is cached as well as a sprite. A body that cannot produce a front must
+   not be retried sixty times a second.
+   ------------------------------------------------------------------------- */
+const RIVAL_FRONT_SP = {};
+function rivalFront(bodyKey, paintKey){
+  const k = (bodyKey || '') + '|' + (paintKey || '');
+  if(RIVAL_FRONT_SP[k] !== undefined) return RIVAL_FRONT_SP[k];
+  const rs = BODY[bodyKey], pt = PAINT[paintKey];
+  if(!rs || !pt) return (RIVAL_FRONT_SP[k] = null);
+  const L = { lamp:'#d61b3c', lamp2:'#ff7a86', player:true, marque:rs.rear };
+  RIVAL_FRONT_SP[k] = rs.rig
+    ? sprite(220,168, paintRigFront(rs.rig, Object.assign({}, L, pt)))
+    /* `bodyType`, not `kind` - `paintFront` reads the body from there, and
+       passing the wrong field is what once put one nose on five supercars */
+    : sprite(230,215, paintFront(Object.assign({ bodyType:bodyKey }, L, pt)));
+  return RIVAL_FRONT_SP[k];
+}
+
 function buildSprites(){
   const shape = BODY[optBody] || BODY['MATADOR'];
   /* a `rig` body is a road car and uses the traffic painter, at that shape's
@@ -4406,7 +4436,12 @@ function buildSprites(){
   /* ---- AND THEIR FRONTS -------------------------------------------------
      The mirror shows oncoming cars, so it needs the noses. Same paints, same
      shapes, one sprite each — cached at build time like the rears rather than
-     painted per frame. */
+     painted per frame.
+
+     THIS COVERS THE TRAFFIC ONLY, and that was the whole of the fault the
+     owner reported: every RACER in the mirror was the simplified drawn block,
+     because a racer has a `body` and a `paint` and no `type` at all, so the
+     lookup below found nothing and the code fell back. See `rivalFront`. */
   FRONT_SP = {};
   for(const kind of ['sedan','sedan2','coupe','tuner','muscle','pickup','van']){
     const rig = kind === 'sedan2' ? 'sedan' : kind;
@@ -10496,8 +10531,14 @@ function drawMirrorFull(mx, my, mw, mh){
        identity. A blend costs one extra draw on a handful of cars in a strip
        of screen the size of a mirror.
        ------------------------------------------------------------------- */
-    const fs = (!it.cop && it.o.type && FRONT_SP[it.o.type])
-      ? FRONT_SP[it.o.type][(it.o.paintN|0) % FRONT_SP[it.o.type].length] : null;
+    /* a traffic car is keyed by type and a racer by body and paint. The second
+       line is the one that was missing, and without it every rival in the
+       mirror stayed a drawn block however close it came. */
+    const fs = it.cop ? null
+      : (it.o.type && FRONT_SP[it.o.type])
+        ? FRONT_SP[it.o.type][(it.o.paintN|0) % FRONT_SP[it.o.type].length]
+      : it.o.body ? rivalFront(it.o.body, it.o.paint)
+      : null;
     /* fully the block below FADE_LO, fully the sprite above FADE_HI */
     const FADE_LO = 20, FADE_HI = 34;
     const spriteMix = fs ? clamp((sw - FADE_LO) / (FADE_HI - FADE_LO), 0, 1) : 0;
