@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.52';
+window.ROAD_BUILD = '0.9.53';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8155,6 +8155,7 @@ function step(dt){
   /* `runSeconds` was removed with the TEST DRIVE unlock triggers (RLG-049): the 180mph average was its only reader. */
   stepBiome(dt);
   stepWeather(dt);
+  stepLens(dt);
   if(CFG.onStep) CFG.onStep(dt);
 
   /* ---- THE AI BRINGS IT HOME -----------------------------------------
@@ -10573,6 +10574,81 @@ function drawPlayer(){
    A grip change nobody can see is a bug report. Rain streaks the glass, the
    scene darkens, and the road picks up a sheen that brightens with the wet.
    ------------------------------------------------------------------------ */
+/* ---- THE WIPERS AND THE LENS (RLG-060) ---------------------------------
+   Every vehicle has carried a `parts.wipers(g, t)` since the fronts were drawn,
+   and the only thing that has ever called it is the fleet sheet. `t` is where
+   the blade is in its sweep - 0 parked, 1 at full extension - so all that was
+   missing was something to turn.
+
+   ONE CLOCK FOR THE WHOLE ROAD, not a phase per car. Wipers on different cars
+   are not synchronised in life, but a road full of blades each keeping its own
+   time reads as noise at sprite size; one rhythm reads as weather. The speed
+   follows how hard it is raining, which is what a driver does with the stalk.
+
+   `wipePhase` runs continuously and `wipeAt()` turns it into a sweep: out, back
+   and a pause at the bottom, because a wiper rests between strokes and a blade
+   that never stops is a metronome.
+   ------------------------------------------------------------------------- */
+let wipePhase = 0;
+function wipeRate(){
+  const bad = Math.max(wet, snowy);
+  return bad < 0.06 ? 0 : 0.55 + bad * 1.35;      /* strokes a second */
+}
+function wipeAt(){
+  const f = wipePhase % 1;
+  if(f < 0.40) return f / 0.40;                   /* out */
+  if(f < 0.80) return 1 - (f - 0.40) / 0.40;      /* and back */
+  return 0;                                       /* resting at the bottom */
+}
+
+/* ---- RAIN ON THE LENS ----------------------------------------------------
+   The drops that land on the CAMERA rather than on the road. They stay put,
+   they collect while it rains, and the whole screen clears when the wiper
+   passes - which is the moment that makes rain feel like rain rather than like
+   a filter over the picture.
+
+   The player's car has no windscreen in this view, so this is a lens: the
+   convention every racing game uses for a chase camera, and the one the owner
+   asked for by name.
+   ------------------------------------------------------------------------- */
+let lensDrops = [];
+function stepLens(dt){
+  const bad = Math.max(wet, snowy);
+  const before = wipePhase;
+  if(wipeRate() > 0) wipePhase += dt * wipeRate();
+  /* the blade passes the top of its stroke once per revolution: everything on
+     the glass goes with it */
+  if(Math.floor(before) !== Math.floor(wipePhase)) lensDrops.length = 0;
+  if(bad < 0.05){ if(lensDrops.length) lensDrops.length = 0; return; }
+  /* they arrive faster the harder it rains and the faster you are going */
+  const want = Math.round(bad * 26 * (0.5 + spd / MAX_SPD));
+  while(lensDrops.length < want && lensDrops.length < 60)
+    lensDrops.push({ x: Math.random(), y: Math.random()*0.86,
+                     r: 0.6 + Math.random()*1.9, t: 0 });
+  for(const d of lensDrops){
+    d.t += dt;
+    /* a drop on a moving lens crawls down and back, slowly */
+    d.y += dt * 0.012 * (0.4 + spd / MAX_SPD);
+  }
+}
+function drawLens(){
+  if(!lensDrops.length) return;
+  ctx.save();
+  for(const d of lensDrops){
+    const x = d.x * W, y = d.y * H, r = d.r * (W / 420) * 2.2;
+    /* a drop is a lens: bright at the top where the sky is, dark under it */
+    const g2 = ctx.createRadialGradient(x - r*0.3, y - r*0.35, 0, x, y, r);
+    g2.addColorStop(0, 'rgba(226,238,255,.30)');
+    g2.addColorStop(0.65, 'rgba(160,185,215,.13)');
+    g2.addColorStop(1, 'rgba(120,150,185,0)');
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.beginPath(); ctx.arc(x - r*0.28, y - r*0.32, r*0.26, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+}
+
 let rainDrops = null;
 function drawRain(){
   if(wet < 0.02) return;
@@ -10764,6 +10840,8 @@ function draw(){
   drawPursuitWash();
   drawPlayer();
   drawRain();
+  /* the drops on the lens go over the weather and under the HUD */
+  drawLens();
   drawSpeedLines();
   drawFx();
   if(CFG.afterDraw) CFG.afterDraw(ctx);
@@ -10989,11 +11067,16 @@ function drawMirrorFull(mx, my, mw, mh){
          RLG-060 is the ruling that will, in heavy weather. And whatever stands
          in FRONT of them - the muscle car's blower - goes back on top after.
          ---------------------------------------------------------------- */
+      /* ---- AND THEY SWEEP (RLG-060) ------------------------------------
+         Parked was all this ever drew. `wipeAt()` is the road's one sweep
+         clock, so every car behind you wipes together - which reads as weather
+         rather than as noise, and is the whole reason the wipers are drawn on
+         other cars at all. */
       if(fs.wipers && sw > 26){
         ctx.save();
         ctx.translate(x0, p1.y - fh);
         ctx.scale(sw / fs.width, fh / fs.height);
-        fs.wipers(ctx, 0);
+        fs.wipers(ctx, wipeRate() > 0 ? wipeAt() : 0);
         if(fs.overWipers) fs.overWipers(ctx);
         ctx.restore();
       }
