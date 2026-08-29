@@ -14,6 +14,43 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-57"></a>
+## [0.9.57] - 2026-08-29
+- Fixed: **the weather is painted on the ground, not washed over the frame.** Snow cover and the rain
+  darkening were screen-wide rectangles drawn after the road and after the player, so the car got as
+  snowed on as the ground it stood on and a hill a quarter of a mile away got as wet as the tarmac
+  underfoot. The owner rejected the snow half on sight. Both now mix into each surface's own colour,
+  per segment: the ground layer that follows the road over every crest, and the band between it and
+  the horizon ([RLG-057](../fragments/RLG-057.md)).
+- Fixed: **settled snow shows at every hour.** The night and golden-hour ground colours were flat
+  hex values that ignored the cover, so snow vanished at sunset and returned at dawn. That is what
+  the full-screen overlay had been quietly compensating for. Snow now takes the colour of the light
+  on it - near white at noon, warm at golden hour, a dim blue-grey under a moon
+  ([RLG-057](../fragments/RLG-057.md)).
+- Added: **the road itself covers over, and that is the slippery part.** The tarmac whitens as snow
+  accumulates, less than the land beside it so the corridor stays readable, and the markings go under
+  the cover before the surface does ([RLG-057](../fragments/RLG-057.md)).
+- Changed: **snow unwinds at the rate it arrived.** It was a one-way build with a slow leak under it.
+  When the fall stops and the biome still allows snow, the cover runs back down the slope it climbed
+  and the grip returns at the pace it went - a blizzard that covers the ground in forty seconds
+  clears it in forty. A biome that cannot hold snow still takes it away outright
+  ([RLG-057](../fragments/RLG-057.md)).
+- Added: **rain accumulates too, by the same model.** Standing water builds while it rains, unwinds
+  at twice that rate when it stops because water runs off a camber, and clears outright in a biome
+  that cannot rain. Rain used to be a level: a shower was at its worst the second it arrived and no
+  worse ten minutes later. The falling term drops from 0.38 to 0.22 to pay for it, so a shower
+  arriving is gentler and a rain that has set in is worse ([RLG-057](../fragments/RLG-057.md)).
+- Fixed: **the wet sheen was a third full-screen wash, and it reversed the other two.** It added more
+  light than the darkening removed - measured, the tarmac came out 5.4 brighter in the rain than it
+  was dry. A wet road is bright in the distance because of reflection at a grazing angle, so that is
+  where it is painted now: on the road, per segment, scaled by distance, absent at your feet
+  ([RLG-057](../fragments/RLG-057.md)).
+- Added: **`tools/weather-test.py`** - it stops the world, then reads pixels off the frozen frame
+  with only the weather changed between samples. The assertion that carries it is that the player's
+  car does not change colour when the weather does, and the harness proves that check is real by
+  putting the old full-screen wash back through `CFG.afterDraw` and watching the same check go red
+  ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-56"></a>
 ## [0.9.56] - 2026-08-29
 - Changed: **snow accumulates instead of settling to a level.** It used to chase the fall and stop

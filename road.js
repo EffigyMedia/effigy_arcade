@@ -6096,9 +6096,34 @@ function endImpossibleWeather(){
     wetNext = Math.min(wetNext, rnd(3, 8));   /* and try again for this place soon */
     settleMelt = 1;
   }
-  if(!snowy && B.rain <= 0){ wetTarget = 0; wetNext = Math.min(wetNext, rnd(3, 8)); }
+  if(!snowy && B.rain <= 0){
+    wetTarget = 0;
+    wetNext = Math.min(wetNext, rnd(3, 8));
+    /* and the water on the road goes with it, the way the white does. A place
+       that cannot rain does not keep puddles from somewhere else. */
+    poolDry = 1;
+  }
 }
 let settleMelt = 0;
+/* ---- RAIN ACCUMULATES TOO (RLG-057) --------------------------------------
+   Owner, 2026-08-29: "we could honestly put the rain slippage accumulation
+   effect over from the snow accumulation effect." So it is the same model, not
+   a second one. `pool` is standing water the way `settle` is settled snow: it
+   integrates while rain falls, it unwinds down the same slope when the rain
+   stops, and a biome that cannot rain clears it outright.
+
+   WHY IT MATTERS TO A DRIVER, and it is the same reason the snow version does.
+   Before this, rain was a LEVEL - how hard it was falling was the whole of how
+   slippery the road was, so a shower was at its worst the second it arrived and
+   no worse ten minutes later. Water takes time to lie on a road. A long steady
+   rain should end up more dangerous than the same rain does in its first few
+   seconds, and driving out of it should give the grip back rather than switch
+   it back.
+   -------------------------------------------------------------------------- */
+let pool = 0, poolFall = 0, poolDry = 0;
+/* the rate the last fall was depositing at, kept so the thaw can run back down
+   the same slope. See the accumulation block for why `wet` cannot answer this. */
+let settleFall = 0;
 
 function stepBiome(dt){
   if(CFG.biome){
@@ -6216,10 +6241,22 @@ function stepWeather(dt){
      fall and a short heavy one arrive at the same white by different roads,
      which is what snow does.
 
-     MELT IS SLOWER THAN FALL and it is not the same number. Snow lies. What
-     takes it away is the place turning warm - `settleMelt`, set when the biome
-     underneath can no longer hold it - and that is fast, because driving out of
-     a tundra into a desert should not leave the ground white for a minute.
+     IT UNWINDS AT THE RATE IT ARRIVED. Owner, 2026-08-29: "if it stops
+     snowing, and the biome still allows snow, then we will unwind the snow
+     level at the same rate reducing the slippage as well." So the fall is not
+     a one-way ratchet with a slow leak under it - it runs backwards down the
+     same slope it climbed, and the grip comes back at the pace it went.
+
+     `settleFall` is what makes that possible: it remembers the rate the last
+     fall was depositing at, because `wet` is on its way to zero by the time
+     anything needs to unwind and reading it then would give a rate of nothing.
+     A blizzard that covers the ground in forty seconds clears it in forty; a
+     flurry that took four minutes gives it back over four.
+
+     THE BIOME IS THE OTHER WAY OUT, and it is not the same one. `settleMelt`
+     is set when the ground underneath can no longer hold snow at all, and it
+     takes the cover away outright rather than unwinding it - driving out of a
+     tundra into a desert should not leave the sand white behind you.
      ------------------------------------------------------------------- */
   if(settleMelt){
     settle = Math.max(0, settle - dt * 0.55);
@@ -6228,10 +6265,27 @@ function stepWeather(dt){
     /* about forty seconds of heavy snow to cover the ground completely, and
        three or four minutes of a flurry - which is the difference a driver
        should feel between weather passing through and weather setting in */
-    settle = Math.min(1, settle + dt * wet * 0.030);
+    settleFall = wet * 0.030;
+    settle = Math.min(1, settle + dt * settleFall);
   } else {
-    /* it stops falling and the ground stays white for a good while */
-    settle = Math.max(0, settle - dt * 0.012);
+    /* the same slope, walked back down. `settleFall` holds its last value, so
+       a run that has never seen snow unwinds at the flurry rate rather than at
+       zero and stalls at whatever it happens to be carrying. */
+    settle = Math.max(0, settle - dt * (settleFall || 0.006));
+  }
+  /* Standing water, by the same arithmetic and with its own numbers. It builds
+     about twice as fast as snow - a road is wet long before it is white - and
+     it goes twice as fast again once the rain stops, because water runs off a
+     camber and snow has to melt. `poolDry` is the biome's way out, and it is
+     the counterpart of `settleMelt`. */
+  if(poolDry){
+    pool = Math.max(0, pool - dt * 0.55);
+    if(pool < 0.02){ pool = 0; poolDry = 0; }
+  } else if(!snowy && wet > 0.04){
+    poolFall = wet * 0.060;
+    pool = Math.min(1, pool + dt * poolFall);
+  } else {
+    pool = Math.max(0, pool - dt * (poolFall * 2 || 0.012));
   }
   /* rain arrives faster than a road dries */
   const rate = wetTarget > wet ? 0.22 : 0.055;
@@ -6251,8 +6305,14 @@ function stepWeather(dt){
    feel slippery, it feels broken, and the owner's ruling is that weather should
    change how you drive rather than take the car away.
    ------------------------------------------------------------------------- */
-function wetGrip(){  return Math.max(0.34, 1 - wet * (snowy ? 0.42 : 0.38) - settle * 0.30); }
-function wetBrake(){ return Math.max(0.32, 1 - wet * (snowy ? 0.38 : 0.32) - settle * 0.28); }
+/* THE FALL AND WHAT IT LEAVES BEHIND ARE BOTH COSTED, for rain now as well as
+   for snow. The fall is what is coming down; `settle` and `pool` are what is on
+   the road, and on both surfaces it is the thing on the road that is the hazard.
+   The falling half of rain drops from 0.38 to 0.22 to pay for it, so a shower
+   arriving is gentler than it used to be and a rain that has been down for a
+   while is worse - which is the whole of what was asked for. */
+function wetGrip(){  return Math.max(0.34, 1 - wet * (snowy ? 0.42 : 0.22) - settle * 0.30 - pool * 0.26); }
+function wetBrake(){ return Math.max(0.32, 1 - wet * (snowy ? 0.38 : 0.18) - settle * 0.28 - pool * 0.24); }
 let towOverride = -1;               /* -1 = off; a harness may force a tow */
 let horning = false, hornCool = 0, bustT = 0, behindT = 2, slowFor = 0, audioTick = 0, bendT = 0, skySmooth = 0, pushK = 0;
 
@@ -9328,6 +9388,12 @@ function groundBase(mix){
   r = Math.round(r + (238-r)*t); g2 = Math.round(g2 + (238-g2)*t); b2 = Math.round(b2 + (238-b2)*t);
   const dim = nightFall() > 0.5 ? 0.72 : 0.88;
   r = Math.round(r*dim); g2 = Math.round(g2*dim); b2 = Math.round(b2*dim);
+  /* the far field gets the same weather the drawn slices get, or the band under
+     the horizon stays dry green while the ground in front of you is soaked */
+  if(snowy <= 0.5 && (wet > 0 || pool > 0)){
+    const dw = Math.min(1, wet * 0.40 + pool * 0.60) * 0.26;
+    r = Math.round(r + (12-r)*dw); g2 = Math.round(g2 + (18-g2)*dw); b2 = Math.round(b2 + (30-b2)*dw);
+  }
   /* wash it toward the haze the same way distance does, so the gap between
      the furthest drawn slice and the horizon is the colour that slice would
      have been */
@@ -9793,20 +9859,64 @@ function drawRoad(){
        light so it goes deep and blue at night rather than staying lit. */
     /* the biome's own verge, lifted toward white as snow settles on it */
     const B = bio();
-    const mixW = (a, t) => {
-      const n = parseInt(a.slice(1), 16);
-      const r = (n>>16&255), g2 = (n>>8&255), b2 = (n&255);
-      const m = v => Math.round(v + (238 - v) * t);
-      return 'rgb(' + m(r) + ',' + m(g2) + ',' + m(b2) + ')';
+    /* ---- SNOW TAKES THE COLOUR OF THE LIGHT ON IT (RLG-057) -------------
+       `mixW` lifts a ground colour toward snow. The target is an argument
+       rather than a fixed 238, because a single neutral white made the ground
+       at midnight brighter than the sky above it. Snow at noon is near white,
+       at golden hour it is warm, and under a moon it is a dim blue-grey - and
+       it is still the brightest thing in the frame at every one of those.
+       -------------------------------------------------------------------- */
+    const SNOW_DAY = [238,238,238], SNOW_GOLD = [236,214,190], SNOW_NIGHT = [150,162,186];
+    /* what rain does to a surface, as a colour to mix toward rather than as a
+       black sheet over the frame. See the note by the rumble strip below. */
+    const WET_DARK = [12,18,30];
+    /* the sky as the road gives it back - the colour the full-frame sheen used
+       to add, now mixed into the one surface that can actually reflect */
+    const WET_SHEEN = [150,180,220];
+    /* It reads BOTH colour forms, because its own output is an input further
+       down: a slice can be whitened by snow and then darkened by rain, and the
+       second call would have parsed 'rgb(...)' as hex and produced NaN. */
+    const mixW = (a, t, to) => {
+      let r, g2, b2;
+      if(a.charAt(0) === '#'){
+        const n = parseInt(a.slice(1), 16);
+        r = (n>>16&255); g2 = (n>>8&255); b2 = (n&255);
+      } else {
+        const q = a.slice(a.indexOf('(')+1).split(',');
+        r = +q[0]; g2 = +q[1]; b2 = parseFloat(q[2]);
+      }
+      const T = to || SNOW_DAY;
+      const m = (v, i) => Math.round(v + (T[i] - v) * t);
+      return 'rgb(' + m(r,0) + ',' + m(g2,1) + ',' + m(b2,2) + ')';
     };
+    /* Rain and snow are the same weather variable wearing different hats, so
+       only one of them ever acts on a surface. `snowy` decides which.
+
+       IT IS THE WATER ON THE ROAD, MOSTLY, not the rain in the air - the same
+       move `settle` made for snow. A road goes dark within a second or two of
+       the first drops, which is the `wet` term, and then keeps darkening for as
+       long as it rains, which is `pool`. Driving on it for ten minutes should
+       not look like driving on it for ten seconds. */
+    const rainDark = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
     const grassLo = mixW(B.grassLo, settle * 0.85);
     const grassHi = mixW(B.grassHi, settle * 0.85);
     /* `gold` lives in the sky function, so the tint is taken from the day
        cycle directly rather than a variable that is not in scope here. */
+    /* ---- EVERY HOUR WHITENS, NOT ONLY THE DAYLIT ONE --------------------
+       The two branches below were flat hex colours, so settled snow vanished
+       the moment the sun went down and came back at dawn. That is what the
+       full-screen overlay was quietly compensating for, and it is why removing
+       the overlay without this leaves the night ground green under a blizzard.
+       -------------------------------------------------------------------- */
     const nAmt = nightFall(), gAmt = goldenHour();
-    ctx.fillStyle = nAmt > 0.5 ? (dark ? '#12251a' : '#162d1f')
-                  : gAmt > 0.25 ? (dark ? '#2f4a2c' : '#395638')
-                  : (dark ? grassLo : grassHi);
+    /* one light for every surface this segment covers - the ground here, and
+       the tarmac and the rumble strip further down. Snow lit two different
+       ways in one frame reads as two different weathers. */
+    const snowLight = nAmt > 0.5 ? SNOW_NIGHT : gAmt > 0.25 ? SNOW_GOLD : SNOW_DAY;
+    const groundCol = nAmt > 0.5 ? mixW(dark ? '#12251a' : '#162d1f', settle * 0.85, SNOW_NIGHT)
+                    : gAmt > 0.25 ? mixW(dark ? '#2f4a2c' : '#395638', settle * 0.85, SNOW_GOLD)
+                    : (dark ? grassLo : grassHi);
+    ctx.fillStyle = rainDark > 0 ? mixW(groundCol, rainDark * 0.26, WET_DARK) : groundCol;
     /* ---- CULLED THE RIGHT WAY ROUND -----------------------------------
        The road walks FAR to NEAR, so y grows as we come forward and each
        nearer slice should paint over the last. My first cull tested
@@ -9952,19 +10062,55 @@ function drawRoad(){
       }
     }
 
+    /* ---- THE ROAD COVERS TOO, AND THAT IS THE SLIPPERY PART (RLG-057) ---
+       Owner, 2026-08-29: "the longer it snows, the more opaquely white the road
+       segment gets, increasing the slippage as well." The grip half was already
+       true - `wetGrip()` has taken `settle` since the accumulation went in - but
+       the tarmac stayed black under a covered landscape, so the one surface the
+       car is actually on gave no sign of what it had become.
+
+       THE ROAD STAYS DARKER THAN THE VERGE, deliberately, and the rumble strip
+       whitens less than either. Cover the three at one rate and the corridor
+       stops being readable at exactly the moment it is hardest to drive, which
+       is punishing rather than difficult. Traffic keeps a road darker than the
+       field beside it in life as well.
+       -------------------------------------------------------------------- */
+    /* 0.55, not 0.72. At 0.72 the covered road measured BRIGHTER than the land
+       beside it - 174 against 171 - and the corridor stopped being readable at
+       the moment it is hardest to drive. Traffic keeps a road darker than the
+       field beside it in life as well. */
+    const snowRoad = settle * 0.55, snowRumble = settle * 0.45;
     // rumble strip
     const r1 = p1.w*1.13, r2 = p2.w*1.13;
-    ctx.fillStyle = dark ? '#c9c3b4' : '#8c3346';
+    ctx.fillStyle = mixW(mixW(dark ? '#c9c3b4' : '#8c3346', snowRumble, snowLight),
+                         rainDark * 0.20, WET_DARK);
     quad(p1.x-r1, y1, p1.x-p1.w, y1, p2.x-p2.w, y2, p2.x-r2, y2);
     quad(p1.x+p1.w, y1, p1.x+r1, y1, p2.x+r2, y2, p2.x+p2.w, y2);
 
     // asphalt
-    ctx.fillStyle = dark ? '#232231' : '#1e1d2a';
+    /* ---- WET TARMAC IS DARK NEAR AND BRIGHT FAR -------------------------
+       Two mixes, in this order. The first soaks the surface: tarmac is already
+       almost black, so this has to be strong to read at all - at 0.34 it moved
+       the measured brightness by four, which is nothing. The second is the sky
+       coming back off it at a grazing angle, and it is scaled by `1 - fade` so
+       it is absent at your feet and strongest at the far end of the draw. That
+       ordering matters: the reflection sits ON the wet surface, so soaking the
+       road after reflecting it would wash the reflection away.
+       -------------------------------------------------------------------- */
+    const wetRoad = mixW(mixW(dark ? '#232231' : '#1e1d2a', snowRoad, snowLight),
+                         rainDark * 0.55, WET_DARK);
+    ctx.fillStyle = rainDark > 0
+      ? mixW(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN)
+      : wetRoad;
     quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p2.x+p2.w, y2, p2.x-p2.w, y2);
 
+    /* the paint goes under the snow before the tarmac does - a marking is the
+       first thing a cover takes, and it is what tells you the road is covered
+       rather than merely dark */
+    const paint = 1 - settle * 0.85;
     // lane markers (dashed on the dark stripes only)
     if(dark){
-      ctx.fillStyle = 'rgba(255,180,90,'+(0.30+0.5*fade)+')';
+      ctx.fillStyle = 'rgba(255,180,90,'+((0.30+0.5*fade)*paint)+')';
       for(let l=1;l<LANES;l++){
         const o = (l/LANES)*2 - 1;
         const lw1 = p1.w*0.016, lw2 = p2.w*0.016;
@@ -9973,7 +10119,7 @@ function drawRoad(){
       }
     }
     // solid edge lines
-    ctx.fillStyle = 'rgba(240,235,220,'+(0.22+0.35*fade)+')';
+    ctx.fillStyle = 'rgba(240,235,220,'+((0.22+0.35*fade)*paint)+')';
     const e1=p1.w*0.022, e2=p2.w*0.022;
     quad(p1.x-p1.w*0.965-e1,y1,p1.x-p1.w*0.965+e1,y1,p2.x-p2.w*0.965+e2,y2,p2.x-p2.w*0.965-e2,y2);
     quad(p1.x+p1.w*0.965-e1,y1,p1.x+p1.w*0.965+e1,y1,p2.x+p2.w*0.965+e2,y2,p2.x+p2.w*0.965-e2,y2);
@@ -10830,59 +10976,53 @@ function drawRain(){
       rainDrops.push({ x:Math.random(), y:Math.random(), v:0.5+Math.random(), l:0.5+Math.random() });
   }
   ctx.save();
-  if(snowy > 0.5){
-    /* ---- SETTLED SNOW IS TWO LAYERS, NOT ONE SLAB (RLG-057) -------------
-       Owner, 2026-08-29: the cover looked wrong because it was ONE overlay
-       filling everything from the horizon to the bottom of the screen at a
-       single strength. Snow does not lie like that. What you see from a car is
-       two different things:
+  /* ---- THE WEATHER IS ON THE SURFACES, NOT OVER THE FRAME (RLG-057) -----
+     Two screen-wide rectangles used to be painted here, one per weather, both
+     after the road and after the player. Neither is drawn any more, and this
+     note is what is left of them because the reasoning is the load-bearing
+     part.
 
-         THE FAR FIELD, a bright band under the horizon where the ground is
-         nearly edge-on and every flake you can see is stacked into one
-         surface. It is the brightest part of a snowy landscape and it fades
-         DOWNWARD as the ground turns to face you.
+     SNOW. Owner, 2026-08-29, on the version this replaces: "the snow overlay
+     you did wasn't correct." What was here was two vertical gradients over the
+     full width of the frame, so they fogged the tarmac and the car's own
+     bodywork, and neither followed anything. The owner asked for two layers:
+     "one that only follows the ground layer, and another one that's in between
+     the ground layer and under the horizon." Both already exist in this engine
+     as GEOMETRY, so they carry the cover instead:
 
-         THE GROUND IN FRONT OF YOU, which is seen from above at a shallow
-         angle, so the snow on it reads as a wash rather than as a wall. It is
-         strongest at the bottom of the screen and fades UPWARD.
+       the ground layer - the per-segment fill in `drawRoad()`, which walks far
+       to near and builds the silhouette of the land over every crest;
 
-       The two fade into each other across the middle of the ground plane,
-       which is where the eye expects the change and is exactly what the single
-       rectangle could not do.
+       the far field - `groundBase()`, filled from the horizon down to meet the
+       furthest drawn slice, which is the band between the two.
 
-       The verge itself is already whitened per segment where the road is
-       drawn - that part follows the geometry and was always right. These two
-       are the atmosphere over it.
-       ------------------------------------------------------------------ */
-    /* THEY OVERLAP ACROSS MOST OF THE PLANE. The first attempt had the far
-       band stop where the near one started, and the join was a visible line
-       across the grass - the exact fault the single slab had, moved down the
-       screen. Each now runs well into the other's half and reaches zero inside
-       it, so there is nowhere for an edge to be. */
-    const gh = H - horizon;
-    const far = ctx.createLinearGradient(0, horizon, 0, horizon + gh*0.62);
-    far.addColorStop(0,   'rgba(228,238,252,' + (settle*0.34 + wet*0.10) + ')');
-    far.addColorStop(0.34,'rgba(228,238,252,' + (settle*0.15 + wet*0.05) + ')');
-    far.addColorStop(1,   'rgba(228,238,252,0)');
-    ctx.fillStyle = far;
-    ctx.fillRect(0, horizon, W, gh*0.62 + 1);
-    const near = ctx.createLinearGradient(0, H, 0, horizon + gh*0.14);
-    near.addColorStop(0,   'rgba(236,243,255,' + (settle*0.20 + wet*0.06) + ')');
-    near.addColorStop(0.62,'rgba(236,243,255,' + (settle*0.07 + wet*0.02) + ')');
-    near.addColorStop(1,   'rgba(236,243,255,0)');
-    ctx.fillStyle = near;
-    ctx.fillRect(0, horizon + gh*0.14, W, gh*0.86);
-  } else {
-    /* the road goes dark and reflective */
-    ctx.fillStyle = 'rgba(12,18,30,' + (wet*0.26) + ')';
-    ctx.fillRect(0, horizon, W, H - horizon);
-  }
-  ctx.globalCompositeOperation = 'lighter';
-  const sheen = ctx.createLinearGradient(0, horizon, 0, H);
-  sheen.addColorStop(0, 'rgba(150,180,220,' + (wet*0.10) + ')');
-  sheen.addColorStop(1, 'rgba(150,180,220,0)');
-  ctx.fillStyle = sheen;
-  ctx.fillRect(0, horizon, W, H - horizon);
+     RAIN. Owner, same day: "the darken surface for rain should draw on the
+     ground slices the same way." It was the snow slab's twin, one
+     `rgba(12,18,30,...)` rectangle from the horizon down, so the car got as wet
+     as the road under it and a distant hill got as wet as the tarmac at your
+     feet. It is mixed into each surface's own colour per segment now. The
+     tarmac takes the most of it, the verge less, the rumble strip least.
+
+     What is still drawn here is weather in the AIR - the sheen below, and the
+     flakes and streaks after it. Those belong to the frame, because that is
+     where they are.
+     -------------------------------------------------------------------- */
+  /* ---- THE SHEEN WAS THE THIRD WASH, AND IT CANCELLED THE OTHER TWO ----
+     A `lighter` gradient used to be laid over the whole lower frame here at
+     `wet*0.10`. Two things were wrong with it. It brightened the player's car
+     along with everything else, which is the fault the owner named twice. And
+     it added more light than the darkening below it removed - measured, the
+     tarmac came out 5.4 brighter in the rain than it was dry, so the requested
+     effect was not merely diluted, it was reversed.
+
+     A wet road IS bright in the distance, and that is a real thing rather than
+     a gradient: reflection at a grazing angle. Close to the car you look almost
+     straight down at the surface and see wet black tarmac; far away you look
+     nearly along it and see the sky in it. The engine knows each slice's
+     distance, so the reflection is painted per segment on the road itself,
+     scaled by `1 - fade`. The land beside it stays dark, because grass does
+     not reflect.
+     -------------------------------------------------------------------- */
   ctx.restore();
 
   ctx.save();
@@ -12937,6 +13077,10 @@ requestAnimationFrame(frameLoop);
   /* snow and how much of it has settled, so the two-layer cover can be
      photographed rather than driven to */
   API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };
+  /* standing water, the rain half of the accumulation. It is read and set on
+     its own because `wet` is what is falling and `pool` is what is lying. */
+  API.pool = function(){ return +pool.toFixed(3); };
+  API.setPool = function(v){ pool = clamp(v, 0, 1); poolDry = 0; };
   API.strike = function(m){ boltMag = m === undefined ? 0.9 : m; boltT = 0.42; return boltT; };
   API.hp = function(){ return bodyHp(); };
   /* the two derived stats, so a harness reads what the car HAS rather than
