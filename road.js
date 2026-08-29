@@ -11193,14 +11193,6 @@ function drawGarageCar(){
   if(!cv) return;
   const g2 = cv.getContext('2d');
   const dpr = Math.min(2, window.devicePixelRatio||1);
-  /* SHORTER THAN IT WAS. Two cars side by side are limited by the WIDTH of
-     their half, so each is about 130 wide and 100 tall - and a 180-tall canvas
-     left seventy pixels of nothing above them, which on a phone is a screen's
-     worth of scroll for empty space. */
-  cv.width = 300*dpr; cv.height = 128*dpr;
-  cv.style.width='300px'; cv.style.height='128px';
-  g2.setTransform(dpr,0,0,dpr,0,0);
-  g2.clearRect(0,0,300,128);
   const back = SP.player, front = SP.playerFront;
   if(!back) return;
   /* ---- BOTH ENDS, SIDE BY SIDE ------------------------------------------
@@ -11277,17 +11269,40 @@ function drawGarageCar(){
      So: ONE scale for the pair, and each placed by its own content bottom.
      Nothing is corrected, because there is nothing to correct.
      ------------------------------------------------------------------- */
-  const FLOOR = 124, HALF = 150, PAD = 12;
+  /* ---- ALIGNED AT THE TOP, BY THE OWNER'S INSTRUCTION -------------------
+     Bottom alignment puts the two cars on one ground line, which is the
+     physical way to think about it and is what a road does. It is not what
+     reads as aligned here, and the owner has said so plainly: the two ends
+     carry different amounts of car BELOW the body - a front view shows wheels
+     and a bumper where a rear view has a valance to the floor - so a shared
+     floor line pushes the front's roof up and the pair looks wrong however
+     exactly the floor agrees.
+
+     The ROOF is the line a person compares. Both cars now hang from it, and
+     whatever each has underneath falls where it falls.
+     ------------------------------------------------------------------- */
+  const TOP = 6, HALF = 150, PAD = 12, DEEP = 150;
   const pair = front ? [back, front] : [back];
   const boxes = pair.map(bounds);
   const maxW = Math.max.apply(null, boxes.map(b => b.w));
   const maxH = Math.max.apply(null, boxes.map(b => b.h));
-  const sc = Math.min((HALF - PAD*2) / maxW, (FLOOR - 8) / maxH);
+  const sc = Math.min((HALF - PAD*2) / maxW, (DEEP - TOP) / maxH);
+  /* ---- THE CARD IS AS TALL AS THE CARS IN IT ----------------------------
+     The height was a constant, so a card sized for the tallest vehicle in the
+     game left a band of nothing under a low one - and a band of nothing on a
+     phone is a screen's worth of scroll. It is measured now, after the scale
+     is known and before anything is drawn.
+     ------------------------------------------------------------------- */
+  const CARD_H = Math.ceil(TOP + maxH*sc + 6);
+  cv.width = 300*dpr; cv.height = CARD_H*dpr;
+  cv.style.width = '300px'; cv.style.height = CARD_H + 'px';
+  g2.setTransform(dpr,0,0,dpr,0,0);
+  g2.clearRect(0,0,300,CARD_H);
   const put = (img, box, cx) => {
     if(!img) return;
-    /* place the CONTENT: its centre on cx, its bottom on the floor */
+    /* place the CONTENT: its centre on cx, its TOP on the ceiling line */
     const dx = cx - (box.x + box.w/2)*sc;
-    const dy = FLOOR - (box.y + box.h)*sc;
+    const dy = TOP - box.y*sc;
     g2.drawImage(img, dx, dy, img.width*sc, img.height*sc);
   };
   if(!front){ put(back, boxes[0], 150); return; }

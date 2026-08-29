@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-45"></a>
+## [0.9.45] - 2026-08-29
+- Changed: **the garage's two views hang from the roof line.** A shared floor line is the physical
+  way to think about it and is not what reads as aligned: the two ends carry different amounts of car
+  below the body, so a common floor pushes the front's roof up. Owner's instruction - align the tops.
+  The card is also sized to the cars in it rather than to a constant
+  ([RLG-072](../fragments/RLG-072.md)).
+
 <a id="v0-9-44"></a>
 ## [0.9.44] - 2026-08-29
 - Fixed: **the player's front sprite is built in the same box as its rear.** The garage's two views
