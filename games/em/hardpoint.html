@@ -217,11 +217,37 @@ var snd = {
   eng:null, burn:null, air:null, alarm:null, drone:null,
   _tier:'', _started:false, _alarmT:0,
 
+  /* ---- THE ENGINE CAN BE TAKEN AWAY UNDER US ----------------------------
+     Put the app in the background for four seconds and `audio.js` CLOSES the
+     audio context on purpose - a merely suspended session on iOS can wake up
+     after a force-quit. Every held layer below belongs to that context and dies
+     with it, while one-shots carry on working because they build fresh nodes
+     each time they play. Reported from the device as "looping sounds stop"
+     (RLG-065).
+
+     The shell asks every machine to build its held voices again on the new
+     engine. Quietus and the driving games were already listening; this one was
+     not, so its four layers were gone for the rest of the session. The null-out
+     matters as much as the rebuild: `open` only creates a layer it does not
+     already have, and the ones it is holding point at a closed context.
+     -------------------------------------------------------------------- */
+  armed:false,
+  arm: function(){
+    if(snd.armed || !AR || !AR.audio || !AR.audio.onReset) return;
+    snd.armed = true;
+    AR.audio.onReset(function(){
+      snd.eng = snd.burn = snd.air = snd.alarm = snd.drone = null;
+      snd._started = false;
+      snd.open();
+    });
+  },
+
   /* ---- held layers ------------------------------------------------------ */
   open: function(){
     if(!AR || !AR.audio) return false;
     AR.audio.init();
     if(!AR.audio.ctx) return false;
+    snd.arm();
     if(!snd.eng)   snd.eng   = AR.sfx.hold({ freq:60, type:'sawtooth', cutoff:220, q:3.0, verb:0.10 });
     if(!snd.burn)  snd.burn  = AR.sfx.holdNoise({ freq:520, q:0.7 });
     if(!snd.air)   snd.air   = AR.sfx.holdNoise({ freq:260, q:0.4 });

@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-18"></a>
+## [0.9.18] - 2026-08-29
+- Fixed: **looping sounds never came back after the app was backgrounded**, reported from the
+  device. Four seconds hidden closes the audio context on purpose - a suspended iOS session can wake
+  after a force-quit - and every held voice dies with it, while one-shots keep working because they
+  build fresh nodes each time. The rebuild path existed and **could never run**: it lived in the
+  watchdog's `closed` branch, and teardown clears the watchdog and nulls the context the branch
+  tests. `A.audio.init()` fires the rebuild itself now, for every engine after the first
+  ([RLG-065](../fragments/RLG-065.md)).
+- Fixed: **Hardpoint never subscribed to the rebuild at all.** Quietus and `road.js` did; Hardpoint's
+  four held layers could not come back even once the shell started asking
+  ([RLG-065](../fragments/RLG-065.md)).
+- Added: `audio-test` backgrounds the app and asks **which context a held layer belongs to**. Two
+  weaker checks were written first and both were worthless - counting rebuild calls read zero on a
+  fixed build, and reading the layer's gain read a healthy 0.13 on a broken one, because a GainNode
+  on a closed context reports its value quite happily ([RLG-065](../fragments/RLG-065.md)).
+
 <a id="v0-9-17"></a>
 ## [0.9.17] - 2026-08-29
 - Fixed: **cars still popped at the brow of a hill**, reported from the device after v0.9.13. Two

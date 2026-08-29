@@ -63,6 +63,11 @@ var verb = null, noiseBuf = null, hushed = false;
 var bgHidden = false;
 function quiet(){ return hushed || bgHidden; }
 var listeners = [], resetSubs = [];
+/* How many audio engines this page has built. It matters because the SECOND one
+   is not the same event as the first: a game builds its held voices itself when
+   it starts, but after a teardown those voices belong to a context that no
+   longer exists and nobody is going to ask for them again. See `rebuilt()`. */
+var builds = 0;
 var gestured = false;      // a context built before a real gesture starts
 var pending = null;        // suspended and never recovers cleanly on iOS
 
@@ -206,6 +211,7 @@ A.audio = {
     var d = noiseBuf.getChannelData(0);
     for (var i=0;i<n;i++) d[i] = Math.random()*2-1;
 
+    builds++;
     A.audio.ctx = ctx; A.audio.ready = true;
     applyGains(0);
     ctx.onstatechange = flush;
@@ -215,6 +221,29 @@ A.audio = {
     if (ctx.state === 'running'){ gestured = true; flush(); }
     else ctx.resume().then(function(){ gestured = true; flush(); }, function(){});
     startWatchdog();
+    /* ---- A REBUILT ENGINE HAS NO HELD VOICES -----------------------------
+       Reported from the device: after the app has been in the background,
+       looping sounds never come back while one-shots still work.
+
+       Backgrounding for four seconds calls `teardown`, which CLOSES the context
+       to release the hardware - deliberately, because a merely suspended iOS
+       session can wake up after a force-quit. Everything the games are holding -
+       the engine note, the wind, the siren, the horn - dies with it. A one-shot
+       builds fresh nodes every time it plays, so those survive; a held voice is
+       created once and never again, which is exactly the split the owner
+       described.
+
+       The watchdog DID have a rebuild path, and it could never run: `teardown`
+       clears the watchdog's own interval, and the path is behind `if (!ctx)
+       return` in any case. So the subscribers were only ever fired by a branch
+       that was unreachable after the only thing that closes a context.
+
+       Firing them here instead - on any engine after the first - puts the
+       rebuild where the rebuild actually happens. The first build is left
+       alone, because a game builds its own voices when it starts and firing
+       them here as well would create two of everything.
+       ------------------------------------------------------------------- */
+    if (builds > 1) rebuilt();
     return true;
   },
 
@@ -512,6 +541,11 @@ A.note = function(name, oct){
    it. It fixes a stalled start without the player having to touch the mute
    toggle, which is the manual version of exactly this. */
 var wdTimer = null, wdFast = 0;
+/* tell every game to build its held voices again on the engine that exists now */
+function rebuilt(){
+  for (var i = 0; i < resetSubs.length; i++) try { resetSubs[i](); } catch(e){}
+}
+
 function startWatchdog(){
   if (wdTimer){ wdFast = Date.now() + 6000; return; }
   wdFast = Date.now() + 6000;
@@ -524,9 +558,10 @@ function startWatchdog(){
       ctx = null; master = sfxBus = musBus = uiBus = verb = noiseBuf = null;
       A.audio.ctx = null; A.audio.ready = false;
       if (M.timer){ clearInterval(M.timer); M.timer = null; }
-      if (gestured && A.audio.init()){
-        for (var i=0;i<resetSubs.length;i++) try { resetSubs[i](); } catch(e){}
-      }
+      /* `init` fires the subscribers itself now, for every engine after the
+         first, so this branch no longer has to - and it was never the only path
+         that needed it, which is the bug it hid. */
+      if (gestured) A.audio.init();
       return;
     }
     if (ctx.state !== 'running'){
