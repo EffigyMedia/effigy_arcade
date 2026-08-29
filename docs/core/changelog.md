@@ -14,6 +14,15 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-29"></a>
+## [0.9.29] - 2026-08-29
+- Fixed: **the utility vehicles have windscreen wipers.** The pickup, the van and the lorry were the
+  only things on the road without a pair. Each has its own branch in the front painter, because a
+  lorry's face is mostly glass and a pickup's cab sits back behind its bed, and every one of those
+  branches returns before the shared registration at the bottom of the painter - so the wipers were
+  never handed back for those three. Each branch registers its own now, and the lorry's takes the
+  cab's paint rather than the trailer's ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-28"></a>
 ## [0.9.28] - 2026-08-29
 - Changed: **the road cars are earned by distance on the clock.** The old rule was a hundred miles on

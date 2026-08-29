@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.28';
+window.ROAD_BUILD = '0.9.29';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1867,6 +1867,22 @@ function paintRigFront(kind, o){
       rr(g, w*0.085, top+h*0.045, w*0.83, h*0.235, w*0.012); g.fill();
       g.fillStyle = 'rgba(90,120,150,.20)';
       rr(g, w*0.085, top+h*0.045, w*0.83, h*0.070, w*0.012); g.fill();
+      /* ---- THE UTILITY VEHICLES HAVE WIPERS TOO ------------------------
+         These three branches draw their own screens and RETURN before the
+         shared code at the bottom of this painter, which is where the wipers
+         were registered - so the lorry, the van and the pickup were the only
+         things on the road without any. Each registers its own now, from the
+         screen it has just drawn.
+
+         The cab's colour, not the trailer's: `P.cab` is where a lorry's paint
+         arrives, and an arm the colour of the box would belong to the wrong
+         half of the vehicle.
+         ---------------------------------------------------------------- */
+      if(parts){
+        const CW = P.cab || P;
+        parts.wipers = wiperPair(w*0.085, w*0.915, top+h*0.045, top+h*0.280,
+                                 CW.body, CW.hi);
+      }
       g.fillStyle = P.lo; g.fillRect(w*0.492, top+h*0.045, w*0.016, h*0.235);
       /* mirrors on arms, outside the cab */
       for(const mx of [0.012, 0.958]){
@@ -1915,6 +1931,9 @@ function paintRigFront(kind, o){
       rr(g, w*0.11, top+h*0.055, w*0.78, h*0.145, 3); g.fill();
       g.fillStyle = 'rgba(90,120,150,.18)';
       rr(g, w*0.11, top+h*0.055, w*0.78, h*0.045, 3); g.fill();
+      if(parts)
+        parts.wipers = wiperPair(w*0.11, w*0.89, top+h*0.055, top+h*0.200,
+                                 P.body, P.hi);
       for(const mx of [0.020, 0.950]){
         g.fillStyle = P.lo; g.fillRect(w*mx, top+h*0.075, w*0.030, h*0.105);
       }
@@ -1963,6 +1982,12 @@ function paintRigFront(kind, o){
       rr(g, w*0.20, cabTop, w*0.60, bedTop-cabTop+h*0.03, w*0.035); g.fill();
       g.fillStyle = '#10151d';
       rr(g, w*0.245, cabTop+h*0.035, w*0.51, h*0.145, 3); g.fill();
+      /* the pickup's own screen, and its wipers - this branch returns before
+         the shared registration at the bottom of the painter, which is why the
+         three utility vehicles were the only things on the road without any */
+      if(parts)
+        parts.wipers = wiperPair(w*0.245, w*0.755, cabTop+h*0.035, cabTop+h*0.180,
+                                 P.body, P.hi);
       g.fillStyle = 'rgba(130,170,210,.18)';
       rr(g, w*0.255, cabTop+h*0.042, w*0.49, h*0.048, 2); g.fill();
       for(const mx of [0.145, 0.825]){
