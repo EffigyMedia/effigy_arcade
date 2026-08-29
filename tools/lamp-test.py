@@ -161,6 +161,77 @@ with sync_playwright() as p:
         ok(inside, 'the lit lamp occupies the unlit bulb, and nothing else',
            'lit is %s the bulb' % ('inside' if inside else 'OUTSIDE'))
 
+    # ---- THE WHOLE FLEET, WITHOUT KNOWING ONE COLOUR -----------------------
+    # The check above reads the amber casing out of the baked sprite, which only works for an
+    # indicator. Every lamp on every vehicle can be asked the same question with no colour
+    # knowledge at all: the declaration draws the bulb when it is off and the lamp when it is on,
+    # so run BOTH into blank canvases and compare. If the lit pixels leave the unlit bulb, the two
+    # have drifted - which is the one thing this ruling exists to make impossible.
+    fleet = pg.evaluate("""() => {
+        const R = window.__probe.road, f = R.fleet(), out = [];
+        /* Render the declaration off and on into blank canvases and compare PIXELS, not bounding
+           boxes. A box is too coarse for a lamp drawn in more than one piece: shifting one lamp of
+           a pair sideways keeps it inside the pair's own box, and a check on boxes reports nothing.
+           Measured - that exact drift went undetected until this was written per-pixel. */
+        const mask = (spr, id, on) => {
+          const c = document.createElement('canvas');
+          c.width = spr.width; c.height = spr.height;
+          const g = c.getContext('2d');
+          spr.lamps[id](g, on);
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          const m = new Uint8Array(c.width * c.height);
+          let n = 0;
+          for (let i = 0, k = 0; k < m.length; k++, i += 4)
+            if (d[i+3] >= 40) { m[k] = 1; n++; }
+          return { m: m, n: n, w: c.width, h: c.height };
+        };
+        for (const v of f) {
+          const spr = v.spr, name = v.name, L = spr.lamps || {}, ids = Object.keys(L);
+          const rows = [];
+          for (const id of ids) {
+            const off = mask(spr, id, false), on = mask(spr, id, true);
+            let stray = 0;
+            const R2 = 1;   /* one pixel of slack for antialiasing, and no more */
+            for (let y = 0; y < on.h; y++) for (let x = 0; x < on.w; x++) {
+              if (!on.m[y*on.w + x]) continue;
+              let near = 0;
+              for (let dy = -R2; dy <= R2 && !near; dy++) for (let dx = -R2; dx <= R2; dx++) {
+                const yy = y+dy, xx = x+dx;
+                if (yy < 0 || xx < 0 || yy >= on.h || xx >= on.w) continue;
+                if (off.m[yy*on.w + xx]) { near = 1; break; }
+              }
+              if (!near) stray++;
+            }
+            rows.push({ id: id, offN: off.n, onN: on.n, stray: stray });
+          }
+          out.push({ name: name, ids: ids, rows: rows });
+        }
+        return out;
+    }""")
+    ok(len(fleet) > 10, 'the engine reports a fleet', '%d vehicles' % len(fleet))
+    drifted, notail, noturn = [], [], []
+    for v in fleet:
+        if 'tail' not in v['ids']:
+            notail.append(v['name'])
+        # THE FORMULA CAR HAS NO INDICATORS. Owner's ruling, 2026-08-29: a single-seater has none,
+        # and that is what the car IS rather than something unfinished. It is the ONE vehicle
+        # allowed to be missing them, and naming it here is what stops the exception spreading.
+        if 'FORMULA' not in v['name'] and not ('turn.l' in v['ids'] and 'turn.r' in v['ids']):
+            noturn.append(v['name'])
+        for r in v['rows']:
+            if not r['onN'] or not r['offN']:
+                drifted.append('%s %s (draws nothing)' % (v['name'], r['id']))
+            elif r['stray'] > r['onN'] * 0.02:
+                drifted.append('%s %s (%d of %d lit pixels off the bulb)'
+                               % (v['name'], r['id'], r['stray'], r['onN']))
+    ok(not notail, 'every vehicle declares a tail lamp',
+       'missing on ' + ', '.join(notail) if notail else '%d vehicles' % len(fleet))
+    ok(not noturn, 'every vehicle but the FORMULA declares indicators',
+       'missing on ' + ', '.join(noturn) if noturn else 'FORMULA excepted by ruling')
+    ok(not drifted, 'and every lit lamp stays inside its own unlit bulb',
+       ', '.join(drifted[:4]) if drifted else
+       '%d lamps across %d vehicles' % (sum(len(v['ids']) for v in fleet), len(fleet)))
+
     # ---- AND IT IS WIRED INTO THE GAME --------------------------------------
     # The above proves the technique. This proves the path: the indicator, on a car nothing in the
     # game ever signals with, actually changes what is on the screen when it is asked to.

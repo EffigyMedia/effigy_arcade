@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.22';
+window.ROAD_BUILD = '0.9.23';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1430,6 +1430,36 @@ function sprite(w,h,paint){
   return c;
 }
 
+/* Declare a lamp: draw it now, unlit, into the sprite being baked, and keep the
+   same drawing so `lampsHere` can run it lit later. Every converted painter goes
+   through this, which is what makes "the unlit bulb drawn again" true by
+   construction rather than by discipline. */
+function decl(g, lamps, id, draw){
+  draw(g, false);
+  if(lamps) lamps[id] = draw;
+}
+
+/* AMBER, and the same amber on every vehicle. An indicator is a class of lamp
+   rather than a styling choice, and RLG-052 rules that every vehicle has one
+   wired - so the only thing a painter decides is WHERE it sits. */
+/* ---- THE TWO AMBERS -------------------------------------------------------
+   Owner, 2026-08-29: the unlit bulb is a DARK amber and the lit one is a BRIGHT
+   amber. Not a near-black casing and not a white-hot core: it reads as the same
+   lamp in two states, which is what makes a signal legible at a glance rather
+   than a light appearing out of nowhere.
+   ------------------------------------------------------------------------- */
+const AMBER_OFF = '#7a4f12', AMBER_OFF_HI = '#a06a1c';
+const AMBER_ON  = '#ffb02e', AMBER_ON_HI  = '#ffe4a8';
+
+function turnBulb(x, y, bw, bh){
+  return (g, on) => {
+    g.fillStyle = on ? AMBER_ON : AMBER_OFF;
+    rr(g, x, y, bw, bh, Math.min(bw, bh)*0.35); g.fill();
+    g.fillStyle = on ? AMBER_ON_HI : AMBER_OFF_HI;
+    rr(g, x + bw*0.20, y + bh*0.16, bw*0.60, bh*0.34, Math.min(bw, bh)*0.22); g.fill();
+  };
+}
+
 /* Run the declared lamps IN THE FRAME THE CAR IS ALREADY DRAWN IN. The caller
    has whatever transform put the sprite on the screen - for the player that
    includes the lean, which the old glow was drawn outside of, so the lights did
@@ -2082,7 +2112,7 @@ function paintRigFront(kind, o){
 }
 
 function paintRig(kind, o){
-  return (g,w,h)=>{
+  return (g,w,h,lamps)=>{
     const cy = h;
     const P = o;
     const grad = (y0,y1) => { const b = g.createLinearGradient(0,y0,0,y1);
@@ -2127,9 +2157,14 @@ function paintRig(kind, o){
       g.fillRect(w*0.05, cy-h*0.10, w*0.13, h*0.085);
       g.fillRect(w*0.82, cy-h*0.10, w*0.13, h*0.085);
       /* lamps low on the frame */
-      g.fillStyle=P.lamp||'#b8371f';
-      rr(g, w*0.10, cy-h*0.155, w*0.16, h*0.032, 2); g.fill();
-      rr(g, w*0.74, cy-h*0.155, w*0.16, h*0.032, 2); g.fill();
+      decl(g, lamps, 'tail', (gg, on) => {
+        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#b8371f');
+        rr(gg, w*0.10, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
+        rr(gg, w*0.74, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
+      });
+      /* a lorry indicates from the outer end of the same cluster */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.055, cy-h*0.155, w*0.040, h*0.032));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.905, cy-h*0.155, w*0.040, h*0.032));
       return;
     }
 
@@ -2156,9 +2191,14 @@ function paintRig(kind, o){
       g.fillRect(w*0.44, top+(bot-top)*0.55, w*0.045, h*0.016);
       g.fillRect(w*0.515, top+(bot-top)*0.55, w*0.045, h*0.016);
       /* tall narrow lamps up the corners, as vans have */
-      g.fillStyle=P.lamp||'#c8102e';
-      rr(g, w*0.07, bot-h*0.135, w*0.075, h*0.115, 2); g.fill();
-      rr(g, w*0.855, bot-h*0.135, w*0.075, h*0.115, 2); g.fill();
+      decl(g, lamps, 'tail', (gg, on) => {
+        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+        rr(gg, w*0.07, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
+        rr(gg, w*0.855, bot-h*0.135, w*0.075, h*0.115, 2); gg.fill();
+      });
+      /* the amber sits UNDER each corner cluster, where a van carries it */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.07, bot-h*0.018, w*0.075, h*0.030));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.855, bot-h*0.018, w*0.075, h*0.030));
       g.fillStyle='rgba(255,190,120,.85)';
       rr(g, w*0.07, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
       rr(g, w*0.855, bot-h*0.135, w*0.075, h*0.030, 2); g.fill();
@@ -2191,9 +2231,14 @@ function paintRig(kind, o){
       g.fillStyle='#3a3d44';
       g.fillRect(w*0.44, bedTop+h*0.085, w*0.12, h*0.022);
       /* lamps on the bed corners */
-      g.fillStyle=P.lamp||'#c8102e';
-      rr(g, w*0.075, bot-h*0.085, w*0.15, h*0.065, 2); g.fill();
-      rr(g, w*0.775, bot-h*0.085, w*0.15, h*0.065, 2); g.fill();
+      decl(g, lamps, 'tail', (gg, on) => {
+        gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+        rr(gg, w*0.075, bot-h*0.085, w*0.15, h*0.065, 2); gg.fill();
+        rr(gg, w*0.775, bot-h*0.085, w*0.15, h*0.065, 2); gg.fill();
+      });
+      /* the amber is the outboard third of the cluster, as a pickup carries it */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.075, bot-h*0.085, w*0.048, h*0.065));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.877, bot-h*0.085, w*0.048, h*0.065));
       /* chrome bumper, hanging low */
       g.fillStyle='#7d838c';
       rr(g, w*0.06, cy-h*0.115, w*0.88, h*0.040, 3); g.fill();
@@ -2325,23 +2370,36 @@ function paintRig(kind, o){
        what says muscle car from behind */
     const ly = deckY + (bot-deckY)*0.40, lh = h*0.055;
     if(isMuscle){
+      /* the dark housings belong to the car; only the bars are the lamp */
       for(const lx of [0.075, 0.665]){
         g.fillStyle = 'rgba(16,14,16,.85)';
         rr(g, w*lx, ly-h*0.008, w*0.26, lh+h*0.016, 2); g.fill();
-        for(const k of [0.020, 0.100, 0.180]){
-          g.fillStyle = P.lamp || '#c8102e';
-          g.fillRect(w*(lx+k), ly, w*0.060, lh);
-          g.fillStyle = 'rgba(255,120,110,.45)';
-          g.fillRect(w*(lx+k), ly, w*0.060, lh*0.28);
-        }
       }
+      decl(g, lamps, 'tail', (gg, on) => {
+        for(const lx of [0.075, 0.665]){
+          for(const k of [0.020, 0.100, 0.180]){
+            gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+            gg.fillRect(w*(lx+k), ly, w*0.060, lh);
+            gg.fillStyle = on ? 'rgba(255,214,206,.8)' : 'rgba(255,120,110,.45)';
+            gg.fillRect(w*(lx+k), ly, w*0.060, lh*0.28);
+          }
+        }
+      });
+      /* a muscle car indicates through the outermost bar of the cluster */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.020, ly, w*0.050, lh));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.930, ly, w*0.050, lh));
     } else {
-    g.fillStyle = P.lamp || '#c8102e';
-    rr(g, w*0.055, ly, w*0.26, lh, 3); g.fill();
-    rr(g, w*0.685, ly, w*0.26, lh, 3); g.fill();
-    g.fillStyle = 'rgba(255,255,255,.30)';
-    rr(g, w*0.065, ly+lh*0.14, w*0.24, lh*0.30, 2); g.fill();
-    rr(g, w*0.695, ly+lh*0.14, w*0.24, lh*0.30, 2); g.fill();
+    decl(g, lamps, 'tail', (gg, on) => {
+      gg.fillStyle = on ? '#ff3a34' : (P.lamp || '#c8102e');
+      rr(gg, w*0.055, ly, w*0.26, lh, 3); gg.fill();
+      rr(gg, w*0.685, ly, w*0.26, lh, 3); gg.fill();
+      gg.fillStyle = on ? 'rgba(255,222,214,.85)' : 'rgba(255,255,255,.30)';
+      rr(gg, w*0.065, ly+lh*0.14, w*0.24, lh*0.30, 2); gg.fill();
+      rr(gg, w*0.695, ly+lh*0.14, w*0.24, lh*0.30, 2); gg.fill();
+    });
+    /* inboard of each cluster, where a saloon puts it */
+    decl(g, lamps, 'turn.l', turnBulb(w*0.325, ly, w*0.048, lh));
+    decl(g, lamps, 'turn.r', turnBulb(w*0.627, ly, w*0.048, lh));
     /* ---- the boot spoiler, at the FRONT's height ------------------------
        The front draws it at `roofY + 0.030`; this was at `deckY - 0.055`,
        which with roofY 0.22 and deckY 0.52 is most of the car apart. Same
@@ -2429,12 +2487,29 @@ function paintRig(kind, o){
       g.fillRect(w*0.045, deckY+h*0.10, w*0.91, h*0.05);
       /* the star, on the door panel */
       drawMarque(g, 'CRUISER', w*0.5, deckY + h*0.062, h*0.036);
+      /* ---- THE BAR IS FOUR LAMPS, NOT ONE BLOB (RLG-053) ----------------
+         The owner ruled the police bar into scope as four SEPARATELY
+         ADDRESSABLE lamps - front left, front right, rear left, rear right -
+         because that is what lets a bar run a real pattern instead of pulsing
+         as one, and it is what a stopped car with a cruiser behind it will need
+         in RLG-047. The rear sprite carries the rear pair; the front sprite
+         carries the front pair, declared under the same names.
+
+         `drawCopLights` used to paint the lit bar from its own geometry, at its
+         own width and its own height, above a bar the sprite had already drawn.
+         Two descriptions again, and this one did not even agree - the lit bar
+         sat at 0.19 of the car's width against the sprite's 0.235.
+         ---------------------------------------------------------------- */
       g.fillStyle='#1b1e24';
       rr(g, w*0.24, roofY-h*0.055, w*0.52, h*0.045, 2); g.fill();
-      g.fillStyle='#2f6bff';
-      rr(g, w*0.255, roofY-h*0.050, w*0.235, h*0.034, 2); g.fill();
-      g.fillStyle='#ff2b4a';
-      rr(g, w*0.51, roofY-h*0.050, w*0.235, h*0.034, 2); g.fill();
+      decl(g, lamps, 'bar.rl', (gg, on) => {
+        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        rr(gg, w*0.255, roofY-h*0.050, w*0.235, h*0.034, 2); gg.fill();
+      });
+      decl(g, lamps, 'bar.rr', (gg, on) => {
+        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        rr(gg, w*0.51, roofY-h*0.050, w*0.235, h*0.034, 2); gg.fill();
+      });
     }
   };
 }
@@ -3014,12 +3089,20 @@ function paintCar(o){
          the cabin span is where the metal actually is, so the bar SITS on it. */
       const cabH = h*(o.bodyTop - o.cabinTop);
       const bY = h*o.cabinTop + cabH*0.30 - h*0.040;
+      /* the housing is bodywork; the two halves of the bar are lamps, declared
+         under the same names the cruiser's rear sprite uses so that
+         `drawCopLights` does not care which shape of force car it is looking
+         at - RLG-053's test of the seam is exactly that */
       g.fillStyle = '#1b1e24';
       rr(g, w*0.24, bY, w*0.52, h*0.045, 2); g.fill();
-      g.fillStyle = '#2f6bff';
-      rr(g, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); g.fill();
-      g.fillStyle = '#ff2b4a';
-      rr(g, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); g.fill();
+      decl(g, lamps, 'bar.rl', (gg, on) => {
+        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        rr(gg, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
+      });
+      decl(g, lamps, 'bar.rr', (gg, on) => {
+        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        rr(gg, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
+      });
       /* the two stanchions it sits on */
       g.fillStyle = '#2b3038';
       for(const sx of [0.285, 0.695]) g.fillRect(w*sx, bY + h*0.040, w*0.020, h*0.020);
@@ -3333,9 +3416,21 @@ function paintCar(o){
       g.lineTo(w*0.605, cyT + TH2*0.22);
       g.lineTo(w*0.395, cyT + TH2*0.22);
       g.closePath(); g.fill();
-      /* the rain light, low and central */
-      g.fillStyle = '#ff2f3a';
-      g.beginPath(); g.arc(w*0.5, cyT + TH2*0.02, w*0.028, 0, 6.2832); g.fill();
+      /* ---- THE RAIN LIGHT, AND NO INDICATORS ---------------------------
+         Owner's ruling, 2026-08-29: "The formula car does not need turn
+         indicators." A single-seater has none, and that is not an omission to
+         be corrected later - it is what the car is. RLG-052's rule is that
+         every vehicle's lamps are WIRED and that only the driver decides
+         whether they come on; this is the one body where the lamp itself does
+         not exist, so there is nothing to wire.
+
+         The rain light IS declared, because a rain light is a lamp and it is
+         the one this car has. Nothing asks for it yet.
+         --------------------------------------------------------------- */
+      decl(g, lamps, 'tail', (gg, on) => {
+        gg.fillStyle = on ? '#ff5a62' : '#ff2f3a';
+        gg.beginPath(); gg.arc(w*0.5, cyT + TH2*0.02, w*0.028, 0, 6.2832); gg.fill();
+      });
       g.save(); g.globalCompositeOperation='lighter';
       const rl = g.createRadialGradient(w*0.5, cyT+TH2*0.02, 0, w*0.5, cyT+TH2*0.02, w*0.085);
       rl.addColorStop(0,'rgba(255,55,64,.6)'); rl.addColorStop(1,'rgba(255,45,55,0)');
@@ -3382,31 +3477,57 @@ function paintCar(o){
     }
 
     if(kind === 'CREST'){
-      /* the bar */
+      /* the housing is the car; the bar inside it is the lamp */
       g.fillStyle = 'rgba(20,16,18,.85)';
       rr(g, w*0.10, ty - h*0.012, w*0.80, th*1.10, th*0.5); g.fill();
-      const lg = g.createLinearGradient(0, ty, 0, ty+th);
-      lg.addColorStop(0, lamp1); lg.addColorStop(1, lamp0);
-      g.fillStyle = lg;
-      rr(g, w*0.125, ty + h*0.006, w*0.75, th*0.62, th*0.31); g.fill();
-      g.globalAlpha = .55; g.fillStyle = lamp1;
-      rr(g, w*0.14, ty + h*0.012, w*0.72, th*0.22, th*0.11); g.fill();
-      g.globalAlpha = 1;
+      decl(g, lamps, 'tail', (gg, on) => {
+        const lg = gg.createLinearGradient(0, ty, 0, ty+th);
+        lg.addColorStop(0, on ? '#ffe0da' : lamp1);
+        lg.addColorStop(1, on ? '#ff2f3e' : lamp0);
+        gg.fillStyle = lg;
+        rr(gg, w*0.125, ty + h*0.006, w*0.75, th*0.62, th*0.31); gg.fill();
+        gg.globalAlpha = on ? .85 : .55;
+        gg.fillStyle = on ? '#fff1ec' : lamp1;
+        rr(gg, w*0.14, ty + h*0.012, w*0.72, th*0.22, th*0.11); gg.fill();
+        gg.globalAlpha = 1;
+      });
+      /* a full-width bar has nowhere inboard to put an amber, so it goes at the
+         very ends of the housing - which is where the car with a light bar
+         carries it in life as well */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.105, ty + h*0.004, w*0.042, th*0.66));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.853, ty + h*0.004, w*0.042, th*0.66));
     /* the rename missed this one, so STALLION fell past its own branch into
        the `else` and wore MATADOR's chevrons — the second time a stray single
        letter has survived a rename in this file */
     } else if(kind === 'STALLION'){
-      /* four rings, and a dark band linking them */
+      /* four rings, and a dark band linking them. The band and the black
+         surrounds are bodywork; the rings themselves are the lamp. */
       g.fillStyle = 'rgba(18,14,16,.72)';
       rr(g, w*0.30, ty + th*0.22, w*0.40, th*0.42, 2); g.fill();
       for(const cx0 of [w*0.145, w*0.275, w*0.725, w*0.855]){
         g.fillStyle = 'rgba(16,12,14,.9)';
         g.beginPath(); g.arc(cx0, ty + th*0.45, th*0.62, 0, 6.2832); g.fill();
-        g.strokeStyle = lamp0; g.lineWidth = Math.max(1, th*0.30);
-        g.beginPath(); g.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); g.stroke();
-        g.strokeStyle = lamp1; g.lineWidth = Math.max(0.6, th*0.13);
-        g.beginPath(); g.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); g.stroke();
       }
+      /* ---- THE OUTER RINGS ARE THE INDICATORS -----------------------------
+         Owner, 2026-08-29: put the indicator INSIDE the outer circular brake
+         lights rather than as its own lamp at the extremes. Four rings is the
+         car's signature and hanging a fifth shape off each end spoils it - and
+         a real four-ring tail does exactly this, with the outer pair amber.
+         --------------------------------------------------------------------- */
+      const ring = (gg, cx0, c0, c1) => {
+        gg.strokeStyle = c0; gg.lineWidth = Math.max(1, th*0.30);
+        gg.beginPath(); gg.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); gg.stroke();
+        gg.strokeStyle = c1; gg.lineWidth = Math.max(0.6, th*0.13);
+        gg.beginPath(); gg.arc(cx0, ty + th*0.45, th*0.40, 0, 6.2832); gg.stroke();
+      };
+      decl(g, lamps, 'tail', (gg, on) => {
+        for(const cx0 of [w*0.275, w*0.725])
+          ring(gg, cx0, on ? '#ff2f3e' : lamp0, on ? '#ffe0da' : lamp1);
+      });
+      decl(g, lamps, 'turn.l', (gg, on) =>
+        ring(gg, w*0.145, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
+      decl(g, lamps, 'turn.r', (gg, on) =>
+        ring(gg, w*0.855, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI));
     } else {
       /* ---- THE FIRST VEHICLE CONVERTED TO RLG-053 -------------------------
          MATADOR's tail, and only MATADOR's. CREST and STALLION above still
@@ -3422,38 +3543,44 @@ function paintCar(o){
          anywhere, which is the whole ruling.
          ------------------------------------------------------------------ */
       /* angular blades that sweep out and down at the tips */
+      /* ---- THE INDICATOR IS THE OUTERMOST CHEVRON ------------------------
+         Owner, 2026-08-29: on this tail the indicator should BE the outermost
+         chevron rather than a separate amber lamp bolted beside the cluster.
+         A lamp cluster that reads as one design in the dark should read as one
+         design lit, and a car whose signal is a different shape from its brake
+         light looks like two cars.
+
+         So the cluster is split at the source: the tail owns the two inner
+         chevrons, the indicator owns the third. There is still exactly one
+         description of each, which is the whole ruling.
+         ---------------------------------------------------------------- */
+      const chevron = (gg, sideL, k, c0, c1) => {
+        const x0 = sideL ? w*0.54 : w*0.10, dir = sideL ? 1 : -1;
+        const ax = sideL ? x0 + w*0.02 : x0 + w*0.34;
+        const inset = k * w*0.058;
+        const span  = w*0.115 - k*w*0.014;
+        gg.lineCap = 'round'; gg.lineJoin = 'round';
+        gg.strokeStyle = c0;
+        gg.lineWidth = Math.max(1.1, th*0.30 - k*th*0.045);
+        gg.beginPath();
+        gg.moveTo(ax + dir*inset, ty + th*0.20);
+        gg.lineTo(ax + dir*(inset + span), ty + th*0.46);
+        gg.lineTo(ax + dir*inset, ty + th*0.74);
+        gg.stroke();
+        gg.strokeStyle = c1;
+        gg.lineWidth = Math.max(0.5, th*0.12 - k*th*0.018);
+        gg.stroke();
+      };
+      /* the dark housings are bodywork and are drawn once */
+      for(const sideL of [0,1]){
+        const x0 = sideL ? w*0.54 : w*0.10;
+        g.fillStyle = 'rgba(18,14,16,.8)';
+        rr(g, x0, ty, w*0.36, th*0.95, 2); g.fill();
+      }
       const blades = (gg, on) => {
         const c0 = on ? '#ff2f3e' : lamp0;
         const c1 = on ? '#ffe2dc' : lamp1;
-        for(const sideL of [0,1]){
-          const x0 = sideL ? w*0.54 : w*0.10, dir = sideL ? 1 : -1;
-          /* the housing is the dark casing the bulb sits in - it belongs to the
-             car, not to the light, so it is drawn only when the lamp is off */
-          if(!on){
-            gg.fillStyle = 'rgba(18,14,16,.8)';
-            rr(gg, x0, ty, w*0.36, th*0.95, 2); gg.fill();
-          }
-          gg.lineCap = 'round'; gg.lineJoin = 'round';
-          /* ---- THREE chevrons a side ------------------------------------
-             One big arrow read as a single graphic. Three nested, each smaller
-             and further out, reads as a LAMP CLUSTER — and it echoes the triple
-             blades on its own front intakes. */
-          const ax = sideL ? x0 + w*0.02 : x0 + w*0.34;
-          for(let k=0;k<3;k++){
-            const inset = k * w*0.058;
-            const span  = w*0.115 - k*w*0.014;
-            gg.strokeStyle = c0;
-            gg.lineWidth = Math.max(1.1, th*0.30 - k*th*0.045);
-            gg.beginPath();
-            gg.moveTo(ax + dir*inset, ty + th*0.20);
-            gg.lineTo(ax + dir*(inset + span), ty + th*0.46);
-            gg.lineTo(ax + dir*inset, ty + th*0.74);
-            gg.stroke();
-            gg.strokeStyle = c1;
-            gg.lineWidth = Math.max(0.5, th*0.12 - k*th*0.018);
-            gg.stroke();
-          }
-        }
+        for(const sideL of [0,1]) for(const k of [0,1]) chevron(gg, sideL, k, c0, c1);
       };
       blades(g, false);
       if(lamps) lamps.tail = blades;
@@ -3462,26 +3589,10 @@ function paintCar(o){
          The owner's ruling (RLG-052, refined): every vehicle in the game has
          indicators and they are wired to FUNCTION. What differs is only whether
          anything asks them to come on - traffic does before a merge, a racer
-         has no reason to, and the player has no reason and no control. So the
-         bulb is part of the car and the path works, on this car, today.
+         has no reason to, and the player has no reason and no control.
          --------------------------------------------------------------------- */
-      const turn = (sideL) => (gg, on) => {
-        const x0 = sideL ? w*0.54 : w*0.10;
-        /* hard against the outer end of the blade housing, where a real one is */
-        const bx = sideL ? x0 + w*0.305 : x0 + w*0.015;
-        const by = ty + th*0.16, bw = w*0.040, bh = th*0.62;
-        if(!on){
-          gg.fillStyle = 'rgba(40,26,10,.92)';
-          rr(gg, bx, by, bw, bh, bw*0.35); gg.fill();
-          gg.fillStyle = 'rgba(120,78,26,.55)';
-          rr(gg, bx + bw*0.22, by + bh*0.12, bw*0.56, bh*0.28, bw*0.22); gg.fill();
-        } else {
-          gg.fillStyle = '#ffb02e';
-          rr(gg, bx, by, bw, bh, bw*0.35); gg.fill();
-          gg.fillStyle = 'rgba(255,236,190,.9)';
-          rr(gg, bx + bw*0.20, by + bh*0.16, bw*0.60, bh*0.34, bw*0.22); gg.fill();
-        }
-      };
+      const turn = (sideL) => (gg, on) =>
+        chevron(gg, sideL, 2, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI);
       const turnL = turn(0), turnR = turn(1);
       turnL(g, false); turnR(g, false);
       if(lamps){ lamps['turn.l'] = turnL; lamps['turn.r'] = turnR; }
@@ -5127,33 +5238,49 @@ function stepRubber(dt){
 
 /* laid down before the cars, so they sit on top of their own rubber */
 /* the rear lamps of any car ahead of you */
-function tailLights(box, braking){
+function tailLights(box, braking, spr){
   /* below this the lamps are a pixel and a half and nobody can see them */
   if(!box || box.w < 12) return;
   const lit = lampsOn();
   const a = braking ? 0.95 : (lit > 0.01 ? 0.40 * lit : 0);
   if(a <= 0.01) return;
-  /* `drawSprite` returns the CENTRE x — it draws at `p.x - w/2` — and this was
-     treating it as the left edge, so every set of tail lights sat half a car
-     width to the right of the car wearing them. */
-  /* These MUST match what paintCar draws, or the glow floats beside the lamp.
-     The sprite puts them at x = 0.135w and 0.60w, width 0.265w, at
-     y = cy - 0.34h with height 0.11h — copied here rather than guessed. */
+  /* ---- THE LAMP IS THE SPRITE'S (RLG-053) -------------------------------
+     This used to carry a copy of the geometry `paintCar` draws - the comment
+     that stood here said so: "These MUST match what paintCar draws... copied
+     here rather than guessed." Every traffic body declares its lamps now, so
+     the lamp lights itself and there is nothing left to keep in step.
+
+     The bloom is still added on top and still only for a car close enough to
+     show one: a radial gradient per lamp per car per frame was about seventy
+     gradient objects a frame with a full road, and gradients are the most
+     expensive thing in a 2D context.
+     ------------------------------------------------------------------- */
+  if(spr && spr.lamps && spr.lamps.tail){
+    lampsLit(box, spr, ['tail'], a);
+    if(box.w > 30){
+      const cxs = [box.x - box.w*0.24, box.x + box.w*0.24];
+      const ly = box.y - box.h*0.30, r = box.w*0.30;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for(const cx of cxs){
+        const gl = ctx.createRadialGradient(cx, ly, 0, cx, ly, r);
+        gl.addColorStop(0,'rgba(255,40,60,'+(a*0.40)+')');
+        gl.addColorStop(1,'rgba(255,30,50,0)');
+        ctx.fillStyle = gl;
+        ctx.beginPath(); ctx.arc(cx, ly, r, 0, 6.2832); ctx.fill();
+      }
+      ctx.restore();
+    }
+    return;
+  }
+  /* a body that has not been converted still gets the old bloom, from the old
+     hand-copied rectangle. Nothing should reach this any more. */
   const left = box.x - box.w/2;
   const lw = box.w*0.265, lh = box.h*0.11;
   const ly = box.y - box.h*0.34;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for(const lx of [left + box.w*0.135, left + box.w*0.60]){
-    /* NO second lamp rect. The sprite already HAS tail lights painted into it;
-       drawing another one over the top in 'lighter' at almost the same size
-       made the two fight as the car scaled — which reads exactly like z
-       fighting. Only the bloom is added here; the lamp itself is the sprite's. */
-    /* THE FRAME COST. A radial gradient per lamp per car per frame was ~70
-       gradient objects a frame with a full road — gradients are the most
-       expensive thing in a 2D context and they were being rebuilt from
-       scratch every time. The bloom only reads on a car that is actually
-       close, so small ones get the flat lamp and nothing else. */
     if(box.w > 30){
       const gl = ctx.createRadialGradient(lx+lw/2, ly+lh/2, 0, lx+lw/2, ly+lh/2, lw*1.6);
       gl.addColorStop(0,'rgba(255,40,60,'+(a*0.55)+')');
@@ -5164,6 +5291,7 @@ function tailLights(box, braking){
   }
   ctx.restore();
 }
+
 
 /* a chevron board on a post, beside the road */
 /* ---- the checkpoint gantry -----------------------------------------------
@@ -8717,11 +8845,33 @@ function drawReverse(box){
   }
 }
 
-function drawCopLights(box, phase){
+function drawCopLights(box, phase, spr){
   if(!box || box.w < 8) return;
+  const on = Math.sin(phase) > 0;
+  /* ---- THE SPRITE'S OWN BAR, ALTERNATING (RLG-053) ----------------------
+     Blue one beat, red the next, each lit where the sprite drew it. The bloom
+     stays here because it is atmosphere rather than a lamp - it belongs to the
+     air around the car, not to the car - and it is only drawn for a cruiser
+     close enough to show one. */
+  if(spr && spr.lamps && spr.lamps['bar.rl']){
+    lampsLit(box, spr, [on ? 'bar.rl' : 'bar.rr'], 1);
+    if(box.w > 26){
+      const cxp = box.x + box.w*(on ? -0.105 : 0.105);
+      const y = box.y - box.h*0.90, r = box.w*0.60;
+      const glow = on ? 'rgba(77,140,255,' : 'rgba(255,43,74,';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(cxp, y, 0, cxp, y, r);
+      g.addColorStop(0, glow+'.55)'); g.addColorStop(1, glow+'0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cxp, y, r, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+    return;
+  }
+  /* an unconverted force car: the old bar, from its own numbers */
   const lw = box.w*0.19, lh = Math.max(2, box.h*0.055);
   const y = box.y - box.h*0.955;
-  const on = Math.sin(phase) > 0;
   const pairs = [[-0.105, on?'#ff2b4a':'#4a121f', 'rgba(255,43,74,'],
                  [ 0.105, on?'#16233d':'#5b98ff', 'rgba(77,140,255,']];
   for(const [ox,col,glow] of pairs){
@@ -8857,14 +9007,14 @@ function emitBucket(n){
       /* Tail lights on the same schedule the street lamps use, and BRIGHT the
          moment a car is actually shedding speed. Same rule for everything on
          the road, seen from in front or behind. */
-      tailLights(box, it.o.braking);
+      tailLights(box, it.o.braking, img);
     } else if(it.kind==='k'){
       /* a SUPER CRUISER is a MATADOR in force colours — same two paints the
          driveable cruiser gets, so the fleet reads as one force */
       const spr = it.o.superc ? (SP.superCop || SP.cop) : SP.cop;
       const box = drawSprite(spr, it.o.x, it.o.z, it.o.w, it.o.wreck>0?0.85:1);
       noteSprite(it.o);
-      drawCopLights(box, sirenPhase + it.o.phase);
+      drawCopLights(box, sirenPhase + it.o.phase, spr);
       /* backing up: white reverse lamps, low and inboard on the tail */
       if(it.o.spd < -60 && it.o.wreck <= 0) drawReverse(box);
     } else if(it.kind==='r'){
@@ -8873,7 +9023,7 @@ function emitBucket(n){
       for(const p of it.o.parts){
         if(p.cop){
           const box = drawSprite(SP.cop, p.x + p.off, it.o.z - 300, 0.27);
-          drawCopLights(box, sirenPhase);
+          drawCopLights(box, sirenPhase, SP.cop);
         } else {
           drawSprite(SP.barrier, p.x, it.o.z, p.w);
         }
@@ -11163,6 +11313,42 @@ requestAnimationFrame(frameLoop);
      can ask whether the lit lamp lands on the sprite's own bulb rather than
      merely near it. `API.playerSprite` already existed and is the other half. */
   API.playerScreen = function(){ return playerScreen; };
+  /* the whole fleet, for `tools/fleet-sheet.py` and `tools/lamp-test.py`: every
+     sprite a vehicle is drawn from, by name, so a harness can ask what each one
+     declares without knowing how any of them is built */
+  API.fleet = function(){
+    /* Every vehicle the engine can put on the road, with the PAINTER it came
+       from. Two entries that share a painter are the same vehicle in two
+       liveries - the garage SALOON and the traffic sedan are one car - so a
+       reader can group them instead of being shown the fleet twice. */
+    const out = [];
+    for(const k in BODY){
+      const rs = BODY[k];
+      /* the cache only holds bodies a rival can be given, so an unlockable is
+         not in it. Build it the way the cache does rather than leaving a hole. */
+      const spr = RIVAL_SP[k+'|WHITE'] || (rs.rig
+        ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)))
+        : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
+            bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE))));
+      /* the SIGNATURE is the painter, so two liveries of one car group together.
+         For a rig body that is the rig; for a painted body it is the body key
+         itself, because SUPERCRUISER and the police super cruiser are the same
+         car and keying on `rear` would have split them - it is MATADOR's tail. */
+      out.push({ name:'garage ' + k, sig: rs.rig ? 'rig:'+rs.rig : 'car:'+k, spr:spr });
+    }
+    const traf = { sedan:SP.sedan, sedan2:SP.sedan2, coupe:SP.coupe, van:SP.van,
+                   pickup:SP.pickup, truck:SP.truck, taxi:(TRAFFIC_SP.taxi||[])[0],
+                   muscle:(TRAFFIC_SP.muscle||[])[0], tuner:(TRAFFIC_SP.tuner||[])[0] };
+    const trafRig = { sedan:'sedan', sedan2:'sedan', coupe:'coupe', van:'van', pickup:'pickup',
+                      truck:'truck', taxi:'taxi', muscle:'muscle', tuner:'tuner' };
+    for(const k in traf)
+      if(traf[k]) out.push({ name:'traffic ' + k, sig:'rig:'+trafRig[k], spr:traf[k] });
+    if(SP.cop) out.push({ name:'police cruiser', sig:'rig:cop', spr:SP.cop });
+    if(SP.superCop) out.push({ name:'police super', sig:'car:SUPERCRUISER', spr:SP.superCop });
+    return out;
+  };
   API.holdBlink = function(v){ blinkHold = !!v; return blinkHold; };
   API.lampsOf = function(k){
     const spr = k === 'player' ? SP.player : null;

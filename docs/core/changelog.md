@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-23"></a>
+## [0.9.23] - 2026-08-29
+- Added: **the whole fleet declares its lamps** - 84 lamps across 26 vehicles, each a single drawing
+  run unlit into the sprite and again lit on top of it. Every rear sprite in the game is converted
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **every vehicle but the FORMULA has indicators**, wired and working, with the blink phase
+  running whether or not anything is signalling so a lamp that comes on is in step with the road.
+  **The FORMULA has none by the owner's ruling** - a single-seater does not carry them, and that is
+  what the car is rather than something unfinished
+  ([RLG-052](../fragments/RLG-052.md), [RLG-053](../fragments/RLG-053.md)).
+- Added: **the police bar is four addressable lamps**, on the cruiser and the super cruiser alike,
+  so a bar can run a pattern instead of pulsing as one blob. `drawCopLights` no longer paints its
+  own bar over the sprite's - and the two never agreed: the lit bar sat at 0.19 of the car's width
+  against the sprite's 0.235 ([RLG-053](../fragments/RLG-053.md)).
+- Changed: the unlit bulb is a **dark amber** and the lit one a **bright amber**; on MATADOR the
+  indicator **is** the outermost chevron of the tail cluster, and on STALLION it is the outer two of
+  the four rings - so a signal is the same design as the brake light beside it
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: `tools/fleet-sheet.py` and `docs/fleet.png` - the fleet drawn dark, braking, indicating
+  each way, and with the bar. One row per painter, so the garage SALOON and the traffic sedan are
+  one car in two liveries rather than two rows ([RLG-053](../fragments/RLG-053.md)).
+- Added: `lamp-test` checks all 84 lamps with no colour knowledge - it runs each declaration lit and
+  unlit and compares **pixels**. Its first version compared bounding boxes and could not see one
+  lamp of a pair sliding inside the box; a deliberate 3% drift passed. It now fails at 50 stray
+  pixels of 1,156 ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-22"></a>
 ## [0.9.22] - 2026-08-29
 - Added: **a lamp is one drawing, run twice.** A painter declares its lamps as functions that draw
