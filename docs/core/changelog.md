@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-43"></a>
+## [0.9.43] - 2026-08-29
+- Fixed: **an old save no longer starts with the supercars.** The migration that protects a returning
+  player's cars counted the SAVED CAR as evidence of a career, and the old default body was a
+  MATADOR - so every save ever written held a supercar key and every returning player was handed the
+  class for nothing. Only a tournament prize counts now
+  ([RLG-070](../fragments/RLG-070.md)).
+
 <a id="v0-9-42"></a>
 ## [0.9.42] - 2026-08-29
 - Fixed: **the garage's two views are the same car.** Aligning their sprite boxes was not enough and

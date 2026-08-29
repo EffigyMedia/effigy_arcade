@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.42';
+window.ROAD_BUILD = '0.9.43';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -12226,9 +12226,19 @@ if (AR && AR.options) AR.options.define([
        has nothing to lose and starts at the bottom like everyone else.
        ---------------------------------------------------------------- */
     if(!g0.super){
+      /* ---- EVIDENCE OF A CAREER, NOT EVIDENCE OF HAVING PLAYED ----------
+         This also counted the SAVED CAR as evidence, and the old default body
+         was a MATADOR - so every save ever written held a supercar key and
+         every returning player was handed the supercar class for nothing. The
+         owner found it immediately: "it seems like I am starting with
+         supercars in my garage too."
+
+         Only a PRIZE counts now. Those flags are written when a tournament is
+         won and by nothing else, so a save that holds one earned it under the
+         old rules and keeps what it earned.
+         --------------------------------------------------------------- */
       const had = g0.formula || g0.iridescent || g0.cruiser || g0.supercruiser ||
-                  g0.traffic || g0.tuner || g0.muscle ||
-                  (g0.body && classOf(g0.body) !== 'sports');
+                  g0.traffic || g0.tuner || g0.muscle;
       if(had && AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { super:true });
     }
     if(g0.paint && PAINT[g0.paint]){ optPaint = g0.paint; freePaint = g0.paint; }
