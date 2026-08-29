@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-58"></a>
+## [0.9.58] - 2026-08-29
+- Changed: **thunder is loud enough to be thunder.** It was mixed as a background texture, under
+  `dead` and `copDown`, which are ordinary event sounds. Thunder is the loudest thing in a storm and
+  it should make you look up. The three beds now peak at 0.46, 0.37 and 0.20 - about 1.8x - and the
+  headroom was counted rather than guessed: the master bus is 0.85 with no compressor after it, the
+  beds do not peak together, and the worst case through the master is 0.71
+  ([RLG-060](../fragments/RLG-060.md)).
+- Changed: **the gap between the flash and the sound is how far away the strike was.** The delay
+  runs from 250ms to 5s, and the distance is rolled once so the delay, the loudness and the
+  brightness of the flash all follow from it. They used to be rolled separately, so a strike could
+  arrive at full volume five seconds after its flash or barely register a quarter of a second later
+  ([RLG-060](../fragments/RLG-060.md)).
+- Added: **the weather harness measures the sound as well as the paint.** It records the gains
+  thunder hands the synthesizer, rather than reading a value back off the Web Audio graph - RLG-065
+  cost three attempts on that distinction, because a GainNode on a closed context reports a healthy
+  value quite happily. The old levels were put back and both loudness checks were watched going red
+  ([RLG-060](../fragments/RLG-060.md)).
+
 <a id="v0-9-57"></a>
 ## [0.9.57] - 2026-08-29
 - Fixed: **the weather is painted on the ground, not washed over the frame.** Snow cover and the rain

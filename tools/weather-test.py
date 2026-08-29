@@ -114,6 +114,23 @@ GEO = """() => {
   return { W: c.width, H: c.height, horizon: R.horizon(), player: R.playerScreen() };
 }"""
 
+# Thunder's own calls and nobody else's. The wrap goes on, the sound is made, and the wrap comes off
+# inside one evaluate, so nothing another system happens to play in the same window can land in the
+# list. An earlier version wrapped, waited four seconds and read whatever had accumulated: the engine
+# and the tyres use the same `sfx.noise`, and the total came to 10.0 against a master bus of 0.85,
+# which is not a measurement of thunder at all.
+#
+# It also calls `snd.thunder` rather than `API.strike`. `strike` is the LIGHTNING - it sets the flash
+# and its magnitude and returns, and the sound is scheduled seconds later by the step loop from
+# `thunderIn`. A harness that strikes and then listens hears nothing it caused.
+THUNDER_BEDS = """(mag) => {
+  const AR = window.Arcade, R = window.__probe.road;
+  const beds = [], real = AR.sfx.noise;
+  AR.sfx.noise = function(o){ beds.push(o.gain); return real.call(AR.sfx, o); };
+  try { R.snd.thunder(mag); } finally { AR.sfx.noise = real; }
+  return beds;
+}"""
+
 SAMPLE = """(spots) => {
   const S = window.__probe.sample, out = {};
   for(const k in spots){ const b = spots[k]; out[k] = S(b[0], b[1], b[2], b[3]); }
@@ -322,6 +339,57 @@ def main():
                       'falling only %.3f, lying %.3f' % (thin, thick))
             res.check(thick >= 0.34,
                       '%s: and it never takes the car away entirely' % name, '%.3f' % thick)
+
+        print()
+        print('  THUNDER - loud enough to be thunder')
+        # WHAT THE SOUND ASKS FOR, not what the graph reports. RLG-065 cost three
+        # attempts on exactly this distinction: a GainNode on a closed context
+        # reports a healthy value quite happily, and counting rebuilds read zero on
+        # a build that was working. `AR.sfx.noise` is wrapped here and the gains it
+        # is handed are recorded, which is the number the mix is actually made of.
+        beds = sorted(page.evaluate(THUNDER_BEDS, 1.0), reverse=True)
+        near = sorted(page.evaluate(THUNDER_BEDS, 0.25), reverse=True)
+        res.check(len(beds) >= 2, 'a near strike lays down its beds of noise', str(beds))
+        if len(beds) >= 2:
+            # the committed values before this change were 0.26 and 0.20 at m=1
+            res.check(beds[0] >= 0.40, 'the main bed is well above the 0.26 it used to be',
+                      '%.3f' % beds[0])
+            res.check(beds[1] >= 0.32, 'and the roll under it above its old 0.20',
+                      '%.3f' % beds[1])
+            total = sum(beds)
+            res.check(total * 0.85 < 0.98,
+                      'and the beds together stay under the master bus, so it cannot clip',
+                      'sum %.3f, %.3f through a master of 0.85' % (total, total*0.85))
+            res.check(len(near) >= 2 and max(near) < max(beds),
+                      'a distant strike is still quieter than a near one - it is not just louder',
+                      'far %s vs near %s' % (near, beds))
+
+        print()
+        print('  DISTANCE - the gap between the flash and the sound is how far away it is')
+        # 400 rolls of the real function the storm uses, rather than four strikes
+        # waited out at 5 to 22 seconds apart. The distribution is the claim.
+        rolls = page.evaluate('(n) => { const R = window.__probe.road, out = [];'
+                              ' for(let i = 0; i < n; i++) out.push(R.rollStrike());'
+                              ' return out; }', 400)
+        delays = [r['inSec'] for r in rolls]
+        mags = [r['mag'] for r in rolls]
+        res.check(min(delays) >= 0.25 and max(delays) <= 5.0,
+                  'every strike lands between 250ms and 5s of its flash',
+                  '%.3f to %.3f' % (min(delays), max(delays)))
+        res.check(min(delays) < 0.6 and max(delays) > 4.5,
+                  'and the range is actually used, not clustered in the middle',
+                  '%.3f to %.3f over %d rolls' % (min(delays), max(delays), len(rolls)))
+        # the correlation is the whole point: a long wait must mean a quiet roll
+        pairs = sorted(zip(delays, mags))
+        nearest, furthest = pairs[:40], pairs[-40:]
+        near_mag = sum(m for _, m in nearest) / len(nearest)
+        far_mag = sum(m for _, m in furthest) / len(furthest)
+        res.check(near_mag > far_mag + 0.25,
+                  'the strikes that arrive soonest are the loudest, so the delay IS the distance',
+                  'nearest 40 mean %.3f, furthest 40 mean %.3f' % (near_mag, far_mag))
+        res.check(min(mags) >= 0.30,
+                  'and the most distant one is still audible - a storm you cannot hear is not one',
+                  '%.3f' % min(mags))
 
         print()
         print('  THE CHECK IS NOT VACUOUS - the old wash goes back and must be caught')

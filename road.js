@@ -842,13 +842,27 @@ var snd = {
   thunder: function(mag){
     if (!AR) return;
     var t = AR.audio.now(), m = Math.max(0.2, Math.min(1, mag || 0.6));
+    /* ---- AND IT IS LOUD. Owner, 2026-08-29: turn it way up -------------
+       It was mixed as a background texture - 0.26 and 0.20 at the top of its
+       range, under `dead` at 0.26 and `copDown` at 0.22, which are ordinary
+       event sounds. Thunder is not an ordinary event sound. It is the loudest
+       thing in a storm and it is supposed to make you look up.
+
+       THE HEADROOM WAS COUNTED RATHER THAN GUESSED. The master bus is 0.85
+       with no compressor after it, so the ceiling is real and clipping is what
+       is on the other side of it. The three beds peak at 0.46, 0.37 and 0.20,
+       and they do not peak together - the second starts 0.12s after the first
+       and the crack is a fifth of a second long. Worst case through the master
+       is about 0.71, which leaves the engine and the tyres room to be heard
+       under it.
+       ------------------------------------------------------------------ */
     AR.sfx.noise({ t:t, freq:220 + 380*m, to:40, dur:1.1 + 1.6*m,
-                   gain:0.10 + 0.16*m, filter:'lowpass', q:0.9 });
+                   gain:0.18 + 0.28*m, filter:'lowpass', q:0.9 });
     AR.sfx.noise({ t:t + 0.12, freq:120, to:30, dur:1.8 + 2.2*m,
-                   gain:0.08 + 0.12*m, filter:'lowpass', q:0.7 });
+                   gain:0.15 + 0.22*m, filter:'lowpass', q:0.7 });
     /* the crack, only when it is close */
     if(m > 0.7)
-      AR.sfx.noise({ t:t, freq:2600, to:600, dur:0.22, gain:0.10*(m-0.7)/0.3,
+      AR.sfx.noise({ t:t, freq:2600, to:600, dur:0.22, gain:0.20*(m-0.7)/0.3,
                      filter:'highpass' });
   },
   copDown: function(){
@@ -6194,11 +6208,32 @@ function stepSky(dt){
   const stormy = wet > 0.5 && cloud > 0.55 && !snowy;
   boltNext -= stormy ? dt : dt * 0.15;
   if(stormy && boltNext <= 0){
-    boltMag = rnd(0.45, 1);
-    boltT = 0.42;
-    thunderIn = rnd(0.8, 3.4);        /* distance, heard rather than measured */
+    rollStrike();
     boltNext = rnd(5, 22);
   }
+}
+
+/* ---- ONE DISTANCE, AND EVERYTHING ELSE COMES OFF IT (RLG-060) ------------
+   Owner, 2026-08-29: "we could approximate a random distance by having a random
+   time range of 250 ms to 5000 ms." The gap between the flash and the sound IS
+   the distance - about a fifth of a mile a second - so five seconds is a storm
+   on the far side of the valley and a quarter of a second is one overhead.
+
+   The level used to be rolled separately from the delay, so the two disagreed:
+   a strike could arrive at full volume five seconds after its flash, or barely
+   register a quarter of a second later. Now the distance is rolled once and the
+   delay, the loudness and the brightness of the flash all follow from it. A far
+   strike is a dim flash and a long roll; a near one cracks almost on top of you.
+
+   The magnitude floor is 0.38 rather than zero. A storm you cannot hear at all
+   is not a storm at a distance, it is a storm that is not happening.
+   ------------------------------------------------------------------------- */
+function rollStrike(){
+  const far = Math.random();              /* 0 overhead, 1 across the valley */
+  boltMag = 1 - far * 0.62;
+  boltT = 0.42;
+  thunderIn = 0.25 + far * 4.75;          /* 250ms to 5s, which is the distance */
+  return { far: far, mag: boltMag, inSec: thunderIn };
 }
 /* how bright the sky is being lit by a strike, this frame */
 function boltFlash(){
@@ -13082,6 +13117,10 @@ requestAnimationFrame(frameLoop);
   API.pool = function(){ return +pool.toFixed(3); };
   API.setPool = function(v){ pool = clamp(v, 0, 1); poolDry = 0; };
   API.strike = function(m){ boltMag = m === undefined ? 0.9 : m; boltT = 0.42; return boltT; };
+  /* one roll of the distance, the same one the storm makes. It is exposed because
+     a harness cannot wait out `boltNext`, which is 5 to 22 seconds between strikes,
+     and asserting on the numbers in the source instead would test the source. */
+  API.rollStrike = function(){ return rollStrike(); };
   API.hp = function(){ return bodyHp(); };
   /* the two derived stats, so a harness reads what the car HAS rather than
      what the table declares - there is nothing left in the table to declare */
