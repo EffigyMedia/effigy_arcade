@@ -14,6 +14,30 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-28"></a>
+## [0.9.28] - 2026-08-29
+- Changed: **the road cars are earned by distance on the clock.** The old rule was a hundred miles on
+  TEST DRIVE with any settings, opening every road car at once. Now **25 miles unlocks UTILITY** and
+  **50 miles unlocks PRODUCTION**, and both need the timer running. A save holding the retired
+  `traffic` flag keeps both ([RLG-067](../fragments/RLG-067.md)).
+- Changed: **the lorry's trailer takes a much darker shade of the chosen colour** instead of a fixed
+  beige, and the cab still wears the colour itself. It exposed a fault the rear view had hidden - the
+  FRONT painter drew the cab out of the trailer's shade, so the whole face was the colour of the box
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **a hint of the trailer above the lorry's cab.** Head on, a lorry is a cab with a box behind
+  and above it; without that the front view was a tall van ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **the wipers are no longer baked into the sprite.** They were drawn parked into the canvas
+  AND handed back for animation, so anything sweeping them painted a second pair over the first -
+  both poses at once ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **the blower floated above the bonnet**, and it is anchored to the bonnet line now rather
+  than to a number chosen beside it ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the blower is a bug catcher** - three round trumpets with red mouths on a narrow
+  injector hat, a polished ribbed case, and the drive pulley at the bottom, the whole unit about a
+  fifth of the car's width and standing through the bonnet. Two earlier attempts were wide flat
+  scoops, which is bodywork rather than an engine ([RLG-053](../fragments/RLG-053.md)).
+- Verified, not assumed: a cab is always yellow, the two force cars are black-and-white only, and the
+  lorry's cab is what carries the paint ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-27"></a>
 ## [0.9.27] - 2026-08-29
 - Added: **every FRONT declares its lamps** - `head`, `turn.l`, `turn.r`, and the front pair of the

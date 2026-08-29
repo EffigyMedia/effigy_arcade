@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.27';
+window.ROAD_BUILD = '0.9.28';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1828,9 +1828,39 @@ function paintRigFront(kind, o){
     g.beginPath(); g.ellipse(w*0.5, cy-h*0.01, w*0.46, h*0.026, 0, 0, 6.2832); g.fill();
 
     if(kind === 'truck'){
+      /* ---- A HINT OF THE TRAILER, ABOVE THE CAB --------------------------
+         Owner, 2026-08-29. Seen head on, a lorry is a cab with a box standing
+         behind and above it - without that the front view was just a tall van.
+         A band of the TRAILER's colour across the top, wider than the cab and
+         set behind it, is all it takes: the cab becomes something in front of
+         something bigger.
+
+         `P.body` is the trailer's shade on this rig - the cab's own colour
+         arrives separately under `P.cab` - so this needs no colour of its own
+         and follows the paint automatically.
+         ------------------------------------------------------------------ */
+      {
+        const trlTop = h*0.05 - h*0.032;
+        g.fillStyle = P.body;
+        rr(g, w*0.030, trlTop, w*0.94, h*0.058, w*0.010); g.fill();
+        g.fillStyle = 'rgba(0,0,0,.26)';
+        rr(g, w*0.030, trlTop + h*0.042, w*0.94, h*0.016, w*0.006); g.fill();
+      }
       /* the cab: the SAME slab as the trailer \u2014 0.045 to 0.955, top h*0.05 */
       const top = h*0.05, bot = cy - h*0.135;
-      g.fillStyle = grad(top, bot);
+      /* ---- THE CAB WEARS THE COLOUR, THE BOX WEARS THE DARK SHADE ---------
+         `P.body` on this rig is the TRAILER's shade and the cab's own colour
+         arrives under `P.cab` - which the rear painter never needed, because
+         from behind a lorry IS its box. From the front it is the cab you see,
+         and painting it out of `P` made the whole face the colour of the box.
+         ------------------------------------------------------------------ */
+      const C = P.cab || P;
+      const cabGrad = (y0, y1) => {
+        const b = g.createLinearGradient(0, y0, 0, y1);
+        b.addColorStop(0, C.hi); b.addColorStop(0.48, C.body); b.addColorStop(1, C.lo);
+        return b;
+      };
+      g.fillStyle = cabGrad(top, bot);
       rr(g, w*0.045, top, w*0.91, bot-top, w*0.015); g.fill();
       /* a lorry's face is mostly screen */
       g.fillStyle = '#141c26';
@@ -2047,11 +2077,17 @@ function paintRigFront(kind, o){
     g.lineTo(w*(0.5+pCab/2+0.03), pDeck-h*0.015);
     g.lineTo(w*(0.5-pCab/2-0.03), pDeck-h*0.015);
     g.closePath(); g.fill();
-    /* the wipers sit on that screen, parked, and can be swept from here */
+    /* ---- THE WIPERS ARE NOT BAKED IN -----------------------------------
+       They were drawn into the sprite parked AND handed back for animation, so
+       anything that swept them painted a second pair over the first - both
+       poses at once, which is what the owner saw in the last cell of the sheet.
+
+       A wiper is a moving part. It is registered here and drawn by whoever
+       draws the car, at whatever point in its sweep - parked is just t = 0.
+       ------------------------------------------------------------------ */
     if(parts){
       parts.wipers = wiperPair(w*(0.5-pCab/2-0.02), w*(0.5+pCab/2+0.02),
                                pRoof+h*0.022, pDeck-h*0.015, P.body, P.hi);
-      parts.wipers(g, 0);
     }
     g.fillStyle = 'rgba(90,120,150,.18)';
     g.beginPath();
@@ -2106,27 +2142,75 @@ function paintRigFront(kind, o){
 
          It is also handed back as `parts.overWipers`, so anything that animates
          the wipers can put it back on top afterwards. */
-      const bx = w*0.5, bw2 = w*0.185, bTop = pDeck - h*0.150;
+      /* ---- A BUG CATCHER, FROM THE OWNER'S REFERENCE -----------------------
+         Two earlier attempts were a wide flat slab with a mouth cut in it, and
+         that is a hood scoop rather than a blower. The owner sent a photograph
+         of a Hemi with the hood off, and what is actually there is:
+
+           THREE ROUND TRUMPETS in a row, standing proud and open to the sky,
+           with coloured mouths - the owner's second reference shows them red;
+           a small INJECTOR HAT under them, the width of the four;
+           a polished CASE below that, ribbed, standing on the block;
+           and the DRIVE PULLEY at the bottom where the belt runs.
+
+         And it is NARROW - about a fifth of the car's width, centred, coming up
+         through a hole in the bonnet. The old one spanned most of the cabin,
+         which is why it read as bodywork instead of as an engine.
+         ------------------------------------------------------------------ */
+      const bx = w*0.5, bw2 = w*0.105, bTop = pDeck - h*0.150;
       const blower = (g) => {
-      /* the scoop mouth, facing you, with a shadow under its lip */
-      g.fillStyle = '#0c0e12';
-      rr(g, bx - bw2, bTop, bw2*2, h*0.052, h*0.008); g.fill();
-      g.fillStyle = 'rgba(120,132,148,.30)';
-      rr(g, bx - bw2*0.94, bTop + h*0.004, bw2*1.88, h*0.014, h*0.006); g.fill();
-      /* the case below it, sitting on the bonnet */
-      const cg = g.createLinearGradient(0, bTop + h*0.052, 0, pDeck);
-      cg.addColorStop(0, '#7f8794'); cg.addColorStop(1, '#3d434d');
-      g.fillStyle = cg;
-      rr(g, bx - bw2*0.88, bTop + h*0.046, bw2*1.76, h*0.038, h*0.006); g.fill();
-      /* the drive belt at one end, and the butterflies across the mouth */
-      g.strokeStyle = 'rgba(18,20,26,.85)';
-      g.lineWidth = Math.max(1, w*0.008);
-      for(let k = 1; k < 4; k++){
-        const xx = bx - bw2 + (bw2*2)*(k/4);
-        g.beginPath(); g.moveTo(xx, bTop + h*0.004); g.lineTo(xx, bTop + h*0.048); g.stroke();
-      }
-      g.fillStyle = 'rgba(255,255,255,.16)';
-      rr(g, bx - bw2*0.88, bTop + h*0.046, bw2*1.76, h*0.010, h*0.005); g.fill();
+        /* three across the hat, so each one is a third of it and big enough to
+           still read as a trumpet at the size a car is drawn on the road */
+        const stackR = bw2*0.32, stackY = bTop + stackR*0.6 + h*0.004;
+        const hatTop = stackY + stackR + h*0.002;
+        const hatH   = h*0.020;
+        const caseTop = hatTop + hatH;
+
+        /* THE CASE - polished, ribbed, standing on the bonnet */
+        const cg = g.createLinearGradient(bx - bw2, 0, bx + bw2, 0);
+        cg.addColorStop(0, '#4c525c'); cg.addColorStop(0.24, '#c9d2de');
+        cg.addColorStop(0.52, '#7c848f'); cg.addColorStop(0.82, '#aab3c0');
+        cg.addColorStop(1, '#3a3f47');
+        g.fillStyle = cg;
+        const caseH = Math.max(h*0.030, pDeck - caseTop);
+        rr(g, bx - bw2*0.90, caseTop, bw2*1.80, caseH, h*0.004); g.fill();
+        g.strokeStyle = 'rgba(20,24,30,.40)';
+        g.lineWidth = Math.max(1, h*0.003);
+        for(let k = 1; k < 4; k++){
+          const yy = caseTop + caseH*(k/4);
+          g.beginPath(); g.moveTo(bx - bw2*0.84, yy); g.lineTo(bx + bw2*0.84, yy); g.stroke();
+        }
+        /* the pulley, low and central */
+        g.fillStyle = '#191d23';
+        g.beginPath(); g.arc(bx, pDeck - h*0.012, h*0.014, 0, 6.2832); g.fill();
+        g.strokeStyle = 'rgba(190,200,214,.5)';
+        g.lineWidth = Math.max(1, h*0.003);
+        g.beginPath(); g.arc(bx, pDeck - h*0.012, h*0.014, 0, 6.2832); g.stroke();
+
+        /* THE INJECTOR HAT - the plate the trumpets stand on */
+        const hg = g.createLinearGradient(0, hatTop, 0, hatTop + hatH);
+        hg.addColorStop(0, '#dbe2ec'); hg.addColorStop(1, '#6f7784');
+        g.fillStyle = hg;
+        rr(g, bx - bw2, hatTop, bw2*2, hatH, h*0.004); g.fill();
+
+        /* THREE TRUMPETS, open to the sky */
+        for(let k = 0; k < 3; k++){
+          const cx0 = bx - bw2 + (bw2*2)*((k + 0.5)/3);
+          /* the barrel */
+          const bg = g.createLinearGradient(cx0 - stackR, 0, cx0 + stackR, 0);
+          bg.addColorStop(0, '#5d646f'); bg.addColorStop(0.4, '#d5dce6');
+          bg.addColorStop(1, '#6b727d');
+          g.fillStyle = bg;
+          rr(g, cx0 - stackR, stackY - stackR*0.2, stackR*2, hatTop - stackY + stackR*0.2,
+             stackR*0.3); g.fill();
+          /* the flared mouth, its coloured throat, and the dark bore inside */
+          g.fillStyle = '#e8eef7';
+          g.beginPath(); g.ellipse(cx0, stackY, stackR*1.10, stackR*0.58, 0, 0, 6.2832); g.fill();
+          g.fillStyle = '#b8202c';
+          g.beginPath(); g.ellipse(cx0, stackY, stackR*0.82, stackR*0.42, 0, 0, 6.2832); g.fill();
+          g.fillStyle = '#0b0d11';
+          g.beginPath(); g.ellipse(cx0, stackY, stackR*0.46, stackR*0.22, 0, 0, 6.2832); g.fill();
+        }
       };
       blower(g);
       if(parts) parts.overWipers = blower;
@@ -3052,12 +3136,12 @@ function paintFront(o){
     g.lineTo(w*(0.5+cw2*gTop), gRoof);
     g.quadraticCurveTo(w*(0.5+cw2*gCtl), gRoof, w*(0.5+wid*gSpring), topY - h*0.005);
     g.closePath(); g.fill();
-    /* the wipers, parked along the bottom of the screen. A supercar's glass is
-       a curve rather than a box, so the rectangle is the span it fills. */
+    /* registered, not baked - see the note in `paintRigFront`. A supercar's
+       glass is a curve rather than a box, so the rectangle is the span it
+       fills. */
     if(parts){
       parts.wipers = wiperPair(w*(0.5-wid*0.62), w*(0.5+wid*0.62),
                                gRoof, topY - h*0.005, o.body, o.hi);
-      parts.wipers(g, 0);
     }
     for(const sx of [-1,1]){
       g.fillStyle = o.body;
@@ -4083,12 +4167,20 @@ function buildSprites(){
              : shape.rig === 'truck'  ? [230,250]
              : shape.rig === 'sedan' || shape.rig === 'taxi' ? [200,164]
              : [206,150];
-    /* ---- THE COLOUR IS THE CAB'S, NOT THE TRAILER'S ---------------------
-       A lorry's trailer is the plain beige panel it always is. Painting the
-       player's lorry in the chosen colour painted the BOX, which is the one
-       part of it that never changes. The cab takes the colour instead. */
+    /* ---- THE TRAILER IS THE COLOUR, MUCH DARKER -------------------------
+       It used to be a fixed beige panel, on the grounds that a lorry's box is
+       the part that never changes. Owner, 2026-08-29: let it inherit a much
+       darker shade of the chosen colour instead. That keeps what the rule was
+       protecting - the cab is still what wears the colour, and the box is still
+       the quiet half - while making a lorry you picked a colour for actually
+       look like it.
+
+       `shade` at 0.34 is dark enough that WHITE reads as a grey box rather than
+       as a second white cab, which was the failure the beige was avoiding.
+       ------------------------------------------------------------------ */
     const rigPaint = (shape.rig === 'truck')
-      ? Object.assign({}, pt, { body:'#8a8477', hi:'#a8a293', lo:'#4e4a41',
+      ? Object.assign({}, pt, { body:shade(pt.body, 0.34), hi:shade(pt.hi, 0.34),
+                                lo:shade(pt.lo, 0.34),
                                 cab: { body:pt.body, hi:pt.hi, lo:pt.lo } })
       : pt;
     SP.player = sprite(rz[0], rz[1],
@@ -7420,12 +7512,37 @@ function step(dt){
      race — the tournament rewards winning, and this rewards lasting. All three
      conditions matter: without the clock there is no pressure, and without
      pursuit there is nothing to survive. */
-  /* a hundred miles on TEST DRIVE, whatever the settings, opens the traffic */
-  if(mode !== 'race' && dist >= 100 && !unlocked('traffic')){
-    if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { traffic:true });
-    wonTraffic = true;
-    snd.checkpoint();
-    flashWarn('TRAFFIC UNLOCKED');
+  /* ---- THE ROAD CARS ARE EARNED BY DISTANCE, ON THE CLOCK --------------
+     Owner, 2026-08-29, replacing the old rule. That was a hundred miles on TEST
+     DRIVE with any settings at all, and it opened every road car at once - one
+     enormous wall and then nothing.
+
+     Two now, and both need the clock RUNNING. Without the timer a hundred miles
+     is a thing you can leave the game doing; with it, distance is something you
+     have to keep earning at checkpoints, which is what makes it a reward rather
+     than an errand.
+
+       25 miles   the UTILITY class - pickup, van, lorry
+       50 miles   the PRODUCTION class - saloon, coupe, cab
+
+     Utility first because they are the odd ones to drive, and the ordinary
+     saloon is the better prize for going twice as far. Each announces itself as
+     it lands, so twenty-five miles is a moment rather than a discovery in a
+     menu later.
+     ------------------------------------------------------------------- */
+  if(mode !== 'race' && timedRun){
+    if(dist >= 25 && !unlocked('utility')){
+      if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { utility:true });
+      wonTraffic = true;
+      snd.checkpoint();
+      flashWarn('UTILITY UNLOCKED');
+    }
+    if(dist >= 50 && !unlocked('production')){
+      if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { production:true });
+      wonTraffic = true;
+      snd.checkpoint();
+      flashWarn('PRODUCTION UNLOCKED');
+    }
   }
   /* ---- THE POLICE CARS ARE NOT WON OUT HERE ANY MORE ---------------------
      Both used to be earned on TEST DRIVE: twenty miles on the clock under
@@ -10092,6 +10209,23 @@ function drawMirrorFull(mx, my, mw, mh){
     if(spriteMix >= 1){
       const fh = sw * fs.height / fs.width;
       ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
+      /* ---- THE WIPERS ARE DRAWN, NOT BAKED (RLG-053) --------------------
+         The sprite no longer carries them, because a part that moves cannot be
+         part of a still picture - anything sweeping them painted a second pair
+         over the first. So they are drawn here, parked, every frame.
+
+         `wipeT` is where the blade is in its sweep. Nothing drives it yet;
+         RLG-060 is the ruling that will, in heavy weather. And whatever stands
+         in FRONT of them - the muscle car's blower - goes back on top after.
+         ---------------------------------------------------------------- */
+      if(fs.wipers && sw > 26){
+        ctx.save();
+        ctx.translate(x0, p1.y - fh);
+        ctx.scale(sw / fs.width, fh / fs.height);
+        fs.wipers(ctx, 0);
+        if(fs.overWipers) fs.overWipers(ctx);
+        ctx.restore();
+      }
       continue;
     }
 
@@ -10747,9 +10881,13 @@ function cycleBody(d){
   /* SUPERCRUISER is an NPC vehicle, not a garage car — listing it here made
      the garage try to build a body that does not exist in BODY and the whole
      screen threw on a non-finite gradient */
+  /* the two road-car classes are separate locks now - see the trigger in the
+     step, and the classes in `API.fleet`. `traffic` is the retired flag: a save
+     that already holds it keeps both, because taking a car back off somebody
+     who earned it under the old rule would be the worst kind of change. */
   const LOCK = { 'FORMULA':'formula', 'CRUISER':'cruiser',
-                 'COUPE':'traffic','SALOON':'traffic','CAB':'traffic',
-                 'PICKUP':'traffic','VAN':'traffic','LORRY':'traffic' };
+                 'COUPE':'production','SALOON':'production','CAB':'production',
+                 'PICKUP':'utility','VAN':'utility','LORRY':'utility' };
   /* ---- DEBUG OVERRIDES ---------------------------------------------------
      These open a car in the garage WITHOUT writing the unlock flag, so the
      reward screens can still be earned properly afterwards. That is the whole
@@ -10760,7 +10898,9 @@ function cycleBody(d){
     const need = LOCK[k];
     if(!need) return true;
     if(unlocked(need)) return true;
-    if(need === 'traffic') return !!dbgTraffic;
+    /* honoured for anyone who earned it under the hundred-mile rule */
+    if((need === 'production' || need === 'utility') && unlocked('traffic')) return true;
+    if(need === 'production' || need === 'utility') return !!dbgTraffic;
     return !!dbgRacers;
   };
   /* an NPC body has stats and a sprite but is not a car you can pick */
@@ -11680,15 +11820,24 @@ requestAnimationFrame(frameLoop);
       const rs = BODY[k];
       /* the cache only holds bodies a rival can be given, so an unlockable is
          not in it. Build it the way the cache does rather than leaving a hole. */
+      /* the LORRY's trailer takes a much darker shade of the chosen colour and
+         its CAB takes the colour itself, so the sheet has to build it the way
+         `buildSprites` does or it shows a vehicle nobody can drive */
+      const pt0 = PAINT.WHITE;
+      const rigPt = rs.rig === 'truck'
+        ? Object.assign({}, pt0, { body:shade(pt0.body,0.34), hi:shade(pt0.hi,0.34),
+                                   lo:shade(pt0.lo,0.34),
+                                   cab:{ body:pt0.body, hi:pt0.hi, lo:pt0.lo } })
+        : pt0;
       const rear = RIVAL_SP[k+'|WHITE'] || (rs.rig
         ? sprite(220,168, paintRig(rs.rig, Object.assign({ player:true, marque:rs.rear,
-            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)))
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         : sprite(220,168, paintCar(Object.assign({ cabin:true, spoiler:true, shape:rs,
             bodyKey:k, bodyTop:rs.bodyTop, cabinTop:rs.cabinTop, force:!!rs.force,
             lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE))));
       const front = rs.rig
         ? sprite(220,168, paintRigFront(rs.rig, Object.assign({ player:true, marque:rs.rear,
-            lamp:'#d61b3c', lamp2:'#ff7a86' }, PAINT.WHITE)))
+            lamp:'#d61b3c', lamp2:'#ff7a86' }, rigPt)))
         /* `paintFront` takes the body under `bodyType` - `o.body` is a COLOUR on
            every other painter, and the comment inside it says so. Passing `kind`
            meant every supercar fell back to MATADOR and the sheet showed one
