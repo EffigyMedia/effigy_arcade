@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-48"></a>
+## [0.9.48] - 2026-08-29
+- Added: **a little tyre under every vehicle**, drawn before the body so the sill overlaps it and
+  only the bottom shows ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **the front bumper is the same colour as the rear one** ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the van is a size smaller.** It was 85% of an articulated lorry; it is about 70% now
+  ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the muscle car's front indicators sit behind its headlights**
+  ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **the MATADOR and SUPER CRUISER tail is a full bank of chevrons** - eight brake blades a
+  side and a two-blade indicator outboard of them ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-47"></a>
 ## [0.9.47] - 2026-08-29
 - Fixed: **brake lights are red, and they have three states.** They were drawn additively over the

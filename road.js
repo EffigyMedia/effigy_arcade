@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.46';
+window.ROAD_BUILD = '0.9.48';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2120,6 +2120,7 @@ function paintRigFront(kind, o){
     if(kind === 'van'){
       /* same slab: 0.055 to 0.945, top h*0.10, bot cy-h*0.10 */
       const top = h*0.10, bot = cy - h*0.10;
+      tyresUnder(g, w, h, bot, [0.155, 0.845], 0.185, h*0.050);
       g.fillStyle = grad(top, bot);
       rr(g, w*0.055, top, w*0.89, bot-top, w*0.045); g.fill();
       g.fillStyle = 'rgba(255,255,255,.10)';
@@ -2335,6 +2336,8 @@ function paintRigFront(kind, o){
        This is the rear's own path, with `pDeck` where the rear uses `deckY`.
        ---------------------------------------------------------------- */
     const pHip = pDeck + (bot-pDeck)*0.40;
+    /* a little tyre under it, drawn before the body - see `tyresUnder` */
+    tyresUnder(g, w, h, bot, [0.165, 0.835], 0.175, h*0.055);
     g.fillStyle = grad(pDeck, bot);
     g.beginPath();
     g.moveTo(w*0.115, pDeck);
@@ -2484,6 +2487,14 @@ function paintRigFront(kind, o){
          ---------------------------------------------------------------- */
       const mOuter = (lx) => (lx < 0.5 ? lx + 0.068 : lx + 0.185);
       const mInner = (lx) => (lx < 0.5 ? lx + 0.185 : lx + 0.068);
+      /* ---- THE INDICATORS GO IN FIRST ---------------------------------
+         Owner, 2026-08-29: the muscle car's front indicators sit BEHIND the
+         headlights in layer. `decl` draws as it declares, so the order of these
+         calls is the order of the art - the ambers are declared before the
+         chrome rings and the lenses, and the lamps then overlap them the way a
+         light bar overlaps what is behind it. */
+      decl(g, lamps, 'turn.l', turnBulb(w*0.058, ly+lh*0.18, w*0.040, lh*0.64, true));
+      decl(g, lamps, 'turn.r', turnBulb(w*0.902, ly+lh*0.18, w*0.040, lh*0.64, true));
       /* the chrome rings are bodywork; the lenses inside them are the lamp */
       for(const lx of [0.055, 0.685]){
         g.fillStyle = 'rgba(185,194,205,.9)';
@@ -2580,7 +2591,10 @@ function paintRigFront(kind, o){
          tightened to 0.345 so the gap reads as a gap rather than a seam */
       rr(g, w*0.345, ly+lh*0.15, w*0.31, lh*0.62, 3); g.fill();
     }
-    g.fillStyle = '#1b1f26';
+    /* the same bumper the back has, in the same colour. Owner, 2026-08-29 -
+       and it was '#1b1f26' against the rear's translucent black, which reads as
+       a different part on the same car. */
+    g.fillStyle = 'rgba(0,0,0,.40)';
     rr(g, w*0.055, bot-h*0.075, w*0.89, h*0.075, w*0.02); g.fill();
 
     /* the taxi wears the same band and sign from the front */
@@ -2695,6 +2709,7 @@ function paintRig(kind, o){
       /* a tall slab with a distinct roof edge, small high glass, twin doors */
       /* the generic badge goes on after the doors, below */
       const top = h*0.10, bot = cy - h*0.10;
+      tyresUnder(g, w, h, bot, [0.155, 0.845], 0.185, h*0.050);
       g.fillStyle = grad(top, bot);
       rr(g, w*0.055, top, w*0.89, bot-top, w*0.045); g.fill();
       /* roof cap */
@@ -2746,6 +2761,7 @@ function paintRig(kind, o){
     if(kind === 'pickup'){
       /* narrow cab up top, wide open BED below — the giveaway silhouette */
       const cabTop = h*0.10, bedTop = h*0.40, bot = cy - h*0.135;
+      tyresUnder(g, w, h, bot, [0.150, 0.850], 0.195, h*0.055);
       /* the cab */
       g.fillStyle = grad(cabTop, bedTop);
       rr(g, w*0.20, cabTop, w*0.60, bedTop-cabTop+h*0.03, w*0.035); g.fill();
@@ -2848,6 +2864,7 @@ function paintRig(kind, o){
 
     /* the body: widest at the arches, tucked at the deck */
     const hipY = deckY + (bot-deckY)*0.40;
+    tyresUnder(g, w, h, bot, [0.165, 0.835], 0.175, h*0.055);
     g.fillStyle = grad(deckY, bot);
     g.beginPath();
     g.moveTo(w*0.115, deckY);
@@ -4250,18 +4267,23 @@ function paintCar(o){
       const chevron = (gg, sideL, k, c0, c1) => {
         const x0 = sideL ? w*0.54 : w*0.10, dir = sideL ? 1 : -1;
         const ax = sideL ? x0 + w*0.02 : x0 + w*0.34;
-        const inset = k * w*0.058;
-        const span  = w*0.115 - k*w*0.014;
+        /* TEN blades a side: eight brake, then TWO for the indicator. Owner,
+           2026-08-29, in three passes - two more, two more again, and make the
+           signal two chevrons as well. The step and the taper come down with
+           each pass, which is what keeps a fuller cluster from becoming a wider
+           one: the bank has to stay inside a housing that has not moved. */
+        const inset = k * w*0.0235;
+        const span  = w*0.115 - k*w*0.0045;
         gg.lineCap = 'round'; gg.lineJoin = 'round';
         gg.strokeStyle = c0;
-        gg.lineWidth = Math.max(1.1, th*0.30 - k*th*0.045);
+        gg.lineWidth = Math.max(1.1, th*0.30 - k*th*0.016);
         gg.beginPath();
         gg.moveTo(ax + dir*inset, ty + th*0.20);
         gg.lineTo(ax + dir*(inset + span), ty + th*0.46);
         gg.lineTo(ax + dir*inset, ty + th*0.74);
         gg.stroke();
         gg.strokeStyle = c1;
-        gg.lineWidth = Math.max(0.5, th*0.12 - k*th*0.018);
+        gg.lineWidth = Math.max(0.5, th*0.12 - k*th*0.006);
         gg.stroke();
       };
       /* the dark housings are bodywork and are drawn once */
@@ -4273,7 +4295,11 @@ function paintCar(o){
       const blades = (gg, on) => {
         const c0 = on ? '#ff2f3e' : lamp0;
         const c1 = on ? '#ffe2dc' : lamp1;
-        for(const sideL of [0,1]) for(const k of [0,1]) chevron(gg, sideL, k, c0, c1);
+        /* FOUR brake blades a side, then the indicator outboard of them.
+           Owner, 2026-08-29: two more brake chevrons before the indicator
+           chevron on the external edge. The cluster reads as a swept bank of
+           lamps rather than as a pair with a signal beside it. */
+        for(const sideL of [0,1]) for(const k of [0,1,2,3,4,5,6,7]) chevron(gg, sideL, k, c0, c1);
       };
       blades(g, false);
       if(lamps) lamps.tail = blades;
@@ -4284,8 +4310,11 @@ function paintCar(o){
          anything asks them to come on - traffic does before a merge, a racer
          has no reason to, and the player has no reason and no control.
          --------------------------------------------------------------------- */
-      const turn = (sideL) => (gg, on) =>
-        chevron(gg, sideL, 2, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI);
+      /* the signal is TWO blades now, outboard of the eight brake ones */
+      const turn = (sideL) => (gg, on) => {
+        for(const k of [8, 9])
+          chevron(gg, sideL, k, on ? AMBER_ON : AMBER_OFF, on ? AMBER_ON_HI : AMBER_OFF_HI);
+      };
       const turnL = turn(0), turnR = turn(1);
       turnL(g, false); turnR(g, false);
       if(lamps){ lamps['turn.l'] = turnL; lamps['turn.r'] = turnR; }
@@ -4483,7 +4512,10 @@ function rivalFront(bodyKey, paintKey){
 function rigBox(rig){
   return rig === 'muscle' ? [210,158]
        : rig === 'cop'    ? [200,164]
-       : rig === 'van'    ? [200,196]
+       /* the van was within a hand's breadth of the LORRY on the sheets - 196
+          tall against 250, at nearly the same road width. A panel van is a tall
+          box and it is not an artic. Owner, 2026-08-29. */
+       : rig === 'van'    ? [200,176]
        : rig === 'pickup' ? [206,176]
        : rig === 'truck'  ? [230,250]
        : rig === 'sedan' || rig === 'taxi' ? [200,164]
@@ -5097,9 +5129,9 @@ function spawnBehind(){
     spd: 0, cruise: Math.min(0.46 * MAX_SPD,
                              Math.max(spd * 1.12, (t==='truck' ? 0.24 : 0.34) * MAX_SPD)),
     type: t,
-    w: t==='truck' ? 0.32 : t==='van' ? 0.30 : t==='pickup' ? 0.29
+    w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
      : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
-    len: t==='truck' ? 520 : t==='van' ? 440 : t==='pickup' ? 420 : 380,
+    len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
     near:false, drift: rnd(-1,1)*0.0002, fromBehind:true, paintN: (Math.random()*10)|0
   });
 }
@@ -5166,9 +5198,9 @@ function spawnWave(z){
                             : (t==='truck' ? rnd(0.22,0.28) : rnd(0.26,0.42)) * MAX_SPD,
       rogue: rogue,
       type: t,
-      w: t==='truck' ? 0.32 : t==='van' ? 0.30 : t==='pickup' ? 0.29
+      w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
        : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
-      len: t==='truck' ? 520 : t==='van' ? 440 : t==='pickup' ? 420 : 380,
+      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
       near: false, drift: rnd(-1,1)*0.0002, paintN: (Math.random()*10)|0
     });
     traffic[traffic.length-1].spd = traffic[traffic.length-1].cruise;
