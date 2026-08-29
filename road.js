@@ -6102,6 +6102,114 @@ const BIOME_KEYS = Object.keys(BIOMES);
 let biome = 'FOREST';
 function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
 
+/* ---- THE BIOME IS A PROPERTY OF THE ROAD, NOT OF THE MOMENT (RLG-022) ----
+   Owner, 2026-08-29: "As a new biome is entered we paint the road slices, the
+   correct color from the furthest point forward and they get generated towards
+   the camera. This will create an immersive transition between the biome." And
+   with it, "a blur color transition for several to a dozen or a couple dozen
+   slices between the old biome to the new biome".
+
+   `biome` used to flip in one frame and every slice on the screen changed
+   colour at once, which reads as a cut rather than as travel.
+
+   THE MECHANISM IS THE SEGMENT INDEX, AND IT DOES THE WORK FOR FREE. `idx` in
+   the road pass is an ABSOLUTE segment number, not a screen position. So a
+   boundary placed at a fixed index is a fixed place in the world, and it
+   arrives at the camera on its own as `pos` advances - nothing has to animate
+   it. Placing it at `base + DRAW` puts it exactly at the furthest slice being
+   drawn, which is the owner's "furthest point forward".
+
+   `biome` KEEPS ITS MEANING: where the PLAYER is. Weather, the skyline and the
+   scenery all read it and all of them should change when you arrive rather than
+   when the far end does. Only the ground painting is per segment, which is why
+   this is a small change rather than a rewrite of every `bio()` call.
+   ------------------------------------------------------------------------- */
+let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
+/* how many segments the blend spans. The owner's range was "several to a dozen
+   or a couple dozen"; 18 sits in the middle of it. A tunable with a committed
+   default, never a constant edited in place. */
+const BIOME_BAND = 18;
+
+/* how far into the NEW biome segment `idx` is: 0 entirely the old one, 1
+   entirely the new, and a ramp across the band in between */
+function bioMix(idx){
+  if(biomeFrom === biomeTo) return 1;
+  return clamp((idx - (biomeEdge - BIOME_BAND/2)) / BIOME_BAND, 0, 1);
+}
+/* the record for a segment, for anything that needs one biome rather than a
+   blend of two */
+function bioAt(idx){ return BIOMES[bioMix(idx) >= 0.5 ? biomeTo : biomeFrom] || BIOMES.FOREST; }
+
+/* a colour as three numbers, so one colour can be a MIX TARGET for another.
+   `mixRGB` takes its target as a triple; the biome table stores hex. */
+/* ---- ONE PLACE DECIDES WHAT THE GROUND LOOKS LIKE (RLG-059, RLG-022) -----
+   Owner, 2026-08-29: "we need to make sure that each biome is strict about the
+   color of the ground", and separately that the band under the horizon "needs
+   to match the same color but slightly darker as the current foreground".
+
+   Those two are the same requirement seen from two ends, and the only way to
+   guarantee it is for both the drawn slices and the band behind them to ask the
+   SAME function. Two derivations that agree today are two derivations that
+   disagree after the next edit - this file has the receipts on that.
+
+   THREE FAULTS FIXED HERE AT ONCE:
+
+     the blend. The colour is interpolated across the band between the old place
+     and the new, so a biome change is a ramp down the road rather than a line
+     across it.
+
+     the night and golden branches. They were flat hex constants shared by all
+     five biomes - `#12251a` and `#2f4a2c` - so a desert at night was the same
+     green-black as a forest at night, and the sweep would have been invisible
+     for most of the day cycle. They are DERIVED from the biome's own grass now:
+     dimmed and cooled after dark, warmed at golden hour. A biome added later
+     gets both for nothing, which is what makes this strict rather than five
+     more constants to keep in step.
+
+     the strobe. `dark` alternates by segment and is what makes the ground band
+     past at speed. It is an argument here so the far field can ask for the
+     un-strobed tone.
+   ------------------------------------------------------------------------- */
+const NIGHT_GROUND = [12,22,30], GOLD_GROUND = [150,110,60];
+function groundTone(idx, dark, nAmt, gAmt){
+  const t = bioMix(idx);
+  const B = BIOMES[biomeTo] || BIOMES.FOREST, B0 = BIOMES[biomeFrom] || B;
+  const lo = t <= 0 ? B0.grassLo : t >= 1 ? B.grassLo : mixRGB(B0.grassLo, t, hexRGB(B.grassLo));
+  const hi = t <= 0 ? B0.grassHi : t >= 1 ? B.grassHi : mixRGB(B0.grassHi, t, hexRGB(B.grassHi));
+  const raw = dark ? lo : hi;
+  if(nAmt === undefined) nAmt = nightFall();
+  if(gAmt === undefined) gAmt = goldenHour();
+  if(nAmt > 0.5)   return mixRGB(mixRGB(raw, dark ? 0.62 : 0.55, NIGHT_GROUND), settle*0.85, SNOW_NIGHT);
+  if(gAmt > 0.25)  return mixRGB(mixRGB(raw, dark ? 0.34 : 0.30, GOLD_GROUND), settle*0.85, SNOW_GOLD);
+  return mixRGB(raw, settle * 0.85, SNOW_DAY);
+}
+
+/* LIFT A COLOUR TOWARD ANOTHER ONE. It reads both colour forms, because its own
+   output is an input further down: a slice can be whitened by snow and then
+   darkened by rain, and a hex-only parser produced NaN on the second call. */
+function mixRGB(a, t, to){
+  const c = hexRGB(a), T = to || SNOW_DAY;
+  return 'rgb(' + Math.round(c[0] + (T[0]-c[0])*t) + ','
+                + Math.round(c[1] + (T[1]-c[1])*t) + ','
+                + Math.round(c[2] + (T[2]-c[2])*t) + ')';
+}
+const SNOW_DAY = [238,238,238], SNOW_GOLD = [236,214,190], SNOW_NIGHT = [150,162,186];
+/* what rain does to a surface, as a colour to mix toward rather than as a black
+   sheet over the frame */
+const WET_DARK = [12,18,30];
+/* the sky as the road gives it back - the colour the full-frame sheen used to
+   add, now mixed into the one surface that can actually reflect */
+const WET_SHEEN = [150,180,220];
+
+function hexRGB(a){
+  if(a.charAt(0) !== '#'){
+    const q = a.slice(a.indexOf('(')+1).split(',');
+    return [+q[0], +q[1], parseFloat(q[2])];
+  }
+  const n = parseInt(a.slice(1), 16);
+  return [(n>>16&255), (n>>8&255), (n&255)];
+}
+
 /* `wet` is any precipitation; `snowy` says which kind it is. Snow whitens the
    ground as it settles, which is the part you actually see. */
 let wet = 0, wetTarget = 0, wetNext = 0, snowy = 0, settle = 0;
@@ -6167,18 +6275,39 @@ function stepBiome(dt){
     if(b2 !== biome){ biome = b2; buildSkyline(); endImpossibleWeather(); }
     return;
   }
+  /* ---- THE CHANGE IS PLACED, THEN THE PLAYER DRIVES INTO IT (RLG-022) ----
+     Two things happen here and they are seconds apart. The timer PLACES a
+     boundary at the far end of the drawn road, and the ground starts showing
+     the new place at the horizon straight away. Nothing else changes yet. The
+     player then drives at it, and when they cross it the biome they are IN
+     changes - and that is when the weather, the skyline and the name flash
+     follow, because that is when you have arrived.
+
+     Splitting the two is the whole feature. Firing them together is what made
+     it a cut. */
+  const here = Math.floor(pos/SEG);
+  if(biomeFrom !== biomeTo && here >= biomeEdge){
+    /* arrived. The old place is behind us and stops existing. */
+    biomeFrom = biomeTo;
+    biome = biomeTo;
+    buildSkyline();            /* the horizon is part of the place */
+    endImpossibleWeather();
+    flashWarn(bio().name);
+  }
   biomeNext -= dt;
   if(biomeNext <= 0){
     if(biomeNext < -1){                            /* first call: pick one */
       biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+      biomeFrom = biomeTo = biome;
       buildSkyline();
     } else {
       let k = biome;
       while(k === biome) k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
-      biome = k;
-      buildSkyline();          /* the horizon is part of the place */
-      endImpossibleWeather();
-      flashWarn(bio().name);
+      /* placed at the furthest slice being drawn, so the new colour enters the
+         picture at the horizon and travels in. It is NOT applied to `biome`. */
+      biomeFrom = biome;
+      biomeTo = k;
+      biomeEdge = here + DRAW;
     }
     biomeNext = rnd(70, 130);
   }
@@ -9442,29 +9571,69 @@ function hazeRGB(){
   return [ Math.round(126 - n*54), Math.round(140 - n*58), Math.round(158 - n*62) ];
 }
 
+/* ---- THE BAND UNDER THE HORIZON IS THE SAME GROUND, SEEN FURTHER OFF -----
+   Owner, 2026-08-29: "The painted ground under the horizon in the background
+   needs to match the same color but slightly darker as the current foreground."
+
+   It is the gap between the furthest slice the road pass reaches and the
+   horizon line, and the road simply stops before it gets there. Three things
+   were wrong with what filled it:
+
+     IT ASKED THE WRONG PLACE. `bio()` is where the CAR is, and this band shows
+     what is at the FAR end of the road - which during a biome change is the
+     next place, not this one. So the transition would have arrived at the
+     horizon last instead of first, backwards from what was asked for. It reads
+     `groundTone` at the far edge of the draw now, the same call the furthest
+     drawn slice makes, so the two meet at the same colour by construction
+     rather than by two derivations agreeing.
+
+     IT WENT GREY, NOT DARK. The wash toward the haze was 0.30, which drains the
+     colour rather than lowering it. The owner asked for the same colour,
+     slightly darker. The haze is down to 0.14 - enough that the band still
+     recedes rather than standing up like a wall - and the darkening is explicit.
+
+     IT KNEW NOTHING ABOUT THE HOUR. It dimmed by a flat 0.72 or 0.88 while the
+     slices in front of it went through the night and golden-hour branches, so
+     at dusk the band was a dimmed daytime green against a golden foreground.
+     `groundTone` handles all of that, once.
+
+   The un-strobed tone is asked for - `dark` false - because the band has no
+   segments to alternate between and a strobe needs two.
+   ------------------------------------------------------------------------- */
 function groundBase(mix){
-  const B = bio();
-  const n = parseInt(B.grassLo.slice(1), 16);
-  let r = (n>>16&255), g2 = (n>>8&255), b2 = (n&255);
-  const t = settle * 0.85;
-  r = Math.round(r + (238-r)*t); g2 = Math.round(g2 + (238-g2)*t); b2 = Math.round(b2 + (238-b2)*t);
-  const dim = nightFall() > 0.5 ? 0.72 : 0.88;
-  r = Math.round(r*dim); g2 = Math.round(g2*dim); b2 = Math.round(b2*dim);
+  const far = Math.floor(pos/SEG) + DRAW;
+  const c = hexRGB(groundTone(far, false));
+  let r = c[0], g2 = c[1], b2 = c[2];
+  const want = LUM(r, g2, b2);
   /* the far field gets the same weather the drawn slices get, or the band under
-     the horizon stays dry green while the ground in front of you is soaked */
+     the horizon stays dry while the ground in front of you is soaked */
   if(snowy <= 0.5 && (wet > 0 || pool > 0)){
     const dw = Math.min(1, wet * 0.40 + pool * 0.60) * 0.26;
     r = Math.round(r + (12-r)*dw); g2 = Math.round(g2 + (18-g2)*dw); b2 = Math.round(b2 + (30-b2)*dw);
   }
-  /* wash it toward the haze the same way distance does, so the gap between
-     the furthest drawn slice and the horizon is the colour that slice would
-     have been */
+  /* a little of the haze, because distance does wash a colour out */
   const hz = hazeRGB();
-  const t2 = (mix === undefined) ? 0.80 : mix;
-  return 'rgb(' + Math.round(r + (hz[0]-r)*t2) + ','
-                + Math.round(g2 + (hz[1]-g2)*t2) + ','
-                + Math.round(b2 + (hz[2]-b2)*t2) + ')';
+  const t2 = (mix === undefined) ? 0.18 : mix * 0.22;
+  r = r + (hz[0]-r)*t2; g2 = g2 + (hz[1]-g2)*t2; b2 = b2 + (hz[2]-b2)*t2;
+  /* ---- THEN DARKER THAN THE FOREGROUND, BY CONSTRUCTION -----------------
+     The haze is a mix toward a light grey, so on a DARK biome it makes the band
+     BRIGHTER - a forest verge at 48 came out at 79, which is the opposite of
+     what the owner asked for. The old 0.30 wash made it worse still, and the
+     check for it passed on the first run only because that run happened to land
+     in a bright biome.
+
+     So the brightness is set rather than hoped for: the hue comes from the mix
+     above, and the level is normalised to a fixed fraction of the foreground's.
+     A dark place and a bright place are then both slightly darker behind, which
+     is what "match the same color but slightly darker" means.
+     -------------------------------------------------------------------- */
+  const have = LUM(r, g2, b2);
+  const k = have > 0.5 ? (want * 0.86) / have : 1;
+  return 'rgb(' + clamp(Math.round(r*k), 0, 255) + ','
+                + clamp(Math.round(g2*k), 0, 255) + ','
+                + clamp(Math.round(b2*k), 0, 255) + ')';
 }
+function LUM(r, g, b){ return 0.2126*r + 0.7152*g + 0.0722*b; }
 
 function drawSky(){
   const n = nightFall(), gold = goldenHour();
@@ -9974,37 +10143,22 @@ function drawRoad(){
        the tarmac so it strobes past at speed, and it takes the sky's own
        light so it goes deep and blue at night rather than staying lit. */
     /* the biome's own verge, lifted toward white as snow settles on it */
+    /* ---- THIS SLICE'S OWN PLACE, NOT THE PLAYER'S (RLG-022) -------------
+       `bio()` is where the CAR is. A slice at the far end of the draw may be in
+       the next biome already, and during a transition the two differ for the
+       whole time it takes to drive the length of the road - which is the
+       transition. `t` is how far this slice is into the new place. */
     const B = bio();
     /* ---- SNOW TAKES THE COLOUR OF THE LIGHT ON IT (RLG-057) -------------
-       `mixW` lifts a ground colour toward snow. The target is an argument
+       `mixRGB` lifts a ground colour toward snow. The target is an argument
        rather than a fixed 238, because a single neutral white made the ground
        at midnight brighter than the sky above it. Snow at noon is near white,
        at golden hour it is warm, and under a moon it is a dim blue-grey - and
        it is still the brightest thing in the frame at every one of those.
        -------------------------------------------------------------------- */
-    const SNOW_DAY = [238,238,238], SNOW_GOLD = [236,214,190], SNOW_NIGHT = [150,162,186];
-    /* what rain does to a surface, as a colour to mix toward rather than as a
-       black sheet over the frame. See the note by the rumble strip below. */
-    const WET_DARK = [12,18,30];
-    /* the sky as the road gives it back - the colour the full-frame sheen used
-       to add, now mixed into the one surface that can actually reflect */
-    const WET_SHEEN = [150,180,220];
-    /* It reads BOTH colour forms, because its own output is an input further
-       down: a slice can be whitened by snow and then darkened by rain, and the
-       second call would have parsed 'rgb(...)' as hex and produced NaN. */
-    const mixW = (a, t, to) => {
-      let r, g2, b2;
-      if(a.charAt(0) === '#'){
-        const n = parseInt(a.slice(1), 16);
-        r = (n>>16&255); g2 = (n>>8&255); b2 = (n&255);
-      } else {
-        const q = a.slice(a.indexOf('(')+1).split(',');
-        r = +q[0]; g2 = +q[1]; b2 = parseFloat(q[2]);
-      }
-      const T = to || SNOW_DAY;
-      const m = (v, i) => Math.round(v + (T[i] - v) * t);
-      return 'rgb(' + m(r,0) + ',' + m(g2,1) + ',' + m(b2,2) + ')';
-    };
+    /* The snow targets and the mixer moved to module scope, so `groundTone` and
+       the band under the horizon reach the same ones. They were declared here,
+       once per slice, 150 times a frame. */
     /* Rain and snow are the same weather variable wearing different hats, so
        only one of them ever acts on a surface. `snowy` decides which.
 
@@ -10014,8 +10168,23 @@ function drawRoad(){
        long as it rains, which is `pool`. Driving on it for ten minutes should
        not look like driving on it for ten seconds. */
     const rainDark = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
-    const grassLo = mixW(B.grassLo, settle * 0.85);
-    const grassHi = mixW(B.grassHi, settle * 0.85);
+    /* ---- EACH BIOME IS STRICT ABOUT ITS GROUND (RLG-059) ----------------
+       Owner, 2026-08-29: "we need to make sure that each biome is strict about
+       the color of the ground."
+
+       Two faults were in the way and both are fixed here. The colour is the
+       BLEND of the two places across the band, so the join is a ramp rather
+       than a line. And the night and golden-hour branches below used to be flat
+       hex constants shared by all five biomes - `#12251a` and `#2f4a2c`,
+       whatever place you were in - so a desert at night was the same green
+       black as a forest at night, and the sweep would have been invisible for
+       most of the day cycle. They are DERIVED from the biome's own grass now:
+       dimmed and cooled for night, warmed for golden hour. Any biome added
+       later gets both for nothing, which is what makes it strict rather than
+       five more constants to keep in step.
+       -------------------------------------------------------------------- */
+    /* the tones themselves come from `groundTone`, so the band under the horizon
+       is computed by the same code and cannot disagree with this. */
     /* `gold` lives in the sky function, so the tint is taken from the day
        cycle directly rather than a variable that is not in scope here. */
     /* ---- EVERY HOUR WHITENS, NOT ONLY THE DAYLIT ONE --------------------
@@ -10029,10 +10198,8 @@ function drawRoad(){
        the tarmac and the rumble strip further down. Snow lit two different
        ways in one frame reads as two different weathers. */
     const snowLight = nAmt > 0.5 ? SNOW_NIGHT : gAmt > 0.25 ? SNOW_GOLD : SNOW_DAY;
-    const groundCol = nAmt > 0.5 ? mixW(dark ? '#12251a' : '#162d1f', settle * 0.85, SNOW_NIGHT)
-                    : gAmt > 0.25 ? mixW(dark ? '#2f4a2c' : '#395638', settle * 0.85, SNOW_GOLD)
-                    : (dark ? grassLo : grassHi);
-    ctx.fillStyle = rainDark > 0 ? mixW(groundCol, rainDark * 0.26, WET_DARK) : groundCol;
+    const groundCol = groundTone(idx, dark, nAmt, gAmt);
+    ctx.fillStyle = rainDark > 0 ? mixRGB(groundCol, rainDark * 0.26, WET_DARK) : groundCol;
     /* ---- CULLED THE RIGHT WAY ROUND -----------------------------------
        The road walks FAR to NEAR, so y grows as we come forward and each
        nearer slice should paint over the last. My first cull tested
@@ -10220,8 +10387,8 @@ function drawRoad(){
     const snowRoad = settle * 0.55, snowRumble = settle * 0.45;
     // rumble strip
     const r1 = p1.w*1.13, r2 = p2.w*1.13;
-    ctx.fillStyle = mixW(mixW(dark ? '#c9c3b4' : '#8c3346', snowRumble, snowLight),
-                         rainDark * 0.20, WET_DARK);
+    ctx.fillStyle = mixRGB(mixRGB(dark ? '#c9c3b4' : '#8c3346', snowRumble, snowLight),
+                           rainDark * 0.20, WET_DARK);
     quad(p1.x-r1, y1, p1.x-p1.w, y1, p2.x-p2.w, y2, p2.x-r2, y2);
     quad(p1.x+p1.w, y1, p1.x+r1, y1, p2.x+r2, y2, p2.x+p2.w, y2);
 
@@ -10235,10 +10402,10 @@ function drawRoad(){
        ordering matters: the reflection sits ON the wet surface, so soaking the
        road after reflecting it would wash the reflection away.
        -------------------------------------------------------------------- */
-    const wetRoad = mixW(mixW(dark ? '#232231' : '#1e1d2a', snowRoad, snowLight),
-                         rainDark * 0.55, WET_DARK);
+    const wetRoad = mixRGB(mixRGB(dark ? '#232231' : '#1e1d2a', snowRoad, snowLight),
+                           rainDark * 0.55, WET_DARK);
     ctx.fillStyle = rainDark > 0
-      ? mixW(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN)
+      ? mixRGB(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN)
       : wetRoad;
     quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p2.x+p2.w, y2, p2.x-p2.w, y2);
 
@@ -13203,6 +13370,40 @@ requestAnimationFrame(frameLoop);
   API.settle = function(){ return +settle.toFixed(3); };
   API.wetGrip = function(){ return +wetGrip().toFixed(3); };
   API.biome = function(){ return biome; };
+  /* ---- THE TRANSITION, AS NUMBERS (RLG-022) -----------------------------
+     A biome change is a thing that travels down the road over seconds, and a
+     harness cannot see travel in one frame. These report where the boundary is
+     and how much of the new place each end of the draw is showing, so the sweep
+     can be measured rather than looked at. */
+  API.biomeSweep = function(){
+    const here = Math.floor(pos/SEG);
+    return { from:biomeFrom, to:biomeTo, player:biome,
+             edge:biomeEdge, here:here, band:BIOME_BAND,
+             atCar:+bioMix(here).toFixed(3), atHorizon:+bioMix(here + DRAW).toFixed(3) };
+  };
+  /* place one, so a harness does not wait 70 to 130 seconds for the timer */
+  API.startBiomeChange = function(k){
+    let want = k;
+    if(!want || !BIOMES[want] || want === biome){
+      want = biome;
+      while(want === biome) want = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+    }
+    biomeFrom = biome; biomeTo = want;
+    biomeEdge = Math.floor(pos/SEG) + DRAW;
+    return API.biomeSweep();
+  };
+  /* the hour is an argument so a harness can ask what a biome looks like at
+     night without waiting for night. `groundTone` already takes both. */
+  API.groundToneAt = function(idx, dark, nAmt, gAmt){ return groundTone(idx, !!dark, nAmt, gAmt); };
+  /* set both ends of the blend directly. Passing the same key twice is the OLD
+     behaviour - one biome everywhere - which is what the falsification needs. */
+  API.setBiomePair = function(a, b){
+    if(BIOMES[a]) biomeFrom = a;
+    if(BIOMES[b]) biomeTo = b;
+    if(biomeFrom === biomeTo){ biome = biomeFrom; biomeEdge = -1e9; }
+    return { from:biomeFrom, to:biomeTo };
+  };
+  API.groundBase = function(){ return groundBase(0.30); };
   /* where the day cycle is, 0 to 1: 0 dusk, 0.25 night, 0.5 dawn, 0.75 midday.
      It sits with `wet`, `snowy`, `settle` and `biome` because it is the same
      kind of thing - what the world looks like right now - and a fork drawing

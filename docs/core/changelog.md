@@ -14,6 +14,31 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-61"></a>
+## [0.9.61] - 2026-08-29
+- Added: **a biome change is a place you drive into.** The new biome's colour is taken by the road
+  slices at the furthest point being drawn and travels toward the camera as you approach it, with an
+  18-segment blend band so the join is a ramp rather than a line. The mechanism is the segment index:
+  it is an absolute world position, so a boundary placed at one arrives on its own and nothing has to
+  animate it. The weather, the skyline and the name flash still fire when the CAR crosses, because
+  that is when you have arrived ([RLG-022](../fragments/RLG-022.md)).
+- Fixed: **each biome is strict about its ground at every hour.** The night and golden-hour ground
+  colours were flat hex constants shared by all five biomes, so a desert at night was the same
+  green-black as a forest at night - and the sweep would have been invisible for most of the day
+  cycle. They are derived from the biome's own grass now, dimmed and cooled after dark and warmed at
+  golden hour, so a biome added later gets both for nothing
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **the band under the horizon is the same ground, seen further off.** It asked `bio()` - where
+  the CAR is - while showing what is at the far end of the road, so a transition would have reached
+  the horizon last instead of first. It reads the same `groundTone` call the furthest drawn slice
+  makes. Its brightness is now normalised to a fixed fraction of the foreground rather than hoped for:
+  the haze wash mixes toward a light grey, so on a dark biome it made the band BRIGHTER - a forest
+  verge at 48 came out at 79 ([RLG-022](../fragments/RLG-022.md)).
+- Added: **`tools/biome-test.py`** - it reads the sweep as numbers over time, because one frame cannot
+  show travel. A flip shows the same mix at the car and at the horizon at every instant; a sweep shows
+  the horizon leading. The harness puts the flip back and checks that the distinction fails
+  ([RLG-022](../fragments/RLG-022.md)).
+
 <a id="v0-9-60"></a>
 ## [0.9.60] - 2026-08-29
 - Fixed: **the street lamps had no occlusion at all, and now they use the cars'.** The test guarding
