@@ -14,6 +14,17 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-49"></a>
+## [0.9.49] - 2026-08-29
+- Changed: **the whole lamp ladder moves down a rung.** The red that was the unlit lens is the
+  running light now, and unlit is a lens with almost nothing in it - which is what an unlit red lamp
+  looks like in daylight ([RLG-053](../fragments/RLG-053.md)).
+- Changed: **a headlight is dark when it is off.** It was a pale grey lens whether lit or not, so the
+  lit state had nothing to arrive from ([RLG-053](../fragments/RLG-053.md)).
+- Added: **weather turns the lights on as if it were night.** `lampsOn()` takes the stronger of the
+  clock and the weather, so a storm at noon lights the road - street lamps, tail lights, headlights
+  and the mirror all read that one function ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-48"></a>
 ## [0.9.48] - 2026-08-29
 - Added: **a little tyre under every vehicle**, drawn before the body so the sill overlaps it and

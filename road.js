@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.48';
+window.ROAD_BUILD = '0.9.49';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1604,7 +1604,13 @@ const AMBER_ON  = '#ffb02e', AMBER_ON_HI  = '#ffe4a8';
 
    `l` is 0, 1 or 2 everywhere, and `true` from an older call site means 2.
    ------------------------------------------------------------------------- */
-const RED_OFF = '#4a1016', RED_DIM = '#b0202a', RED_ON = '#ff2a22';
+/* Owner, 2026-08-29: "what you have for dark should be dim, and what you should
+   do for off/dark is the same difference between the bright turn signals and the
+   off turn signals." So the whole ladder moves down a rung: the red that was the
+   unlit lens becomes the RUNNING light, and unlit goes down to a lens with
+   almost nothing in it. An unlit red lamp in daylight is nearly black - what you
+   see of one is the shape of the glass, not the colour of it. */
+const RED_OFF = '#280a0d', RED_DIM = '#4a1016', RED_ON = '#ff2a22';
 /* ---- THE HIGHLIGHT IS RED TOO -----------------------------------------
    Owner, 2026-08-29, twice: "you are still making the illuminated brake lights
    white... off is a dark red, dim is slightly brighter, and bright is a bright
@@ -1617,7 +1623,7 @@ const RED_OFF = '#4a1016', RED_DIM = '#b0202a', RED_ON = '#ff2a22';
    distance between the two is small: it is a curve of glass catching light,
    not a bulb of a different colour.
    -------------------------------------------------------------------- */
-const RED_OFF_HI = '#5c1a1e', RED_DIM_HI = '#c9333a', RED_ON_HI = '#ff5348';
+const RED_OFF_HI = '#361012', RED_DIM_HI = '#5c1a1e', RED_ON_HI = '#ff5348';
 function redOf(l){ return l >= 2 ? RED_ON : l >= 1 ? RED_DIM : RED_OFF; }
 function redHiOf(l){ return l >= 2 ? RED_ON_HI : l >= 1 ? RED_DIM_HI : RED_OFF_HI; }
 
@@ -1641,6 +1647,21 @@ function tyresUnder(g, w, h, sill, xs, tw, sit){
     rr(g, w*tx - w*tw*0.34, sill + sit*0.10, w*tw*0.68, sit*0.34, sit*0.20); g.fill();
   }
 }
+
+/* ---- A HEADLIGHT IS DARK WHEN IT IS OFF ---------------------------------
+   Owner, 2026-08-29: "we need to do the same for the headlights." They were a
+   pale grey lens whether they were on or not - `#dbe3ee` off against `#ffffff`
+   lit, which is a difference you have to look for. An unlit headlight is dark
+   glass with a highlight in it, and the whole point of the lit state is that it
+   arrives.
+
+   Same shape as the ambers: one constant for the lens and one for the highlight
+   inside it, so a painter decides where a lamp is and nothing else.
+   ------------------------------------------------------------------------- */
+const HEAD_OFF = '#33404f', HEAD_OFF_HI = 'rgba(120,150,190,.30)';
+const HEAD_ON  = '#ffffff', HEAD_ON_HI  = 'rgba(225,242,255,.85)';
+function headOf(on){ return on ? HEAD_ON : HEAD_OFF; }
+function headHiOf(on){ return on ? HEAD_ON_HI : HEAD_OFF_HI; }
 
 function turnBulb(x, y, bw, bh, flat){
   /* ---- A HIGHLIGHT NEEDS ROOM TO BE A HIGHLIGHT -------------------------
@@ -2104,7 +2125,7 @@ function paintRigFront(kind, o){
          ---------------------------------------------------------------- */
       decl(g, lamps, 'head', (gg, on) => {
         for(const lx of [0.10, 0.74]){
-          gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+          gg.fillStyle = headOf(on);
           rr(gg, w*lx, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
           if(on) headGlow(gg, w*(lx+0.08), cy-h*0.139, w);
         }
@@ -2149,7 +2170,7 @@ function paintRigFront(kind, o){
          it: one amber above, one lamp below, on each side */
       decl(g, lamps, 'head', (gg, on) => {
         for(const lx of [0.07, 0.855]){
-          gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+          gg.fillStyle = headOf(on);
           rr(gg, w*lx, bot-h*0.092, w*0.075, h*0.072, 2); gg.fill();
           if(on) headGlow(gg, w*(lx+0.037), bot-h*0.056, w);
         }
@@ -2214,7 +2235,7 @@ function paintRigFront(kind, o){
       }
       /* square lamps flanking it, with the amber carved out of the outer end */
       decl(g, lamps, 'head', (gg, on) => {
-        gg.fillStyle = on ? '#ffffff' : '#c8d2e0';
+        gg.fillStyle = headOf(on);
         rr(gg, w*(0.075+0.048), bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
         rr(gg, w*0.775, bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
         if(on){
@@ -2503,17 +2524,12 @@ function paintRigFront(kind, o){
       }
       decl(g, lamps, 'head', (gg, on) => {
         for(const lx of [0.055, 0.685]){
-          gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+          gg.fillStyle = headOf(on);
           gg.beginPath(); gg.arc(w*mOuter(lx), ly+lh*0.5, w*0.038, 0, 6.2832); gg.fill();
           gg.beginPath(); gg.arc(w*mInner(lx), ly+lh*0.5, w*0.026, 0, 6.2832); gg.fill();
           if(on) headGlow(gg, w*(lx+0.127), ly+lh*0.5, w);
         }
       });
-      /* inside the lamp row, in the gap the two round pairs leave at each end.
-         They were at 0.010 and 0.952, which is off the bodywork entirely - two
-         amber dots floating beside the car. */
-      decl(g, lamps, 'turn.l', turnBulb(w*0.058, ly+lh*0.18, w*0.040, lh*0.64, true));
-      decl(g, lamps, 'turn.r', turnBulb(w*0.902, ly+lh*0.18, w*0.040, lh*0.64, true));
     } else if(kind === 'tuner'){
       /* ROUND lamps, a pair each side, in a dark housing */
       for(const lx of [0.055, 0.685]){
@@ -2522,9 +2538,9 @@ function paintRigFront(kind, o){
       }
       decl(g, lamps, 'head', (gg, on) => {
         for(const lx of [0.055, 0.685]) for(const k of [0.075, 0.185]){
-          gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+          gg.fillStyle = headOf(on);
           gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.5, w*0.045, 0, 6.2832); gg.fill();
-          gg.fillStyle = on ? 'rgba(220,240,255,.75)' : 'rgba(180,215,255,.45)';
+          gg.fillStyle = headHiOf(on);
           gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.38, w*0.024, 0, 6.2832); gg.fill();
           if(on) headGlow(gg, w*(lx+k), ly+lh*0.5, w);
         }
@@ -2535,10 +2551,10 @@ function paintRigFront(kind, o){
       /* the amber is the OUTBOARD end of the cluster, exactly as on the tail */
       const FL = 0.055, FR = 0.685, FW = 0.26, FT = 0.048;
       decl(g, lamps, 'head', (gg, on) => {
-        gg.fillStyle = on ? '#ffffff' : '#dbe3ee';
+        gg.fillStyle = headOf(on);
         rr(gg, w*(FL+FT), ly, w*(FW-FT), lh, 3); gg.fill();
         rr(gg, w*FR, ly, w*(FW-FT), lh, 3); gg.fill();
-        gg.fillStyle = on ? 'rgba(225,242,255,.8)' : 'rgba(180,215,255,.45)';
+        gg.fillStyle = headHiOf(on);
         rr(gg, w*(FL+FT+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
         rr(gg, w*(FR+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
         if(on){
@@ -3494,7 +3510,7 @@ function paintFront(o){
       decl(g, lamps, 'head', (gg, on) => {
         for(const sx of [-1,1]){
           const lx = w*0.5 + sx*w*wid*0.60;
-          gg.fillStyle = on ? '#ffffff' : '#c9d6e6';
+          gg.fillStyle = headOf(on);
           gg.beginPath();
           gg.moveTo(lx - sx*w*0.115, topY + h*0.085);
           gg.lineTo(lx + sx*w*0.075, topY + h*0.062);
@@ -3577,7 +3593,7 @@ function paintFront(o){
       decl(g, lamps, 'head', (gg, on) => {
         for(const sx of [-1,1]) lHouse(gg, sx, (c) => {
           for(const k of [-1, 1]){
-            c.fillStyle = on ? '#ffffff' : '#c9d6e6';
+            c.fillStyle = headOf(on);
             c.beginPath(); c.arc(k*w*0.046, 0, w*0.036, 0, 6.2832); c.fill();
             c.fillStyle = on ? 'rgba(215,235,255,.7)' : 'rgba(150,190,255,.35)';
             c.beginPath(); c.arc(k*w*0.046, -h*0.008, w*0.020, 0, 6.2832); c.fill();
@@ -3629,7 +3645,7 @@ function paintFront(o){
           /* three of the four segments; the outermost belongs to the amber */
           const seg = pW/4;
           const hx = sx < 0 ? x0 + seg : x0;
-          gg.fillStyle = on ? '#ffffff' : '#c9d6e6';
+          gg.fillStyle = headOf(on);
           rr(gg, hx, by2, pW - seg, bh2, bh2*0.5); gg.fill();
           /* the bands across it */
           gg.fillStyle = 'rgba(20,26,34,.55)';
@@ -9301,7 +9317,24 @@ function drawHaze(){
    street lights does not snap on. This is the illumination only; there are no
    poles to model at this scale, just pools of light on the tarmac. */
 function lampsOn(){
+  /* ---- WEATHER IS NIGHT, AS FAR AS THE LAMPS ARE CONCERNED --------------
+     Owner, 2026-08-29: "even if it is daytime, if there is a weather event we
+     need to turn the lights on as if it is night-time." Which is what everybody
+     does in rain or snow, and it is also the cheapest way to make weather read
+     as weather: the road fills with lit tail lights.
+
+     Taken as the STRONGER of the two rather than as a sum - a wet midnight is
+     not brighter than a dry one, and half a storm at noon should be half the
+     lamps on rather than none.
+     ------------------------------------------------------------------- */
+  const bad = Math.max(typeof wet === 'number' ? wet : 0,
+                       typeof snowy === 'number' ? snowy : 0);
   const p = phase();
+  const byWeather = clamp(bad * 1.35, 0, 1);
+  const byClock = clockLamps(p);
+  return Math.max(byClock, byWeather);
+}
+function clockLamps(p){
   /* Dawn is phase 0.50. They used to hold full until 0.55 and not go out until
      0.65 — a sixth of a day of street lights burning in broad morning light.
      The fade now STRADDLES dawn: starting to drop at 0.44 and dark by 0.52, so
