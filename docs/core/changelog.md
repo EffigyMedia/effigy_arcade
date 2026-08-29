@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-46"></a>
+## [0.9.46] - 2026-08-29
+- Fixed: **a car's front now has the same silhouette as its back.** The rear body is a path with a
+  waist - shoulders curving out to 0.955 and a sill tucking back in - and the front was a rounded
+  rectangle under a comment claiming it was "exactly as the back". It was exactly as the back at the
+  two edges it named and a different shape everywhere between them. The front draws the rear's own
+  path now, with the rear's arch blisters ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-45"></a>
 ## [0.9.45] - 2026-08-29
 - Changed: **the garage's two views hang from the roof line.** A shared floor line is the physical

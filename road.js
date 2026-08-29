@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.44';
+window.ROAD_BUILD = '0.9.46';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2202,13 +2202,39 @@ function paintRigFront(kind, o){
     g.lineTo(w*(0.5-pCab/2+0.02), pRoof+h*0.070);
     g.closePath(); g.fill();
 
-    /* the body: 0.055 to 0.945, exactly as the back */
+    /* ---- THE SAME SILHOUETTE AS THE BACK ------------------------------
+       Owner, 2026-08-29: the front must match the curvature of the back - look
+       at the top rounded edges. It did not. The back is a PATH: the bonnet
+       line runs from 0.115 to 0.885 and the shoulders curve outward to 0.955
+       before tucking in again at the sill, so the car has a waist. The front
+       was a rounded rectangle from 0.055 to 0.945 with a 0.035 corner, which
+       is a slab with the corners taken off.
+
+       The comment above it claimed "exactly as the back" and had claimed it
+       since the front painters were written. It was measuring the same two
+       EDGES and drawing a different shape between them.
+
+       This is the rear's own path, with `pDeck` where the rear uses `deckY`.
+       ---------------------------------------------------------------- */
+    const pHip = pDeck + (bot-pDeck)*0.40;
     g.fillStyle = grad(pDeck, bot);
-    rr(g, w*0.055, pDeck-h*0.02, w*0.89, bot-pDeck+h*0.02, w*0.035); g.fill();
-    /* arch blisters, the same 0.13 / 0.87 the rear uses */
-    for(const ax of [0.13, 0.87]){
-      g.fillStyle = P.lo;
-      g.beginPath(); g.ellipse(w*ax, bot-h*0.045, w*0.105, h*0.075, 0, 0, 6.2832); g.fill();
+    g.beginPath();
+    g.moveTo(w*0.115, pDeck);
+    g.lineTo(w*0.885, pDeck);
+    g.quadraticCurveTo(w*0.955, pDeck+h*0.02, w*0.955, pHip);
+    g.lineTo(w*0.955, bot-h*0.03);
+    g.quadraticCurveTo(w*0.955, bot, w*0.90, bot);
+    g.lineTo(w*0.10, bot);
+    g.quadraticCurveTo(w*0.045, bot, w*0.045, bot-h*0.03);
+    g.lineTo(w*0.045, pHip);
+    g.quadraticCurveTo(w*0.045, pDeck+h*0.02, w*0.115, pDeck);
+    g.closePath(); g.fill();
+    /* arch blisters, the same 0.135 / 0.865 and the same shape the rear uses */
+    for(const ax of [0.135, 0.865]){
+      g.fillStyle = grad(pHip-h*0.04, bot);
+      g.beginPath(); g.ellipse(w*ax, pHip+h*0.02, w*0.10, h*0.055, 0, 0, 6.2832); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.18)';
+      g.beginPath(); g.ellipse(w*ax, pHip-h*0.004, w*0.065, h*0.014, 0, 0, 6.2832); g.fill();
     }
     /* the stripes go AFTER the body — drawn before it they were painted over
        and only showed on the rear, where the order happens to be the other way */
