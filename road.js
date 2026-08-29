@@ -80,7 +80,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.34';
+window.ROAD_BUILD = '0.9.35';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -4302,10 +4302,30 @@ function buildSprites(){
       paintRig(shape.rig, Object.assign({ lamp:'#d61b3c', lamp2:'#ff7a86',
                                           player:true, marque:shape.rear,
                                           stripes:optStripes && stripesAllowed() }, rigPaint)));
+    SP.playerFront = sprite(220,168,
+      paintRigFront(shape.rig, Object.assign({ lamp:'#d61b3c', lamp2:'#ff7a86',
+                                          player:true, marque:shape.rear,
+                                          stripes:optStripes && stripesAllowed() }, rigPaint)));
   } else {
     SP.player = sprite(220,168, paintCar(Object.assign({
       cabin:true, spoiler:true, shape, bodyKey:optBody, force:!!shape.force,
       bodyTop:shape.bodyTop, cabinTop:shape.cabinTop,
+      stripes:optStripes && stripesAllowed(),
+      lamp:'#d61b3c', lamp2:'#ff7a86'
+    }, pt)));
+    /* ---- AND THE FACE OF IT --------------------------------------------
+       Owner, 2026-08-29: the garage shows the front and the back of the car
+       you have selected. Only the tail was ever built for the player, because
+       the tail is the only end you see while driving - but the garage is the
+       one screen where you are looking AT the car rather than following it,
+       and a car you have never seen the face of is half a car.
+
+       `paintFront` takes the body under `bodyType` and its own taller box, the
+       same as the fleet sheet builds. Built here rather than on demand, so the
+       cost is paid once per change of car and paint instead of once per frame
+       of a menu. */
+    SP.playerFront = sprite(230,215, paintFront(Object.assign({
+      bodyType:optBody, marque:shape.rear, player:true,
       stripes:optStripes && stripesAllowed(),
       lamp:'#d61b3c', lamp2:'#ff7a86'
     }, pt)));
@@ -11055,14 +11075,36 @@ function drawGarageCar(){
   if(!cv) return;
   const g2 = cv.getContext('2d');
   const dpr = Math.min(2, window.devicePixelRatio||1);
-  cv.width = 300*dpr; cv.height = 180*dpr;
-  cv.style.width='300px'; cv.style.height='180px';
+  /* SHORTER THAN IT WAS. Two cars side by side are limited by the WIDTH of
+     their half, so each is about 130 wide and 100 tall - and a 180-tall canvas
+     left seventy pixels of nothing above them, which on a phone is a screen's
+     worth of scroll for empty space. */
+  cv.width = 300*dpr; cv.height = 128*dpr;
+  cv.style.width='300px'; cv.style.height='128px';
   g2.setTransform(dpr,0,0,dpr,0,0);
-  g2.clearRect(0,0,300,180);
-  const img = SP.player;
-  if(!img) return;
-  const bw = 240, bh = bw*img.height/img.width;
-  g2.drawImage(img, (300-bw)/2, 176-bh, bw, bh);
+  g2.clearRect(0,0,300,128);
+  const back = SP.player, front = SP.playerFront;
+  if(!back) return;
+  /* ---- BOTH ENDS, SIDE BY SIDE ------------------------------------------
+     One large picture of the tail became two smaller ones, back on the left
+     and face on the right. The owner asked for both even at the cost of size,
+     and the cost is real: 240 wide became 142. It is worth it, because the
+     front is where a marque, a headlight signature and a nose live, and none
+     of that was visible anywhere in the game before this.
+
+     Each is fitted into its own half and stands on the same floor line, so the
+     two ends read as one car rather than as two pictures.
+     ------------------------------------------------------------------- */
+  const FLOOR = 124, HALF = 150, PAD = 12;
+  const put = (img, cx) => {
+    if(!img) return;
+    const bw = Math.min(HALF - PAD*2, (FLOOR - 6) * img.width/img.height);
+    const bh = bw * img.height/img.width;
+    g2.drawImage(img, cx - bw/2, FLOOR - bh, bw, bh);
+  };
+  if(!front){ put(back, 150); return; }
+  put(back,  75);
+  put(front, 225);
 }
 function showGarage(){
   document.body.classList.remove('titling');

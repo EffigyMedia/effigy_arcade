@@ -14,6 +14,14 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-35"></a>
+## [0.9.35] - 2026-08-29
+- Added: **the garage shows both ends of the car.** Only the tail was ever built for the player, and
+  the garage is the one screen where you look at the car instead of following it. Each end is about
+  half the size the single picture was, and the card is fifty pixels shorter with it - two cars side
+  by side are limited by their width, so the taller card was a band of nothing
+  ([RLG-072](../fragments/RLG-072.md)).
+
 <a id="v0-9-34"></a>
 ## [0.9.34] - 2026-08-29
 - Removed: **the silver and bronze prizes.** They paid the TUNER and the MUSCLE car, and both are in
