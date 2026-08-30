@@ -14,6 +14,29 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-87"></a>
+## [0.9.87] - 2026-08-30
+- Fixed: **the gate is the gears the car has.** A four-speed could be dragged onto a third rail it
+  has no gears for, because the knob's travel was clamped to the length of the rail table rather than
+  to the car - and `gearFactor` returns zero past the end of the ratio table, so the car stopped
+  pulling in a gear it does not have. Two rails for a four-speed, three above it, and the knob cannot
+  leave them ([RLG-069](../fragments/RLG-069.md)).
+- Fixed: **a five-speed no longer engages a sixth.** The slot below fifth is where reverse lives in a
+  road car and this game has no reverse, so it reads NEUTRAL rather than a gear the engine does not
+  have ([RLG-069](../fragments/RLG-069.md)).
+- Fixed: **a five-speed's plate was wider than a six-speed's**, which is the one thing it cannot be.
+  Three hand-set widths that followed from nothing - 86, 92 and 74 - are now the last rail's knob
+  position plus the padding it has on the left, so the plate is the gate it holds. On a phone the
+  size of a control is the control ([RLG-069](../fragments/RLG-069.md)).
+- Fixed: **the knob came back inside the gate when the car changed.** Leaving a six-speed in sixth
+  and taking out a four-speed left it standing on a rail that car does not have
+  ([RLG-069](../fragments/RLG-069.md)).
+- Added: **`tools/gate-test.py` walks the gate with the game's own `shiftStep`**, and
+  **`tools/gate-shot.py`** photographs the plate for a car of each gear count. Both run in a TOUCH
+  context: the shell hides the whole thumb cluster on a device that reports no touch, so a desktop
+  harness measures a plate zero pixels wide and reports success
+  ([RLG-069](../fragments/RLG-069.md)).
+
 <a id="v0-9-86"></a>
 ## [0.9.86] - 2026-08-30
 - Fixed: **the shoreline is a line, not a staircase.** The sea was filled as a rectangle at the near

@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.86';
+window.ROAD_BUILD = '0.9.87';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6924,6 +6924,15 @@ function syncBoxClass(){
   const gn = gearCount();
   document.body.classList.toggle('gears4', gn <= 4);
   document.body.classList.toggle('gears5', gn === 5);
+  /* ---- AND THE KNOB COMES BACK INSIDE THE GATE (RLG-069) ------------
+     Change car in the garage and the knob keeps the position it had, so
+     leaving a six-speed in sixth and taking out a four-speed left the knob
+     standing on a rail that car does not have. It is put back to first,
+     which is where a car you have just got into is.
+     -------------------------------------------------------------- */
+  if(typeof knobRail !== 'undefined' && knobRail > railCount() - 1){
+    knobRail = 0; knobY = TOP_Y; placeKnob();
+  }
   document.body.classList.toggle('manual', !!optManual);
   /* one manual UI or the other, never both: the gate for a road car, paddles
      for the formula car */
@@ -9310,6 +9319,27 @@ const SLOTS = [
   { g:3, rail:1, y:TOP_Y }, { g:4, rail:1, y:BOT_Y },
   { g:5, rail:2, y:TOP_Y }, { g:6, rail:2, y:BOT_Y }
 ];
+/* ---- THE GATE IS THE GEARS THE CAR HAS (RLG-069) ------------------------
+   The table above is the whole H, six slots on three rails, and it stays that
+   way because it is the SHAPE of a gate rather than the contents of one. What
+   changes per car is how much of it exists.
+
+   TWO RAILS FOR A FOUR-SPEED, THREE FOR ANYTHING ABOVE IT, which is how the
+   pattern is cut in a real car: a rail carries two gears, so five and six
+   share the third one. A five-speed therefore has the third rail and only the
+   top of it - the slot below fifth is where reverse lives in a road car, and
+   this game has no reverse, so it reads NEUTRAL rather than engaging a sixth
+   gear the engine does not have.
+
+   AND THE KNOB CANNOT LEAVE THE RAILS THE CAR HAS. This is the half that was
+   missing and the half that mattered: `shiftStep` clamped to `RAIL_X.length`,
+   which is three whatever you are driving, so a four-speed could be dragged
+   into slots labelled 5 and 6. `gearFactor` returns zero for a gear past the
+   end of the ratio table, so the car simply stopped pulling in a gear it does
+   not have.
+   ------------------------------------------------------------------------ */
+function railCount(){ return gearCount() <= 4 ? 2 : 3; }
+function gateSlots(){ return SLOTS.filter(s => s.g <= gearCount()); }
 /* where the knob physically sits — a position in the gate, not a gear */
 let knobRail = 0, knobY = TOP_Y;
 /* Dropping into a lower gear cannot leave you doing more than that gear can
@@ -9325,7 +9355,7 @@ function engineBrake(){
 function placeKnob(){
   knobEl.style.left = RAIL_X[knobRail] + 'px';
   knobEl.style.top  = knobY + 'px';
-  const sl = SLOTS.find(s2 => s2.rail === knobRail && s2.y === knobY);
+  const sl = gateSlots().find(s2 => s2.rail === knobRail && s2.y === knobY);
   gear = sl ? sl.g : 0;                       /* mid-rail is NEUTRAL */
   knobEl.querySelector('b').textContent = sl ? sl.g : 'N';
   knobEl.dataset.gear = gear;
@@ -9337,7 +9367,7 @@ function shiftStep(dx, dy){
   if(dy < 0) knobY = knobY === BOT_Y ? MID_Y : TOP_Y;
   else if(dy > 0) knobY = knobY === TOP_Y ? MID_Y : BOT_Y;
   else if(dx && knobY === MID_Y)
-    knobRail = clamp(knobRail + (dx > 0 ? 1 : -1), 0, RAIL_X.length - 1);
+    knobRail = clamp(knobRail + (dx > 0 ? 1 : -1), 0, railCount() - 1);
   if(before !== knobRail + ':' + knobY){ placeKnob(); snd.shift(); engineBrake(); }
 }
 let knobDrag = false;
@@ -15439,6 +15469,20 @@ requestAnimationFrame(frameLoop);
   API.accelOf = function(k){ return +accelOf(k).toFixed(3); };
   API.brakeOf = function(k){ return +brakeOf(k).toFixed(3); };
   API.setBody = function(k){ optBody = k; buildSprites(); syncBoxClass(); };
+  /* ---- THE GATE, AND A WAY TO MOVE THROUGH IT (RLG-069) ---------------
+     `shift` calls the SAME `shiftStep` the thumb calls, rather than a second
+     copy of the rules - a harness that reimplements the gate proves that the
+     harness agrees with itself. `gate` reports what the car has, so a check
+     can compare where the knob can reach with what the gearbox holds.
+     ------------------------------------------------------------------ */
+  API.gate = function(){
+    const el = document.getElementById('shifter');
+    return { gears:gearCount(), rails:railCount(),
+             slots:gateSlots().map(s => ({ g:s.g, rail:s.rail, y:s.y })),
+             rail:knobRail, y:knobY, gear:gear, manual:!!optManual,
+             plateW: el ? +el.getBoundingClientRect().width.toFixed(1) : 0 };
+  };
+  API.shift = function(dx, dy){ shiftStep(dx, dy); return API.gate(); };
   /* which car the player is actually in. A harness that asserts a speed has to
      know what it is sitting in, or it reports the fleet as an engine fault. */
   API.bodyKey = function(){ return optBody; };

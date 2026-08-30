@@ -446,7 +446,14 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
   bottom:calc(env(safe-area-inset-bottom,0px) + 132px * var(--ark-ui,1));
-  width:86px;height:94px;touch-action:none;
+  /* ---- THE PLATE IS THE GATE, PLUS THE KNOB, PLUS ITS PADDING (RLG-069)
+     Three hand-set widths that did not follow from anything: 86 for a
+     six-speed, 92 for a five and 74 for a four - so a FIVE-SPEED gate was
+     drawn wider than a six-speed's, which is the one thing it cannot be.
+     The rails are 23 apart and the knob is 28 across, so the plate is the
+     last rail's knob position plus the same 8 of padding it has on the left:
+     54 + 28 + 8 for three rails, 31 + 28 + 8 for two. -------------------- */
+  width:90px;height:94px;touch-action:none;
 }
 #shifter[hidden]{ display:none }
 
@@ -485,7 +492,11 @@ body.hardware #paddles{ display:none }
   content:"";position:absolute;background:#05070a;border-radius:7px;
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9);
 }
-#gate::before{ left:13px;right:13px;top:38px;height:10px }          /* the cross rail */
+/* the cross rail, ending at the outer edge of the LAST rail rather than at the
+   edge of the plate - it is what the knob crosses between rails, so it has no
+   business running past the last one it can reach. The same 21 on both plates,
+   because both plates are their last rail plus the same padding. */
+#gate::before{ left:13px;right:21px;top:38px;height:10px }
 /* three rails, six slots */
 #gate::after{ left:13px;width:10px;top:11px;bottom:11px;
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9),
@@ -497,19 +508,18 @@ body.hardware #paddles{ display:none }
    have. The rails are box-shadow copies offset 23px, so dropping one gives a
    five-speed and dropping two a four-speed, and the plate narrows to match.
    -------------------------------------------------------------------------- */
-body.gears5 #gate::after{
-  box-shadow:inset 0 2px 3px rgba(0,0,0,.9),
-             23px 0 0 #05070a,
-             46px 0 0 #05070a;
-}
-body.gears5 #gate::before{ right:26px }        /* the cross rail stops short */
+/* A FIVE-SPEED HAS THE SAME THREE RAILS AS A SIX, which is why there is no
+   `gears5` rule here at all - the rules it used to carry were a copy of the
+   default and a cross rail that stopped short of a rail the car can reach. A
+   rail carries two gears, so five and six share the third one; what a
+   five-speed does not have is the slot BELOW fifth, and that is a fact about
+   the gears rather than about the plate. The engine reads it off `gears` and
+   leaves the knob in neutral there. */
 body.gears4 #gate::after{
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9),
              23px 0 0 #05070a;
 }
-body.gears4 #gate::before{ right:36px }
-body.gears4 #shifter{ width:74px }
-body.gears5 #shifter{ width:92px }
+body.gears4 #shifter{ width:67px }
 
 #knob{
   position:absolute;width:28px;height:28px;border-radius:50%;
