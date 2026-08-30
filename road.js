@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.85';
+window.ROAD_BUILD = '0.9.86';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -11581,9 +11581,48 @@ function drawRoad(){
          -------------------------------------------------------------- */
       const sB = bioAt(idx);
       if(sB.sea){
-        const shore = p1.x + seaSide * roadsideAt(p1, sB.beach);
-        if(seaSide < 0){ if(shore > 0) { ctx.fillStyle = seaTone(sB); ctx.fillRect(0, y2, shore, H - y2); } }
-        else { if(shore < W){ ctx.fillStyle = seaTone(sB); ctx.fillRect(shore, y2, W - shore, H - y2); } }
+        /* ---- AND THE WATER'S EDGE IS A LINE (RLG-059) ---------------
+           This was a rectangle at the NEAR shore, filled for the whole height
+           of the slice - so the coast came out as a hard staircase, one step
+           per segment, running beside a road drawn as a smooth quad. It was
+           the most visible thing about the coast in every capture taken.
+
+           The road is a quad because a road has two ends at two widths. So
+           does the water: the shore is further out at the near end of a slice
+           than at the far end, and the edge between them is a straight line.
+           Same numbers, same shoreline, drawn as the shape it always was.
+
+           It still fills to the bottom of the screen, because the pass walks
+           far to near and each nearer slice paints over the last - the edge
+           carries the slope on down rather than dropping vertically, so the
+           NEAREST slice, which nothing paints over, ends correctly too.
+           ---------------------------------------------------------- */
+        const shF = p2.x + seaSide * roadsideAt(p2, sB.beach);
+        const shN = p1.x + seaSide * roadsideAt(p1, sB.beach);
+        const shB = clamp(shN + (shN - shF) * ((H - y1) / ((y1 - y2) || 1)),
+                          -4*W, 5*W);
+        if(seaSide < 0 ? (shF > 0 || shN > 0) : (shF < W || shN < W)){
+          const edge = seaSide < 0 ? 0 : W;
+          ctx.fillStyle = seaTone(sB);
+          /* ---- AND IT OVERLAPS THE SLICE BEHIND IT BY A PIXEL --------
+             Every slice paints the ground full width and then paints its water
+             back over it, so the top row of each fill is antialiased against
+             SAND rather than against the water that is already there. That is
+             a pale hairline every eight pixels, all the way out - visible in
+             any capture of the sea and easy to read as a wave when it is an
+             artefact. Starting a pixel higher puts that row under the fill in
+             front of it.
+             -------------------------------------------------------- */
+          const top = y2 - 1;
+          ctx.beginPath();
+          ctx.moveTo(edge, top);
+          ctx.lineTo(shF, top);
+          ctx.lineTo(shN, y1);
+          ctx.lineTo(shB, H);
+          ctx.lineTo(edge, H);
+          ctx.closePath();
+          ctx.fill();
+        }
         ctx.fillStyle = groundCol;   /* the next slice expects the ground colour */
       }
       groundMax = y2;

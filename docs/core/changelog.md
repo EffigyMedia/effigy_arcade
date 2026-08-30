@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-86"></a>
+## [0.9.86] - 2026-08-30
+- Fixed: **the shoreline is a line, not a staircase.** The sea was filled as a rectangle at the near
+  shore for the whole height of a slice, so the coast came out as a hard step per segment beside a
+  road drawn as a smooth quad - the most visible thing about the coast in every capture taken. The
+  water's edge is a quad now, from the far shore to the near one, out of the same numbers
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **a pale hairline every eight pixels, all the way out to sea.** Each slice paints the ground
+  full width and paints its water back over it, so the top row of every fill was antialiased against
+  sand rather than against the water already there. Each fill starts a pixel higher, which puts that
+  row under the fill in front of it ([RLG-059](../fragments/RLG-059.md)).
+- Added: **`coast-test.py` measures the edge row by row.** A line moves by its slope every row; a
+  staircase does not move for the height of a slice and then jumps by the slope times that height.
+  Measured: largest step 4-5 px against a mean of 2-3, where the rectangle gave 11, 12 and 63
+  ([RLG-059](../fragments/RLG-059.md)).
+- Added: **`fps-test.py` covers the two new places.** The coast reads 60.4 fps across three samples,
+  the ceiling, so the quad costs nothing measurable. Swamp is 57.2 to 60.4 and forest is still the
+  heaviest at 47.2 to 48.8 ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-85"></a>
 ## [0.9.85] - 2026-08-30
 - Changed: **the sea reaches the horizon.** Owner: "maintaining the ocean sided render into the

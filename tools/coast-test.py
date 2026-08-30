@@ -122,6 +122,38 @@ window.__probe.farBand = function(hz, gapY, split){
   return { left: left, right: right, area: c.width*hh };
 };
 
+
+/* THE WATER'S EDGE, ROW BY ROW. A staircase and a line differ in one number: how far the edge moves
+   between two neighbouring rows. A line moves by its slope every row; a staircase does not move at
+   all for the height of a slice and then jumps by the slope times that height. So this returns the
+   edge's x for each row and lets the check compare the biggest step against the average one. */
+window.__probe.shoreEdge = function(y0, y1, side){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var g = c.getContext('2d');
+  var top = Math.round(y0*dpr), hh = Math.round((y1-y0)*dpr);
+  var d = g.getImageData(0, top, c.width, hh).data;
+  var xs = [];
+  var isSea = function(i){
+    var R = d[i], G = d[i+1], B = d[i+2];
+    return B > 55 && B < 170 && B > R*1.4 && G > R && G < B;
+  };
+  for(var y = 0; y < hh; y++){
+    var found = -1;
+    if(side < 0){
+      /* water on the left: walk in from x=0 to the first pixel that is not water */
+      if(!isSea((y*c.width)*4)) { xs.push(null); continue; }
+      for(var x = 1; x < c.width; x++){ if(!isSea((y*c.width + x)*4)){ found = x; break; } }
+    } else {
+      if(!isSea((y*c.width + c.width-1)*4)) { xs.push(null); continue; }
+      for(var x = c.width-2; x >= 0; x--){ if(!isSea((y*c.width + x)*4)){ found = x; break; } }
+    }
+    xs.push(found < 0 ? null : found/dpr);
+  }
+  return xs;
+};
+
 window.__probe.shot = function(){ return document.querySelector('canvas').toDataURL('image/png'); };
 window.__probe.mirrorShot = function(zoom){
   var c = document.querySelector('canvas');
@@ -276,6 +308,21 @@ def main():
         print('      far band decision: %s' % gap)
         res.check(far_wet > fb['area'] * 0.20, 'the sea reaches the horizon', str(fb))
         res.check(far_wet > far_dry * 6, 'and none of it on the landward side of the shore', str(fb))
+
+        # ------------------------------------- and its edge is a line, not a staircase
+        # Measured well below the horizon, where a slice is tall enough for a step to exist at
+        # all: near the vanishing point a slice is a pixel high and the two shapes agree.
+        edge = page.evaluate('([a, b, sd]) => window.__probe.shoreEdge(a, b, sd)',
+                             [hz + 40, hz + 130, s['sea']])
+        run = [x for x in edge if x is not None]
+        steps = [abs(run[i+1] - run[i]) for i in range(len(run)-1)] if len(run) > 20 else []
+        mean_step = (sum(steps)/len(steps)) if steps else 0
+        big = max(steps) if steps else 0
+        print('      shore edge over %d rows: mean step %.2f px, largest %.2f px'
+              % (len(run), mean_step, big))
+        res.check(len(run) > 20, "the water's edge was found on the screen", str(len(run)))
+        res.check(big <= mean_step * 3 + 2, "the water's edge is a line, not a staircase",
+                  'largest step %.2f against a mean of %.2f' % (big, mean_step))
 
         # ------------------------------------------------ what the coast is made of
         kinds = [page.evaluate('(k) => window.__probe.road.sceneryProbe("OCEAN", k)', k)

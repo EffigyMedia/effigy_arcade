@@ -55,7 +55,7 @@ with sync_playwright() as p:
     print("  frames per second, lowest to highest of %d samples each" % 3)
     print("  a change is only real if two ranges do not overlap")
     SAMPLES = 3
-    for k in ('CITY','DESERT','FOREST','MOUNTAIN','TUNDRA'):
+    for k in ('CITY','DESERT','FOREST','MOUNTAIN','TUNDRA','OCEAN','SWAMP'):
         pg.evaluate("(k) => { const R = window.__probe.road; R.setBiomePair(k,k); }", k)
         runs = []
         for _ in range(SAMPLES):
