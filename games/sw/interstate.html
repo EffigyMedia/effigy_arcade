@@ -66,14 +66,23 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    the hands using it.
    ---------------------------------------------------------------------- */
 #hud{position:absolute;inset:0;pointer-events:none;z-index:10;
-  padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 12px * var(--ark-ui,1))
+  /* the TOP padding is the safe area only: the row below the mirror owns the whole
+     distance from the top of the stage, so it can be measured against the glass
+     rather than against whatever this padding happens to be (RLG-082) */
+  padding:var(--safe-top, env(safe-area-inset-top,0px))
           calc(14px * var(--ark-ui,1))
           calc(env(safe-area-inset-bottom,0px) + 14px * var(--ark-ui,1));
   display:flex;flex-direction:column;justify-content:space-between}
-/* clear of the rear-view mirror, which is drawn on the CANVAS at a fixed 44px
-   and 6 from the top - so this clearance is NOT scaled: it is measured against
-   the glass, and the glass does not grow. */
-.toprow{ padding-top:58px; display:flex;justify-content:space-between;align-items:flex-start}
+/* ---- CLEAR OF THE GLASS, MEASURED AGAINST THE GLASS (RLG-082) ---------
+   This was a hardcoded 58, which was 6 of margin plus a 44-pixel mirror plus 8
+   of gap - three numbers collapsed into one, in a different file from the two
+   that decide them. The engine publishes the mirror's height as `--mirror-h`
+   and its margin as `--mirror-top` now, so the row below it moves when the
+   glass does and nobody has to remember. The fallbacks are the old values, so
+   a cabinet whose engine has not published yet still lays out correctly.
+   -------------------------------------------------------------------- */
+.toprow{ padding-top:calc(var(--mirror-top,6px) + var(--mirror-h,44px) + 8px * var(--ark-ui,1));
+  display:flex;justify-content:space-between;align-items:flex-start}
 .stat span{display:block;font-size:calc(8.5px * var(--ark-ui,1));font-weight:700;letter-spacing:.22em;color:var(--dim)}
 .stat b{font-family:var(--disp);font-weight:800;font-size:calc(26px * var(--ark-ui,1));line-height:1.05;
   font-variant-numeric:tabular-nums;letter-spacing:.01em}

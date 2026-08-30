@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-98"></a>
+## [0.9.98] - 2026-08-30
+- Changed: **the rear-view mirror is larger and actually centred.** Owner: "make the rearview mirror
+  larger and centered on the top of the screen." It was not centred, and the reason looked
+  deliberate: `viewShift` moves the whole forward view left to make room for the thumb cluster, and
+  the mirror was carried along with it - so the glass hung 8.5% of the screen left of the middle of a
+  symmetrical windscreen. A mirror is mounted on the screen, not in the world. 0.62 of the width
+  capped at 250 becomes 0.80 capped at 340, and the height follows the 5.7:1 the glass already had
+  ([RLG-082](../fragments/RLG-082.md)).
+- Changed: **the HUD measures itself against the glass.** The row under the mirror cleared it with a
+  hardcoded 58 - six of margin, a 44-pixel mirror and eight of gap, three numbers collapsed into one,
+  in a different file from the two that decide them. The engine publishes `--mirror-h` and
+  `--mirror-top`, so the row moves when the glass does. Both driving games
+  ([RLG-082](../fragments/RLG-082.md)).
+- Changed: **the HUD's top padding is the safe area only**, so the row below the mirror owns the
+  whole distance from the top of the stage and can be measured against the glass rather than against
+  whatever the padding happened to be. Measured: the gap is 9.8 px where 9.8 is designed, and the old
+  hardcode reads -8 - an overlap ([RLG-082](../fragments/RLG-082.md)).
+
 <a id="v0-9-97"></a>
 ## [0.9.97] - 2026-08-30
 - Fixed: **a slope measured over half a pixel is not a slope.** The sea's fill carries its edge down

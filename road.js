@@ -201,7 +201,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.97';
+window.ROAD_BUILD = '0.9.98';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -13789,8 +13789,33 @@ function drawStartPrompt(){
 }
 
 function drawMirror(){
-  const mw = Math.min(W*0.62, 250), mh = 44;
-  const mx = (W - mw)/2 + viewShift, my = 6;
+  /* ---- THE GLASS, AND WHERE IT SITS (RLG-082) -------------------------
+     Owner, 2026-08-30: "make the rearview mirror larger and centered on the
+     top of the screen".
+
+     IT WAS NOT CENTRED, and the reason is worth keeping because it looked
+     deliberate. `viewShift` moves the whole forward view left to make room for
+     the thumb cluster, and the mirror was carried along with it - so the glass
+     sat 8.5 per cent of the screen left of centre, hanging off the middle of a
+     symmetrical windscreen. A mirror is mounted on the screen rather than in
+     the world: it does not move when the view does.
+
+     LARGER, AT THE SAME SHAPE. 0.62 of the width capped at 250 becomes 0.80
+     capped at 340, and the height follows the same 5.7:1 the glass already had
+     rather than being a second number to keep in step.
+
+     AND ITS HEIGHT IS PUBLISHED, because the HUD has to clear it and was doing
+     so with a hardcoded 58. Anything anchored under the mirror now measures
+     itself against `--mirror-h`, which is the whole of what "anchored relative
+     spacing" means: a distance follows the thing it is a distance FROM.
+     ------------------------------------------------------------------- */
+  const mw = Math.min(W*0.80, 340), mh = Math.round(mw / 5.68);
+  const mx = (W - mw)/2, my = 6;
+  if(mirrorPub !== mh){
+    mirrorPub = mh;
+    document.documentElement.style.setProperty('--mirror-h', mh + 'px');
+    document.documentElement.style.setProperty('--mirror-top', my + 'px');
+  }
   ctx.save();
   /* the housing */
   ctx.fillStyle = '#0a0c11';
@@ -14567,6 +14592,9 @@ function drawLogo(g, cx, cy, size){
   });
 }
 
+/* the last mirror height published to the stylesheet, so the write happens on a
+   resize rather than on every frame */
+let mirrorPub = 0;
 let titleCar = null;
 function drawTitleArt(){
   if(!titleCv) titleCv = document.getElementById('titleArt');

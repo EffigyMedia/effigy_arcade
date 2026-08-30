@@ -62,7 +62,11 @@ window.__probe.hud = function(){
   var sr = st.getBoundingClientRect();
   var cv = document.querySelector('canvas');
   var cr = cv.getBoundingClientRect();
-  var mw = Math.min(cr.width * 0.62, 250), mh = 44, my = 6;
+  /* the glass publishes its own size now, so the harness asks rather than repeating it */
+  var cs = getComputedStyle(document.documentElement);
+  var mh = parseFloat(cs.getPropertyValue('--mirror-h')) || 44;
+  var my = parseFloat(cs.getPropertyValue('--mirror-top')) || 6;
+  var mw = Math.min(cr.width * 0.80, 340);
   var out = { scale: +getComputedStyle(document.documentElement)
                        .getPropertyValue('--ark-ui').trim(),
               stage: { w:+sr.width.toFixed(1), h:+sr.height.toFixed(1) },
@@ -76,7 +80,14 @@ window.__probe.hud = function(){
                           h:+r.height.toFixed(1) };
   });
   /* the gap between the mirror's lower edge and the first thing under it */
-  if(out.toprow) out.mirrorGap = +(out.toprow.top - out.mirror.bottom).toFixed(1);
+  /* the row's own box starts at its padding edge, so the CONTENT top is what clears
+     the glass - a padding box that overlaps a mirror is not an overlap of anything */
+  var tr = document.querySelector('.toprow');
+  if(tr){
+    var pad = parseFloat(getComputedStyle(tr).paddingTop) || 0;
+    out.toprowContent = +(out.toprow.top + pad).toFixed(1);
+    out.mirrorGap = +(out.toprowContent - out.mirror.bottom).toFixed(1);
+  }
   /* and between the bottom row and the tallest thing in the thumb cluster */
   var tallest = 0;
   ['dials','shifter','nitro','gas','wheel'].forEach(function(id){
@@ -161,11 +172,20 @@ def main():
         page.wait_for_timeout(1400)
 
         def cluster(body):
-            # THE DIALS TRANSITION OVER 0.18s AND THE CLASS LANDS BEFORE THEY MOVE. Reading
-            # 200ms after the car changes caught the class already on and the layout not yet
-            # settled, which reads as "the stack did not close up" when it is still closing.
+            # THE DIALS TRANSITION OVER 0.18s AND THE CLASS LANDS BEFORE THEY MOVE, so a fixed
+            # wait is a race: 200ms read the layout mid-flight, and 600ms still failed about
+            # one run in eight. It waits for the position to STOP MOVING instead, which is the
+            # thing it actually needs to be true.
             page.evaluate('(k) => window.__probe.road.setBody(k)', body)
-            page.wait_for_timeout(600)
+            last, same = None, 0
+            for _ in range(40):
+                page.wait_for_timeout(80)
+                d = page.evaluate('() => window.__probe.cluster()')
+                here = (d.get('dials') or {}).get('bottom')
+                same = same + 1 if here == last else 0
+                last = here
+                if same >= 3:
+                    return d
             return page.evaluate('() => window.__probe.cluster()')
 
         withnos = cluster('ROADSTER')
@@ -211,6 +231,23 @@ def main():
             page.wait_for_timeout(250)
             page.screenshot(path=str(out / 'hud-no-nos.png'))
             print('      wrote %s' % out)
+
+        # ---- AND THE TOP ROW CLEARS THE GLASS, WHATEVER SIZE THE GLASS IS -------
+        # The clearance used to be a hardcoded 58 in a different file from the two numbers
+        # that decide it. The engine publishes the mirror's height, so this asserts the
+        # relationship rather than the number: the row starts below the glass, and close
+        # enough to it to be reading as one panel.
+        d0 = page.evaluate('() => window.__probe.hud()')
+        print('      the glass ends at %s, the top row reads from %s, gap %s px'
+              % (d0['mirror']['bottom'], d0['toprowContent'], d0['mirrorGap']))
+        gap = d0['mirrorGap']
+        # THE GAP IS A DESIGNED 8 PIXELS TIMES THE UI SCALE, not a window of anything
+        # plausible. A window wide enough to be safe passed the old hardcoded 58 as well,
+        # which is the failure mode of a loose bound: it agrees with whatever is there.
+        want_gap = 8.0 * float(d0['scale'] or 1)
+        res.check(gap is not None and abs(gap - want_gap) <= 2.0,
+                  'the top row clears the glass by the gap it is designed to',
+                  'gap %s px where %.1f was designed' % (gap, want_gap))
 
         # ---- AND THE READOUTS ARE IN THE SAME SPACE AS THE CONTROLS (RLG-082) ----
         # The shell publishes --ark-ui and the cabinet opted its CONTROLS in and left its
