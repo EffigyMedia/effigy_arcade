@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-3"></a>
+## [0.10.3] - 2026-08-30
+- Added: **every other vehicle throws its own headlight beam.** Owner: would it be too much if all
+  the other vehicles also had headlight beams. It is not, given a cap. A traffic car, a rival or a
+  cruiser gets ONE cone rather than the player's three shells and pool, so the cost is set by how
+  many are allowed a beam rather than by how many are on the road, and the light fades with
+  distance so the far ones thin out instead of switching off at the cap and popping. Only vehicles
+  ahead of the camera get one: in the forward view they are all seen from behind, so their lamps
+  point down the road and the light lands on tarmac you can see. A wreck has no lamps left and a
+  speed trap parked on the verge is waiting rather than driving, so neither throws anything
+  ([RLG-085](../fragments/RLG-085.md)).
+- Changed: **one painter draws every beam in the game.** The player's throw, the pool at its
+  bumper and a delivery van's are now the same function at different sizes, so a fix to how a beam
+  rides a crest reaches all of them at once ([RLG-085](../fragments/RLG-085.md)).
+- Changed: **`fps-test.py` takes the hour as an argument.** It started at the dusk default and let
+  the clock run, so a two-second sample landed somewhere between no street lighting and all of it
+  and the headlights switched on partway through. Neither is a thing to average over when the
+  change being measured is a light ([RLG-085](../fragments/RLG-085.md)).
+
 <a id="v0-10-2"></a>
 ## [0.10.2] - 2026-08-30
 - Fixed: **the headlights lay light on the road instead of standing two grey slabs on it.** The

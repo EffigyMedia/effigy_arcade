@@ -13114,11 +13114,55 @@ function drawBeams(){
      the middle of the throw gets all three and the edge gets only the widest */
   const SHELLS = [[1.00, 0.150], [0.66, 0.120], [0.34, 0.110]];
 
+  /* ---- what a vehicle that is not the player gets (RLG-085) -----------
+     THE CAP IS A BOUND ON A PHONE, NOT A MEASURED LIMIT. fps-test cannot see
+     these beams at all on the machine that built them: the ranges overlap the
+     build without them in every biome, and they still overlap with the cap
+     raised to 48, which is the sensitivity check that says the instrument
+     would have caught a real cost. So 12 is chosen to cover the traffic
+     actually in view rather than to hit a frame budget, and the device is the
+     only place the real cost can be judged. The levers, in order, are this cap
+     and then NPC_REACH. */
+  const NPC_CAP = 12, NPC_MIN = 400, NPC_REACH = 16000, NPC_FAR = 3400;
+  const NPC_ALPHA = 0.115;
+
   ctx.save();
   /* the ground plane only. A beam has no business above the horizon, and
      clipping is cheaper than trusting the geometry never to go there. */
   ctx.beginPath(); ctx.rect(0, horizon, W, H - horizon); ctx.clip();
   ctx.globalCompositeOperation = 'lighter';
+
+  /* ---- ONE PAINTER, FOR EVERY VEHICLE THAT HAS LAMPS (RLG-085) ---------
+     Walk a cone down the road in WORLD space and fill it. Every beam in the
+     game comes out of this, so the player's throw and a delivery van's are the
+     same shape at different sizes, and a fix to how a beam bends over a crest
+     reaches all of them at once.
+
+     `xw` is the lamp's world position across the road, `z0` where the light
+     starts and `z1` where it ends, both measured from the CAMERA rather than
+     from the car - a traffic car is somewhere else on the road and has no
+     PLAYER_Z to add. `stops` are colour stops down the throw, as fractions.
+     -------------------------------------------------------------------- */
+  function cone(xw, z0, z1, hw0, spread, step, stops){
+    const left = [], right = [];
+    for(let z = z0; z <= z1; z += step){
+      const q = proj(xw, z);
+      if(!q.ok) break;
+      const hw = (hw0 + (z - z0) * spread) * q.scale * W/2;
+      left.push([q.x - hw, q.y]);
+      right.push([q.x + hw, q.y]);
+    }
+    if(left.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(left[0][0], left[0][1]);
+    for(let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+    for(let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, left[0][1], 0, left[left.length-1][1]);
+    for(const st of stops) g.addColorStop(st[0], st[1]);
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
 
   for(const side of [-1, 1]){
     /* the lamp's own offset from the middle of the car */
@@ -13128,36 +13172,20 @@ function drawBeams(){
     const off = side * ROAD * 0.17;
     for(const shell of SHELLS){
       const wide = shell[0], alpha = shell[1];
-      const left = [], right = [];
-      for(let z = NEAR; z <= FAR; z += STEP){
-        const p = proj(carX + off, pos + PLAYER_Z + z);
-        if(!p.ok) break;
-        const hw = (HW0 + (z - NEAR) * SPREAD) * wide * p.scale * W/2;
-        left.push([p.x - hw, p.y]);
-        right.push([p.x + hw, p.y]);
-      }
-      if(left.length < 3) continue;
-      ctx.beginPath();
-      ctx.moveTo(left[0][0], left[0][1]);
-      for(let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
-      for(let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
-      ctx.closePath();
       /* bright at the car, gone before the end of the throw. The gradient runs
          between the two ends of the beam ON SCREEN, so it stays right over a
-         crest where the far end is higher than usual. */
-      /* IT REACHES ZERO AT 0.62 OF THE THROW rather than at the end of it, so
-         the light dies out on the road instead of stopping at a line. The rest
-         of the polygon is filled at zero alpha and paints nothing. */
-      const y0 = left[0][1], y1 = left[left.length-1][1];
-      const g = ctx.createLinearGradient(0, y0, 0, y1);
+         crest where the far end is higher than usual, and it REACHES ZERO AT
+         0.62 of the throw rather than at the end of it - so the light dies out
+         on the road instead of stopping at a line. */
       /* warmer than it was: at a quarter alpha over dark tarmac the old
          near-white read as grey, which is half of why they looked like slabs */
-      g.addColorStop(0,    'rgba(255,236,178,' + (alpha * lit) + ')');
-      g.addColorStop(0.26, 'rgba(255,230,166,' + (alpha * 0.52 * lit) + ')');
-      g.addColorStop(0.62, 'rgba(255,226,160,0)');
-      g.addColorStop(1,    'rgba(255,226,160,0)');
-      ctx.fillStyle = g;
-      ctx.fill();
+      cone(carX + off, pos + PLAYER_Z + NEAR, pos + PLAYER_Z + FAR,
+           HW0 * wide, SPREAD * wide, STEP, [
+             [0,    'rgba(255,236,178,' + (alpha * lit) + ')'],
+             [0.26, 'rgba(255,230,166,' + (alpha * 0.52 * lit) + ')'],
+             [0.62, 'rgba(255,226,160,0)'],
+             [1,    'rgba(255,226,160,0)']
+           ]);
     }
   }
 
@@ -13180,25 +13208,66 @@ function drawBeams(){
      space like the other two, so it rides the crests and follows the bend.
      -------------------------------------------------------------------- */
   const POOL_FAR = 1500, POOL_HW = ROAD * 0.22;
-  const pl = [], pr = [];
-  for(let z = 0; z <= POOL_FAR; z += 150){
-    const p = proj(carX, pos + PLAYER_Z + z);
-    if(!p.ok) break;
-    const hw = POOL_HW * (1 - 0.30 * (z / POOL_FAR)) * p.scale * W/2;
-    pl.push([p.x - hw, p.y]); pr.push([p.x + hw, p.y]);
+  cone(carX, pos + PLAYER_Z, pos + PLAYER_Z + POOL_FAR,
+       POOL_HW, -POOL_HW * 0.30 / POOL_FAR, 150, [
+         [0,    'rgba(255,240,196,' + (0.070 * lit) + ')'],
+         [0.55, 'rgba(255,234,180,' + (0.0245 * lit) + ')'],
+         [1,    'rgba(255,234,180,0)']
+       ]);
+
+  /* ==== AND EVERY OTHER VEHICLE THROWS ONE (RLG-085) ====================
+     Owner, 2026-08-30: would it be too much if all the other vehicles also had
+     headlight beams. Not too much, given a cap.
+
+     ONE SHELL EACH, NOT THREE. The player's throw is seven fills a frame and
+     giving every car on the road that treatment is what would be too much. A
+     traffic car gets one cone, no pool and a shorter throw, so the cost is set
+     by HOW MANY are allowed a beam rather than by how many are on the road.
+
+     ONLY THE ONES DRIVING AWAY FROM THE CAMERA. In the forward view every
+     vehicle is seen from behind, so its lamps point down the road and its light
+     lands on tarmac the player can see. An oncoming car points its lamps AT the
+     lens, which is glare rather than a pool of light, and it belongs with the
+     rear-view where the oncoming cars actually are.
+
+     AND THE NEAREST FEW ONLY. Sorted by distance and capped, because a beam
+     three hundred metres out is a few pixels of haze that costs the same fill
+     as one at the bumper. Past `NPC_REACH` there is nothing to see at all.
+     ==================================================================== */
+  const npc = [];
+  for(const c of traffic) npc.push(c);
+  for(const c of racers) npc.push(c);
+  /* a wreck has no lamps left, and a speed trap parked on the verge with its
+     engine off is not throwing anything down the road - it is waiting */
+  for(const c of cops) if(!c.wreck && !(c.trap && c.armed)) npc.push(c);
+  const eye = pos + PLAYER_Z;
+  const seen = [];
+  for(const c of npc){
+    const dz = c.z - eye;
+    /* ahead of the camera, and near enough that the light is worth a fill */
+    if(dz < NPC_MIN || dz > NPC_REACH) continue;
+    seen.push(c);
   }
-  if(pl.length >= 3){
-    ctx.beginPath();
-    ctx.moveTo(pl[0][0], pl[0][1]);
-    for(let i = 1; i < pl.length; i++) ctx.lineTo(pl[i][0], pl[i][1]);
-    for(let i = pr.length - 1; i >= 0; i--) ctx.lineTo(pr[i][0], pr[i][1]);
-    ctx.closePath();
-    const g2 = ctx.createLinearGradient(0, pl[0][1], 0, pl[pl.length-1][1]);
-    g2.addColorStop(0,    'rgba(255,240,196,' + (0.070 * lit) + ')');
-    g2.addColorStop(0.55, 'rgba(255,234,180,' + (0.0245 * lit) + ')');
-    g2.addColorStop(1,    'rgba(255,234,180,0)');
-    ctx.fillStyle = g2;
-    ctx.fill();
+  seen.sort((a, b) => (a.z - b.z));
+  const take = Math.min(seen.length, NPC_CAP);
+  for(let i = 0; i < take; i++){
+    const c = seen[i];
+    /* the lamps are at the FRONT of the car, which is half its length ahead of
+       the point it is drawn at. A truck's beam starting at its tail would run
+       out from under its own trailer. */
+    const front = c.z + (c.len || 380) * 0.5;
+    /* it fades with distance as well as down its own throw, so the far ones
+       thin out rather than switching off at the cap and popping */
+    const fade = 1 - (c.z - eye) / NPC_REACH;
+    const a = NPC_ALPHA * fade * fade * lit;
+    if(a < 0.004) continue;
+    cone((c.x || 0) * ROAD, front, front + NPC_FAR,
+         ROAD * 0.16, 0.022, 340, [
+           [0,    'rgba(255,234,172,' + a + ')'],
+           [0.30, 'rgba(255,228,160,' + (a * 0.48) + ')'],
+           [0.70, 'rgba(255,226,156,0)'],
+           [1,    'rgba(255,226,156,0)']
+         ]);
   }
   ctx.restore();
 }
