@@ -78,7 +78,18 @@ const RUMBLE = 3;            // segments per stripe
    That also makes the roadside's independence from it testable: a harness can
    widen the road and measure whether the trees moved.
    ------------------------------------------------------------------------- */
-let ROAD = 1900;             // half-width of road
+let ROAD = 2300;             // half-width of road
+/* ---- 2300, AND THE NUMBER WAS CHOSEN BY LOOKING (RLG-024) ---------------
+   Owner: "the road needs to be a bit wider to make the lanes bigger." Captured
+   at 1900, 2300 and 2700 and compared. At 2700 the near tarmac swallows the
+   bottom of the frame, the car looks small on it and the verge is pushed out of
+   the near view - it stops reading as a road. 2300 is a fifth wider, the lanes
+   are visibly bigger, and the roadside is still where it was.
+
+   The lanes come with it for nothing: `LANE_X` is in normalised units, so four
+   lanes inside a wider road are four wider lanes, and everything that moves
+   sideways is written in lane units for the same reason.
+   ------------------------------------------------------------------------- */
 /* ---- WHAT THE ROADSIDE IS MEASURED IN (RLG-024, RLG-059) -----------------
    RLG-024 will widen the road, and everything beside it was written in
    MULTIPLES OF `ROAD` - the lamps at 1.15 of it, the trees at 1.35. Widening
@@ -7479,10 +7490,21 @@ function drawGantry(cp){
 }
 
 function drawSign(sg){
-  const p1 = proj(sg.side * 1.34 * ROAD, sg.z);
+  /* ---- A SIGN IS ROADSIDE, NOT ROAD (RLG-024, RLG-073) -----------------
+     Two faults, both of them the ones this pair of rulings is about.
+
+     It stood at 1.34 ROAD WIDTHS from the centre and was sized by the road's
+     width, so widening the road would have walked the chevron boards away from
+     the kerb and grown them. A sign is the size of a car door on a waist-high
+     post whatever the carriageway behind it is doing.
+
+     And its occlusion was `overBrow`, which returns false on its first line and
+     has been dead since `crestY` was re-enabled - the same dead call the lamps
+     were found behind. So a sign drew straight through a hill.
+     -------------------------------------------------------------------- */
+  const p1 = proj(0, sg.z);
   if(!p1.ok) return;
-  if(overBrow(sg.z, p1.y)) return;
-  const sc = p1.scale * ROAD * W;
+  const sc = p1.scale * SCENE_UNIT * W;
   /* These were billboard-sized — a third of a road width across on a post half
      a road width tall, which at close range filled the screen like an
      interstate hoarding. A real chevron board is about the size of a car door
@@ -7490,6 +7512,16 @@ function drawSign(sg){
      you are about to pass cannot dominate the frame. */
   let bw = Math.min(sc * 0.145, W * 0.115);
   const bh = bw * 0.74;
+  /* measured from the tarmac edge, and put through the cars' crest gate */
+  const sx = p1.x + sg.side * roadsideAt(p1, 0.34);
+  const sgate = crestGate(sg.z, p1.y, p1.y - bh * 2.4, 'sign');
+  if(sgate.hide){ crestDid('sign', 'hidden'); return; }
+  ctx.save();
+  if(sgate.clip !== null){
+    crestDid('sign', 'clipped');
+    ctx.beginPath(); ctx.rect(0, 0, W, sgate.clip); ctx.clip();
+  } else crestDid('sign', 'drawn');
+  p1.x = sx;
   if(bw < 2.5) return;
   const postH = Math.min(sc * 0.24, H * 0.10);
   const bx = p1.x, by = p1.y - postH - bh;
@@ -7538,6 +7570,7 @@ function drawSign(sg){
     ctx.beginPath(); ctx.roundRect(bx - bw/2, by, bw, bh, Math.max(1, bw*0.08)); ctx.fill();
     ctx.restore();
   }
+  ctx.restore();   /* the crest clip */
 }
 
 function drawRubber(){
@@ -11300,10 +11333,11 @@ function drawRoad(){
 
     maxy = y2;
 
-    // street lights every 8 segments, alternating sides
-    if(idx % 8 === 0 && !overBrow(z1, p1.y)){
-      const side = ((idx/8)|0) % 2 ? 1 : -1;
-    }
+    /* A SECOND, EMPTY LAMP BLOCK STOOD HERE and it predates this work. It
+       tested `!overBrow(z1, p1.y)`, computed which side the post would go on,
+       and did nothing with it. Harmless at runtime and actively misleading to
+       read: it looks like a second street-lighting system, and it is the fourth
+       thing found behind that one dead guard. */
   }
 }
 function quad(ax,ay,bx,by,cx,cy,dx,dy){

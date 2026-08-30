@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-76"></a>
+## [0.9.76] - 2026-08-30
+- Changed: **the road is a fifth wider, and the lanes with it.** `ROAD` goes from 1900 to 2300. The
+  lanes come for nothing because `LANE_X` is normalised, and everything that moves sideways is
+  already written in lane units. Chosen by capturing 1900, 2300 and 2700 and comparing: at 2700 the
+  near tarmac swallows the frame, the car looks small on it and the verge is pushed out of the near
+  view ([RLG-024](../fragments/RLG-024.md)).
+- Fixed: **a roadside sign is roadside, not road.** It stood at 1.34 road widths from the centre and
+  was sized by the road's width, so widening would have walked the chevron boards away from the kerb
+  and grown them. A sign is the size of a car door whatever the carriageway behind it is doing
+  ([RLG-024](../fragments/RLG-024.md)).
+- Fixed: **the signs had no occlusion either.** Their guard was `overBrow`, the same dead call the
+  lamps were found behind - it returns false on its first line. They go through the cars' crest gate
+  now, like everything else beside the road ([RLG-073](../fragments/RLG-073.md)).
+
 <a id="v0-9-75"></a>
 ## [0.9.75] - 2026-08-30
 - Added: **the mirror shows the skyline and the roadside behind you.** The same sprites, from the
