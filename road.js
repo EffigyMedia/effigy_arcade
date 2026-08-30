@@ -5136,17 +5136,84 @@ const SCENERY = {
 /* the built bitmaps, one per biome and kind. Cleared on resize with everything
    else, because their pixel size follows the canvas. */
 let sceneryCache = {};
+/* ---- THE ROADSIDE IS LIT BY THE SAME HOUR AS THE HORIZON (RLG-080) -------
+   Found by looking at the headlight captures: at midnight the mountain's rock
+   faces were pale grey while the skyline BEHIND them had gone dark. The scenery
+   sprites bake fixed colours, so a tree is a daylight tree at every hour.
+
+   The asymmetry is older than the skyline work and was invisible while both
+   were fixed. The skyline learning to follow the light is what made the
+   roadside's refusal to obvious to ignore - which is the ordinary way a fix
+   surfaces the next fault rather than a fault in the fix.
+
+   Same treatment, same reason: the tint is mixed in at BUILD time and the cache
+   is keyed by the hour bucket, because tinting at draw time means a pass over
+   the frame and this engine has already thrown four of those away. `sceneryTint`
+   is how far toward the night the palette has gone, and every biome's build
+   function takes it.
+   ------------------------------------------------------------------------- */
+function sceneryTint(){
+  /* the ground's own light, which is what actually falls on a roadside object.
+     Night takes it down and toward blue; golden hour warms it. */
+  const n = nightFall(), g = goldenHour();
+  /* ---- THE NIGHT COLOUR HAS TO BE DARKER THAN WHAT IT LIGHTS -----------
+     `source-atop` is a MIX toward the colour given, so the colour decides the
+     direction: anything darker than the target gets BRIGHTER. The first version
+     used a mid blue-grey at luminance 68, and the check caught a forest tree
+     going from 45.6 by day to 63.5 at night - the night tint was lighting the
+     trees up. A picture would not have shown it either: against a near-black
+     sky a slightly brighter tree still reads as dark.
+
+     The target is now darker than anything it is applied to, so every surface
+     moves the same way. It is blue rather than black because night is blue, and
+     mixing toward pure black would drain the colour out of the place instead of
+     putting it under a moon.
+     ------------------------------------------------------------------- */
+  return { dark: n * 0.62, warm: g * 0.26,
+           cool: [18,24,40], gold: [188,140,86] };
+}
 function sceneryArt(key, i){
   const spec = SCENERY[key];
   if(!spec) return null;
-  const id = key + i;
+  const id = key + i + '_' + skyBucket();
   if(!sceneryCache[id]){
     /* generous pixels: these are drawn at anything from two pixels wide to a
        third of the screen, and a bitmap that is too small reads as mush up close */
     const pw = 96, ph = Math.round(96 * (spec.h / spec.w));
-    sceneryCache[id] = sprite(pw, ph, (g)=>{ g.clearRect(0,0,pw,ph); spec.build(g, pw, ph, i); });
+    /* ONE BUCKET AT A TIME. The key carries the hour, so a new bucket writes new
+       entries - and the old ones have to go or the cache grows without bound at
+       forty buckets times five biomes times six kinds. */
+    for(const k in sceneryCache) if(!k.endsWith('_' + skyBucket())) delete sceneryCache[k];
+    sceneryCache[id] = sprite(pw, ph, (g)=>{
+      g.clearRect(0,0,pw,ph);
+      spec.build(g, pw, ph, i);
+      applySceneryLight(g, pw, ph);
+    });
   }
   return sceneryCache[id];
+}
+
+/* ---- THE LIGHT, PAINTED ONTO THE SPRITE AND NOWHERE ELSE -----------------
+   `source-atop` is the operation that was wrong for the skyline, because there
+   it was applied to the FRAME and the sky is opaque. On an offscreen sprite it
+   is exactly right: it paints only where the sprite already has pixels, so the
+   transparent background stays transparent and the object is tinted without a
+   single pass over the picture.
+   ------------------------------------------------------------------------- */
+function applySceneryLight(g, w, h){
+  const t = sceneryTint();
+  if(t.dark < 0.02 && t.warm < 0.02) return;
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  if(t.warm > 0.02){
+    g.fillStyle = 'rgba(' + t.gold[0] + ',' + t.gold[1] + ',' + t.gold[2] + ',' + (t.warm) + ')';
+    g.fillRect(0, 0, w, h);
+  }
+  if(t.dark > 0.02){
+    g.fillStyle = 'rgba(' + t.cool[0] + ',' + t.cool[1] + ',' + t.cool[2] + ',' + (t.dark) + ')';
+    g.fillRect(0, 0, w, h);
+  }
+  g.restore();
 }
 
 /* ---- THE LIT SHEET, WHICH IS THE SAME BUILDING WITH ONLY ITS GLASS ON ----
@@ -5158,7 +5225,10 @@ function sceneryArt(key, i){
 function sceneryLitArt(key, i){
   const spec = SCENERY[key];
   if(!spec || !spec.lit) return null;
-  const id = key + i + 'L';
+  /* the lit windows carry the hour in their key too, so they are dropped with
+     everything else when the bucket moves - but they are NOT tinted. A window is
+     a light source; dimming it at night is the one thing that would be wrong. */
+  const id = key + i + 'L_' + skyBucket();
   if(!(id in sceneryCache)){
     const pw = 96, ph = Math.round(96 * (spec.h / spec.w));
     sceneryCache[id] = sprite(pw, ph, (g)=>{
@@ -14426,6 +14496,37 @@ requestAnimationFrame(frameLoop);
      photographed rather than driven to */
   API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };
   /* what this place holds on its own, blended across a crossing (RLG-059) */
+  /* what the roadside's light is doing right now, for a harness that has to
+     answer why a night tint did or did not land */
+  API.sceneryTintProbe = function(){
+    const t = sceneryTint();
+    return { dark:+t.dark.toFixed(3), warm:+t.warm.toFixed(3),
+             night:+nightFall().toFixed(3), bucket:skyBucket(),
+             cached:Object.keys(sceneryCache).length };
+  };
+  /* the mean colour of a built scenery sprite, so a harness can say whether the
+     hour's light actually reached the pixels rather than only being computed */
+  API.sceneryPixel = function(key, i){
+    const art = sceneryArt(key, i|0);
+    if(!art) return null;
+    const g = art.getContext('2d');
+    const d = g.getImageData(0, 0, art.width, art.height).data;
+    let r=0, gg=0, b=0, n=0;
+    for(let k=0;k<d.length;k+=4){ if(d[k+3] > 40){ r+=d[k]; gg+=d[k+1]; b+=d[k+2]; n++; } }
+    return n ? { r:Math.round(r/n), g:Math.round(gg/n), b:Math.round(b/n), px:n } : null;
+  };
+  /* put the clock where a harness needs it. The day is 240 seconds long, so a
+     check that waited for night would take two minutes to ask one question. */
+  API.setPhase = function(v){ dayClock = (v % 1) * DAY_SECONDS; return phase(); };
+  API.skylinePixel = function(key){
+    const a = skylineFor(key || biome);
+    const g = a.body.getContext('2d');
+    const d = g.getImageData(0, 0, a.body.width, a.body.height).data;
+    let r=0, gg=0, b=0, n=0;
+    for(let k=0;k<d.length;k+=4){ if(d[k+3] > 40){ r+=d[k]; gg+=d[k+1]; b+=d[k+2]; n++; } }
+    return n ? { r:Math.round(r/n), g:Math.round(gg/n), b:Math.round(b/n), px:n,
+                 haze: skyStops()[3] } : null;
+  };
   API.snowFloor = function(){ return +snowFloorNow().toFixed(3); };
   /* the mirror's eye height, and where a car a given distance behind lands in
      the glass as a fraction of it - 0 at the mirror's horizon, 1 at the bottom.

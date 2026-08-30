@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-74"></a>
+## [0.9.74] - 2026-08-30
+- Fixed: **the roadside takes the hour's light, not only the horizon.** The scenery sprites baked
+  fixed colours, so a tree was a daylight tree at midnight while the skyline behind it had gone dark.
+  Same treatment as the skyline: the tint is mixed in at build time and the cache is keyed by the
+  hour bucket, so nothing passes over the frame ([RLG-080](../fragments/RLG-080.md)).
+- Fixed: **the night colour has to be DARKER than what it lights.** `source-atop` is a mix toward the
+  colour given, so the colour decides the direction - anything darker than the target gets brighter.
+  The first version used a mid blue-grey and a forest tree went from 45.6 by day to 63.5 at night:
+  the night tint was lighting the trees up. A picture would not have shown it either, because against
+  a near-black sky a slightly brighter tree still reads as dark
+  ([RLG-080](../fragments/RLG-080.md)).
+- Added: **a check that the roadside darkens after dark**, and `API.setPhase` so it can ask the
+  question in a second rather than waiting out a four-minute day. Measured: rock 74.3 to 44.1, forest
+  45.6 to 33.0, skyline 68.9 to 25.8 ([RLG-080](../fragments/RLG-080.md)).
+
 <a id="v0-9-73"></a>
 ## [0.9.73] - 2026-08-30
 - Added: **the player's headlights beam down the road at night.** The cone is walked in WORLD space

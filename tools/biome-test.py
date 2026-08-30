@@ -438,6 +438,39 @@ def main():
                   'and the tundra is permanently slipperier for it, with nothing added to say so',
                   'tundra %.3f, dry desert %.3f' % (grip_tundra, grip_desert))
 
+        # ------------------------------------ the roadside is lit by the hour
+        print()
+        print('  THE ROADSIDE TAKES THE HOUR, not only the horizon')
+        # The scenery sprites bake their colours, so without a rebuild keyed to the
+        # hour a tree stays a daylight tree at midnight. Measured as the mean colour
+        # of the built sprite, because the eye is not reliable here: the same rock
+        # that measures (64,72,93) at night READS as pale against a very dark sky,
+        # and chasing that impression cost a round of probing before the numbers
+        # settled it.
+        lightness = {}
+        for label, ph in (('midday', 0.75), ('night', 0.25)):
+            page.evaluate('(v) => window.__probe.road.setPhase(v)', ph)
+            page.wait_for_timeout(250)
+            rock = page.evaluate("() => window.__probe.road.sceneryPixel('MOUNTAIN', 0)")
+            tree = page.evaluate("() => window.__probe.road.sceneryPixel('FOREST', 0)")
+            sky = page.evaluate("() => window.__probe.road.skylinePixel('MOUNTAIN')")
+            # NOT named `lum`: there is a module-level lum() used earlier in this
+            # function, and assigning the name here makes it local for the WHOLE
+            # function - so the earlier call died with an unbound local.
+            bright = lambda c: 0.2126*c['r'] + 0.7152*c['g'] + 0.0722*c['b']
+            lightness[label] = (bright(rock), bright(tree), bright(sky))
+            print('      %-8s rock %.1f   tree %.1f   skyline %.1f' % ((label,) + lightness[label]))
+        res.check(lightness['night'][0] < lightness['midday'][0] - 8,
+                  'the roadside rock is darker at night than at midday',
+                  '%.1f vs %.1f' % (lightness['night'][0], lightness['midday'][0]))
+        res.check(lightness['night'][1] < lightness['midday'][1] - 4,
+                  'and so is the forest',
+                  '%.1f vs %.1f' % (lightness['night'][1], lightness['midday'][1]))
+        res.check(lightness['night'][2] < lightness['midday'][2],
+                  'and the skyline behind them, which is what made the mismatch visible',
+                  '%.1f vs %.1f' % (lightness['night'][2], lightness['midday'][2]))
+        page.evaluate('() => window.__probe.road.setPhase(0.75)')
+
         # ------------------------------------------- and the distinction can fail
         print()
         print('  NOT VACUOUS - the old flip goes back and the sweep check must catch it')
