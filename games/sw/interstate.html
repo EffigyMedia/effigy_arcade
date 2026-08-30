@@ -156,6 +156,20 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 /* a car with no bottle shows no bottle — the LORRY and the CAB had a nitrous
    button and a gauge they could never use */
 body.nonos #nitro, body.nonos #nosWrap{ display:none !important }
+/* ---- AND THE STACK CLOSES UP OVER IT (RLG-028) --------------------------
+   Owner: cars without NOS did not have the gauges collapse down to the pedals.
+   Hiding the bottle left the space it stood in, so a car without one drove with
+   a hole in its instruments - the shifter and the dials went on measuring their
+   height from where a bottle would have been.
+
+   The cluster stacks bottom-up: pedals, bottle, shifter, dials. `--bottle` is
+   how much room the bottle takes in that stack, and it is the only thing that
+   changes - every offset above it is written as a distance from the pedals PLUS
+   that space, so setting it to zero closes the gap and nothing else has to know
+   why. One number, and the layout follows the car.
+   ---------------------------------------------------------------------- */
+body{ --bottle:38px }
+body.nonos{ --bottle:0px }
 #nitro{
   /* The dials and the gate were landing on top of it. 92px cleared the pedals
      but nothing above, so it needed the gap raising — not by much, or it
@@ -350,12 +364,12 @@ body.hardware #horn,
      with the scale — while these were fixed pixels. At any scale above 1 the
      bottle rose into the dials and they covered a third of it. Multiplying the
      offsets by the same variable keeps the stack together at every size. */
-  bottom:calc(env(safe-area-inset-bottom,0px) + 132px * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
   width:115px;height:59px;
   transition:bottom .18s ease-out;
 }
 body.manual #dials{
-  bottom:calc(env(safe-area-inset-bottom,0px) + 240px * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (202px + var(--bottle,38px)) * var(--ark-ui,1));
 }
 /* ---- the wheel ----------------------------------------------------------
    Bottom-left, opposite the pedals. It ROTATES with the car and it FOLLOWS the
@@ -445,7 +459,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 132px * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
   /* ---- THE PLATE IS THE GATE, PLUS THE KNOB, PLUS ITS PADDING (RLG-069)
      Three hand-set widths that did not follow from anything: 86 for a
      six-speed, 92 for a five and 74 for a four - so a FIVE-SPEED gate was
@@ -466,7 +480,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 132px * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
   width:132px;height:64px;touch-action:none;
   display:flex;align-items:stretch;gap:6px;
 }

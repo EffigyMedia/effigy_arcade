@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-95"></a>
+## [0.9.95] - 2026-08-30
+- Fixed: **a car with no bottle leaves no hole.** Owner: cars without NOS did not have the gauges
+  collapse down to the pedals. Hiding the bottle left the space it stood in, so the shifter and the
+  dials went on measuring their height from where a bottle would have been. The cluster stacks
+  bottom-up and `--bottle` is how much room the bottle takes in that stack; setting it to zero closes
+  the gap and nothing else has to know why. The dials come down 46.8 px, landing exactly where the
+  bottle's own floor was ([RLG-028](../fragments/RLG-028.md)).
+- Added: **`tools/hud-test.py` measures the cluster as boxes.** Whether the stack closed up is a
+  question about `getBoundingClientRect`, not about pixels, and it does not care what the road behind
+  it is doing ([RLG-028](../fragments/RLG-028.md)).
+
 <a id="v0-9-94"></a>
 ## [0.9.94] - 2026-08-30
 - Fixed: **the player collides at the width it is drawn at.** Owner: "We have to make the vehicle
