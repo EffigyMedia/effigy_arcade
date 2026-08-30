@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-65"></a>
+## [0.9.65] - 2026-08-29
+- Fixed: **the mirror shows the world it is in.** It never had. The sky was two fixed blues, the
+  ground one fixed near-black and the tarmac two more, so the glass read as dusk in a forest at every
+  hour, in every biome, in every weather - snow could cover the world and the mirror stayed dry. It
+  asks the same `skyStops`, `groundBase` and `groundTone` the windscreen asks, each with one
+  definition and two callers ([RLG-079](../fragments/RLG-079.md)).
+- Added: **the mirror looks at the place behind you.** Its ground reads the segment index at the far
+  end of what it can see, which is BEHIND the car - so during a biome change the glass still shows the
+  place you are leaving while the windscreen shows the one you are entering. That falls out of asking
+  the right index rather than being arranged, which is the point of the biome living on the road
+  ([RLG-022](../fragments/RLG-022.md)).
+- Added: **the road behind takes the same weather as the road ahead** - snow whitens it and covers the
+  markings, rain soaks it. The grazing reflection is left out, because it is scaled by distance ahead
+  and there is no equivalent looking back ([RLG-079](../fragments/RLG-079.md)).
+
 <a id="v0-9-64"></a>
 ## [0.9.64] - 2026-08-29
 - Changed: **the mirror looks down from higher up.** The owner reported from the device that it still

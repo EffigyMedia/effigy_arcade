@@ -9759,8 +9759,11 @@ function hazeRGB(){
    The un-strobed tone is asked for - `dark` false - because the band has no
    segments to alternate between and a strobe needs two.
    ------------------------------------------------------------------------- */
-function groundBase(mix){
-  const far = Math.floor(pos/SEG) + DRAW;
+function groundBase(mix, atIdx){
+  /* `atIdx` is for the MIRROR, which looks the other way: the band under ITS
+     horizon is the land BEHIND you, and during a biome change that is still the
+     place you came from. Absent, it is the far edge of the road ahead. */
+  const far = atIdx === undefined ? Math.floor(pos/SEG) + DRAW : atIdx;
   const c = hexRGB(groundTone(far, false));
   let r = c[0], g2 = c[1], b2 = c[2];
   const want = LUM(r, g2, b2);
@@ -9794,14 +9797,31 @@ function groundBase(mix){
 }
 function LUM(r, g, b){ return 0.2126*r + 0.7152*g + 0.0722*b; }
 
+/* ---- THE SKY'S FOUR COLOURS, IN ONE PLACE (RLG-079) ----------------------
+   The mirror used to paint its own sky - two fixed blues that read as dusk at
+   every hour of every day. Lifting these out means the glass shows the same sky
+   the windscreen does, at the same moment, without a second copy of the day
+   cycle to keep in step.
+   ------------------------------------------------------------------------- */
+function skyStops(){
+  const n = nightFall(), gold = goldenHour();
+  return [
+    rgb(mix3(hex3('#2f6ea8'), hex3('#04030a'), n)),
+    rgb(mix3(hex3('#6ba3cc'), hex3('#0a0715'), n)),
+    rgb(mix3(mix3(hex3('#a8cbe0'), hex3('#5b2340'), gold), hex3('#140b1f'), n)),
+    rgb(mix3(mix3(hex3('#d6e4ec'), hex3('#a8422f'), gold), hex3('#2a1424'), n))
+  ];
+}
+
 function drawSky(){
   const n = nightFall(), gold = goldenHour();
   /* day sky under night sky, crossfaded; the golden band on top of both */
+  const st = skyStops();
   const g = ctx.createLinearGradient(0,0,0,horizon+2);
-  g.addColorStop(0,    rgb(mix3(hex3('#2f6ea8'), hex3('#04030a'), n)));
-  g.addColorStop(0.42, rgb(mix3(hex3('#6ba3cc'), hex3('#0a0715'), n)));
-  g.addColorStop(0.78, rgb(mix3(mix3(hex3('#a8cbe0'), hex3('#5b2340'), gold), hex3('#140b1f'), n)));
-  g.addColorStop(1,    rgb(mix3(mix3(hex3('#d6e4ec'), hex3('#a8422f'), gold), hex3('#2a1424'), n)));
+  g.addColorStop(0,    st[0]);
+  g.addColorStop(0.42, st[1]);
+  g.addColorStop(0.78, st[2]);
+  g.addColorStop(1,    st[3]);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,horizon+2);
 
   /* stars come out as the light goes */
@@ -11867,27 +11887,66 @@ function drawMirrorFull(mx, my, mw, mh){
     };
   }
 
-  /* sky above the horizon, tarmac below */
+  /* ---- THE MIRROR SHOWS THE WORLD IT IS IN (RLG-079) -------------------
+     Owner, 2026-08-29: "the mirror doesn't correctly display the world state
+     (biome, road conditions, scenery, etc)."
+
+     It did not, and it never had. The sky was two fixed blues, the ground was
+     one fixed near-black and the tarmac two more - so the glass read as dusk in
+     a forest at every hour, in every biome, in every weather. Snow could cover
+     the world and the mirror stayed dry.
+
+     Everything below now asks the SAME functions the windscreen asks. Not
+     similar ones: `skyStops`, `groundBase` and `groundTone` each have one
+     definition and two callers, because a second copy of the day cycle is a
+     thing that drifts out of step and nobody notices until a screenshot shows
+     two skies.
+
+     AND IT LOOKS AT THE PLACE BEHIND YOU. `bhd` is the segment index at the far
+     end of what the mirror can see, which is BEHIND the car - so during a biome
+     change the glass still shows the place you are leaving while the windscreen
+     shows the one you are entering. That falls out of asking the right index
+     rather than being arranged, which is the point of the biome living on the
+     road (RLG-022).
+     -------------------------------------------------------------------- */
+  const bhd = Math.floor(pos/SEG) - DRAW;
+  const st = skyStops();
   const sky = ctx.createLinearGradient(mx, my, mx, vpy);
-  sky.addColorStop(0,'#0d1220'); sky.addColorStop(1,'#28324a');
+  /* the mirror sees a narrow band of sky just above its horizon, so it takes
+     the BOTTOM half of the windscreen's gradient rather than all of it */
+  sky.addColorStop(0, st[2]); sky.addColorStop(1, st[3]);
   ctx.fillStyle = sky; ctx.fillRect(mx, my, mw, vpy - my);
-  ctx.fillStyle = '#141821'; ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
+  ctx.fillStyle = groundBase(0.30, bhd);
+  ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
 
   /* the road, drawn far-to-near in real z steps so it converges properly */
-  const SEG = 900;
+  const MSEG = 900;
+  /* ---- THE ROAD BEHIND IS IN THE SAME WEATHER AS THE ROAD AHEAD ---------
+     The same two mixes the windscreen's tarmac takes: snow whitens it and
+     covers the markings, rain soaks it. The grazing reflection is left out -
+     it is scaled by distance ahead and there is no equivalent looking back.
+     -------------------------------------------------------------------- */
+  const mRain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
+  const mSnowRoad = settle * 0.55, mSnowGround = settle * 0.85;
+  const mNight = nightFall(), mGold = goldenHour();
+  const mLight = mNight > 0.5 ? SNOW_NIGHT : mGold > 0.25 ? SNOW_GOLD : SNOW_DAY;
+  /* a covered road takes its markings under with it, exactly as it does ahead */
+  const mPaint = 1 - settle * 0.85;
   let prev = null;
-  for(let d2 = 34000; d2 > 200; d2 -= SEG){
-    const a = rproj(0, pos - d2), b2 = rproj(0, pos - d2 + SEG);
+  for(let d2 = 34000; d2 > 200; d2 -= MSEG){
+    const a = rproj(0, pos - d2), b2 = rproj(0, pos - d2 + MSEG);
     if(!a || !b2) continue;
-    const idx = Math.floor((pos - d2)/SEG);
-    ctx.fillStyle = (idx % 2) ? '#1e232c' : '#191d25';
+    const idx = Math.floor((pos - d2)/MSEG);
+    const dark = !!(idx % 2);
+    ctx.fillStyle = mixRGB(mixRGB(dark ? '#1e232c' : '#191d25', mSnowRoad, mLight),
+                           mRain * 0.55, WET_DARK);
     ctx.beginPath();
     ctx.moveTo(a.x - a.w, a.y); ctx.lineTo(a.x + a.w, a.y);
     ctx.lineTo(b2.x + b2.w, b2.y); ctx.lineTo(b2.x - b2.w, b2.y);
     ctx.closePath(); ctx.fill();
     /* lane markings, dashed on the same cycle as the road ahead */
-    if(idx % 2){
-      ctx.strokeStyle = 'rgba(226,214,168,.55)';
+    if(dark && mPaint > 0.02){
+      ctx.strokeStyle = 'rgba(226,214,168,' + (0.55 * mPaint) + ')';
       for(let L=1;L<LANES;L++){
         const f = L/LANES - 0.5;
         ctx.lineWidth = Math.max(0.6, a.w*0.035);
@@ -11898,10 +11957,12 @@ function drawMirrorFull(mx, my, mw, mh){
       }
     }
     /* the hard shoulder either side */
-    ctx.strokeStyle = 'rgba(232,232,236,.5)';
-    ctx.lineWidth = Math.max(0.5, a.w*0.03);
-    ctx.beginPath(); ctx.moveTo(a.x-a.w, a.y); ctx.lineTo(b2.x-b2.w, b2.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(a.x+a.w, a.y); ctx.lineTo(b2.x+b2.w, b2.y); ctx.stroke();
+    if(mPaint > 0.02){
+      ctx.strokeStyle = 'rgba(232,232,236,' + (0.5 * mPaint) + ')';
+      ctx.lineWidth = Math.max(0.5, a.w*0.03);
+      ctx.beginPath(); ctx.moveTo(a.x-a.w, a.y); ctx.lineTo(b2.x-b2.w, b2.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.x+a.w, a.y); ctx.lineTo(b2.x+b2.w, b2.y); ctx.stroke();
+    }
     prev = b2;
   }
 
