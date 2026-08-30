@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-94"></a>
+## [0.9.94] - 2026-08-30
+- Fixed: **the player collides at the width it is drawn at.** Owner: "We have to make the vehicle
+  colliders true to their sprite size. It's hard to tell." The car was drawn at 0.265 of the road and
+  struck at 0.26, in three separate hard-coded places - about two per cent narrower than it looks,
+  which is exactly the gap between what you can see and what you can predict. One number now, and
+  the tyre marks it lays follow it too ([RLG-058](../fragments/RLG-058.md)).
+- Added: **`tools/collide-test.py` measures where the hit actually happens.** It parks a car on the
+  real traffic array, walks the player out sideways, and binary-searches the offset at which the hit
+  stops firing. Two cars of different widths separate the sum into its parts, so the player's own
+  half-width is MEASURED rather than read back: 0.2648 against a drawn 0.2650. With the old constant
+  restored it measures 0.2597 and fails ([RLG-058](../fragments/RLG-058.md)).
+- Note: **per-car widths and length are not in this.** Every player car is still drawn at one width,
+  so a lorry and a roadster are the same in your hands - that is twenty-six numbers in the fleet
+  table and the owner's to rule on. And a billboard sprite has no depth, so "true to the sprite"
+  cannot be read literally for length ([RLG-058](../fragments/RLG-058.md),
+  [RLG-055](../fragments/RLG-055.md)).
+
 <a id="v0-9-93"></a>
 ## [0.9.93] - 2026-08-30
 - Fixed: **the packer regenerates before it verifies.** `assets.js` is generated and takes its

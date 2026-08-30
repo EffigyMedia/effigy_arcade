@@ -147,6 +147,33 @@ const CAR_UNIT = 1900;
    ------------------------------------------------------------------------- */
 function carW(w){ return w * CAR_UNIT / ROAD; }
 
+/* ---- THE PLAYER IS ONE WIDTH, AND IT IS THE ONE YOU CAN SEE (RLG-058) ----
+   Owner, 2026-08-29: "We have to make the vehicle colliders true to their
+   sprite size. It's hard to tell."
+
+   "It's hard to tell" is the symptom to design against: the complaint is not
+   that a number is wrong in the abstract, it is that a hit cannot be predicted
+   from what is on the screen. So the number the car is DRAWN at is the number
+   it collides at, and there is one of it.
+
+   There were three. The player was drawn at 0.265, hard-coded in `drawPlayer`,
+   and collided at 0.26, hard-coded separately at every hit test - so the car
+   was struck about two per cent narrower than it looks, in three places that
+   each had to be remembered. The drawn width wins, because the picture is what
+   the player is predicting from.
+
+   PER-CAR WIDTHS ARE NOT THIS. Traffic already varies 0.26 to 0.32 by body and
+   every player car is drawn at this one figure, which means a lorry and a
+   roadster are the same width in your hands. That is a real thing to fix and it
+   is twenty-six numbers in the fleet table - [[RLG-055]]'s territory, and the
+   owner's to rule on. This ruling is that the drawn car and the hit agree.
+
+   LENGTH IS ALSO NOT THIS, and the fragment says why: a billboard sprite has a
+   width and a height and no depth at all, so "true to the sprite" cannot be
+   read literally for the z axis.
+   ------------------------------------------------------------------------- */
+const PLAYER_W = 0.265;
+
 /* How far out from the ROAD EDGE something stands, in scenery units, returned
    as a distance in pixels from the middle of the road.
    Named `roadside`, not `verge`: `VERGE` already exists further down and means
@@ -174,7 +201,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.93';
+window.ROAD_BUILD = '0.9.94';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -9828,7 +9855,7 @@ function step(dt){
      its own rubber completely — the marks were there the whole time and
      hidden by the thing making them. Half a car back puts them on the tarmac
      below the bumper where you can actually see them. */
-  if(pScrub > 0.05) layRubber(playerX, pos + PLAYER_Z - 340, pScrub, 0.265);
+  if(pScrub > 0.05) layRubber(playerX, pos + PLAYER_Z - 340, pScrub, PLAYER_W);
   stepRubber(dt);
 
   /* ---- A SIREN KEEPS ASKING ---------------------------------------------
@@ -10392,7 +10419,7 @@ function step(dt){
        -------------------------------------------------------------------- */
     if(c.z > pos + 64000){ traffic.splice(i,1); continue; }
     const dz = c.z - pz, dx = Math.abs(c.x - playerX);
-    const overlap = carW(c.w + 0.26)/2;
+    const overlap = carW(c.w + PLAYER_W)/2;
     if(iframe<=0 && Math.abs(dz) < (c.len+380)/2 && dx < overlap){
       hurt(13, 'traffic');
       iframe = 0.9;
@@ -10602,7 +10629,7 @@ function step(dt){
        Measured: one hit logged at nearestCop 3793.
        ------------------------------------------------------------------ */
     const pdz = k.z - pz;
-    if(iframe<=0 && Math.abs(pdz) < (k.len+380)/2 && Math.abs(k.x-playerX) < carW(k.w+0.26)/2){
+    if(iframe<=0 && Math.abs(pdz) < (k.len+380)/2 && Math.abs(k.x-playerX) < carW(k.w+PLAYER_W)/2){
       /* PIT: catch a cruiser on the side, alongside rather than nose to tail,
          while you are actually moving into it and carrying speed, and it goes
          around. Hitting one square-on is still just a crash — the manoeuvre has
@@ -10668,7 +10695,7 @@ function step(dt){
       let clean = true;
       for(const p of b.parts){
         if(p.cop) continue;
-        if(Math.abs(p.x - playerX) < carW(p.w + 0.26)/2){ clean=false; break; }
+        if(Math.abs(p.x - playerX) < carW(p.w + PLAYER_W)/2){ clean=false; break; }
       }
       if(clean){
         /* a near miss is its own reward — no nitrous for bravado */
@@ -12428,7 +12455,7 @@ function drawPlayer(){
   p.x -= bendPx(pos + PLAYER_Z);
   p.y -= hillPx(pos + PLAYER_Z);
   if(!p.ok) return;
-  const w = p.scale*0.265*CAR_UNIT*W/2*2;
+  const w = p.scale*PLAYER_W*CAR_UNIT*W/2*2;
   const h = w*SP.player.height/SP.player.width;
   const lean = clamp((playerX-camX)*3.4, -0.28, 0.28);
   const bump = Math.abs(playerX)>1 ? Math.sin(pos*0.02)*w*0.02 : 0;
@@ -15797,7 +15824,7 @@ requestAnimationFrame(frameLoop);
   API.spriteWidthAt = function(dz){
     const pp = proj(0, pos + dz);
     if(!pp.ok) return null;
-    const w2 = pp.scale*0.265*ROAD*W;
+    const w2 = pp.scale*PLAYER_W*ROAD*W;
     return (w2 < 1.2 || w2 > W*3.4) ? null : w2;
   };
   API.rivalSprite = function(k){ return RIVAL_SP[k]; };
@@ -15845,6 +15872,43 @@ requestAnimationFrame(frameLoop);
      verge - a jump of a third of a lane that has nothing to do with grip and
      lands in the measurement as though it did. */
   API.setLane = function(x){ targetX = playerX = camX = (x || 0); return playerX; };
+  /* ---- ONE CAR, WHERE YOU PUT IT (RLG-058) -----------------------------
+     The instrument this ruling asks for drives at a known lateral offset and
+     reports the offset at which a hit registers. That needs a car standing
+     still at a known place, which ordinary traffic never is - so this pushes
+     one onto the REAL traffic array, with the same fields the spawner gives it,
+     and the real hit test then runs on it exactly as it does on any other. A
+     harness that reimplemented the overlap would prove only its own arithmetic.
+     ------------------------------------------------------------------- */
+  API.parkTraffic = function(dx, dz, type){
+    const t = type || 'sedan';
+    /* the invulnerability window has to go with the old car, or the next staged
+       collision is refused for nine tenths of a second and reads as a miss */
+    iframe = 0;
+    traffic.length = 0;
+    traffic.push({
+      z: pos + PLAYER_Z + (dz === undefined ? 0 : dz), lane: 1, x: dx || 0,
+      spd: 0, cruise: 0, type: t,
+      w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
+       : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
+      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
+      near:false, drift:0, fromBehind:false, paintN:0
+    });
+    return { x: traffic[0].x, w: traffic[0].w, len: traffic[0].len };
+  };
+  /* the half-width the hit test actually uses against that car, and the
+     half-width the player is DRAWN at, in the same units - the two numbers this
+     ruling exists to keep equal */
+  API.colliderProbe = function(){
+    const c = traffic[0];
+    return { playerW: PLAYER_W,
+             hitHalf: c ? +carW(c.w + PLAYER_W).toFixed(5)/2 : null,
+             trafficW: c ? c.w : null };
+  };
+  API.damage = function(){ return +dmg.toFixed(2); };
+  /* damage is capped at 100, so a harness staging a hundred collisions stops being able to
+     see one. It clears the panel between measurements rather than reading a saturated gauge. */
+  API.setDamage = function(v){ dmg = Math.max(0, Math.min(100, +v || 0)); return dmg; };
   API.curvatureAt = function(z){
     return curvatureAt(z === undefined ? pos + PLAYER_Z : z);
   };
