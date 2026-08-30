@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-77"></a>
+## [0.9.77] - 2026-08-30
+- Fixed: **the road widens and the cars do not.** Owner: "the road was supposed to get wider while
+  everything else stayed the same size... I want the cars to be the same size they used to be just
+  the road widening so cars at their original dimensions fit in the lanes better." Every vehicle's
+  width was a fraction of `ROAD`, so widening grew every car by the same fifth and nothing fit any
+  better. Widths read against `CAR_UNIT` now - the road half-width as it was before the widening -
+  while POSITIONS still use `ROAD`, because a car's lateral place is a lane
+  ([RLG-024](../fragments/RLG-024.md)).
+- Fixed: **the collision widths went with them.** Left in road units while the sprites shrank, a car
+  would have collided wider than it looked - you clip something you can see you have missed, which is
+  worse than the fault being fixed and invisible to any check that does not drive into something on
+  purpose ([RLG-024](../fragments/RLG-024.md)).
+- Added: **a check that the car does not grow with the road.** Measured: the player is 230.17 pixels
+  wide at ROAD 1900, 2300 and 3000, while the road edge goes 31.9, 38.6, 50.4
+  ([RLG-024](../fragments/RLG-024.md)).
+
 <a id="v0-9-76"></a>
 ## [0.9.76] - 2026-08-30
 - Changed: **the road is a fifth wider, and the lanes with it.** `ROAD` goes from 1900 to 2300. The

@@ -156,6 +156,13 @@ GRIP_IN_TUNDRA = """() => {
   return R.wetGrip();
 }"""
 
+CAR_AND_ROAD = """() => {
+  const R = window.__probe.road;
+  const p = R.playerScreen();
+  const v = R.vergeGap(12000);
+  return { car: p ? +p.w.toFixed(2) : null, edge: v ? v.edge : null };
+}"""
+
 READ_SETTLE = "() => window.__probe.road.settle()"
 
 # THE WEATHER TIMER KEEPS RUNNING while a measurement is going on, and in a tundra
@@ -470,6 +477,29 @@ def main():
                   'and the skyline behind them, which is what made the mismatch visible',
                   '%.1f vs %.1f' % (lightness['night'][2], lightness['midday'][2]))
         page.evaluate('() => window.__probe.road.setPhase(0.75)')
+
+        # ------------------------------- the road widens and the cars do not
+        print()
+        print('  A WIDER ROAD, THE SAME CARS')
+        # The owner widened the road to make the lanes bigger and got everything
+        # scaled up instead, because a vehicle's width was a fraction of ROAD. The
+        # car's drawn width must not move when the road does; the road's must.
+        sizes = {}
+        for road in (1900, 2300, 3000):
+            page.evaluate('(r) => window.__probe.road.setRoadHalfWidth(r)', road)
+            page.wait_for_timeout(220)
+            got = page.evaluate(CAR_AND_ROAD)
+            sizes[road] = got
+            print('      ROAD %-6d car %-8s road edge %-8s' % (road, got['car'], got['edge']))
+        cars = [sizes[r]['car'] for r in (1900, 2300, 3000)]
+        edges = [sizes[r]['edge'] for r in (1900, 2300, 3000)]
+        res.check(cars[0] and max(cars) - min(cars) < 0.5,
+                  'the player car is the same width at every road width',
+                  ' '.join(str(c) for c in cars))
+        res.check(edges[0] and edges[2] > edges[0] * 1.3,
+                  'while the road itself is visibly wider - so the check is not vacuous',
+                  ' '.join(str(e) for e in edges))
+        page.evaluate('(r) => window.__probe.road.setRoadHalfWidth(r)', 2300)
 
         # ------------------------------------------- and the distinction can fail
         print()

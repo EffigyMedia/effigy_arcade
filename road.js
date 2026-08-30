@@ -110,6 +110,42 @@ let ROAD = 2300;             // half-width of road
    verify.
    ------------------------------------------------------------------------- */
 const SCENE_UNIT = 1900;
+/* ---- WHAT A VEHICLE IS MEASURED IN (RLG-024) ----------------------------
+   Owner, 2026-08-30, after the road was widened: "the road was supposed to get
+   wider while everything else stayed the same size. It feels like all you did
+   was just scale everything up so that defeats the purpose... I want the cars
+   to be the same size they used to be just the road widening so cars at their
+   original dimensions fit in the lanes better."
+
+   That is exactly what happened and it is the same fault the roadside had.
+   Every vehicle's WIDTH is a fraction of `ROAD` - the player at 0.265 of it,
+   traffic and rivals at their own fractions - so `w = scale * worldW * ROAD`
+   grew every car by the same fifth the road grew by. The lanes got wider and
+   the cars got wider with them, and nothing fit any better than before.
+
+   A car is a car. Its width belongs to the CAR, not to the carriageway. So the
+   fractions are now read against `CAR_UNIT`, which is the road half-width as it
+   was BEFORE the widening - the size the cars have always been.
+
+   POSITIONS STILL USE `ROAD`, and that is the whole point: a car's lateral
+   place is a lane, and lanes are fractions of the road. So the cars sit where
+   they always sat, in lanes that are now wider than they are.
+   ------------------------------------------------------------------------- */
+const CAR_UNIT = 1900;
+
+/* ---- A CAR'S WIDTH, IN THE UNITS POSITIONS ARE COMPARED IN --------------
+   Lateral positions are fractions of `ROAD`, because a car sits in a lane and a
+   lane is a fraction of the road. Widths are fractions of `CAR_UNIT`, because a
+   car is a car. So a width has to be converted before it can be compared with a
+   position, and this is the one place that knows the conversion.
+
+   IT MATTERS BECAUSE OF WHAT HAPPENS OTHERWISE. Leave the collision tests in
+   road units while the SPRITES shrink to car units, and a car collides wider
+   than it looks - you clip something you can see you have missed. That is worse
+   than the fault being fixed, and it is invisible to every check that does not
+   drive into something on purpose.
+   ------------------------------------------------------------------------- */
+function carW(w){ return w * CAR_UNIT / ROAD; }
 
 /* How far out from the ROAD EDGE something stands, in scenery units, returned
    as a distance in pixels from the middle of the road.
@@ -9864,7 +9900,7 @@ function step(dt){
        -------------------------------------------------------------------- */
     if(c.z > pos + 64000){ traffic.splice(i,1); continue; }
     const dz = c.z - pz, dx = Math.abs(c.x - playerX);
-    const overlap = (c.w + 0.26)/2;
+    const overlap = carW(c.w + 0.26)/2;
     if(iframe<=0 && Math.abs(dz) < (c.len+380)/2 && dx < overlap){
       hurt(13, 'traffic');
       iframe = 0.9;
@@ -10074,7 +10110,7 @@ function step(dt){
        Measured: one hit logged at nearestCop 3793.
        ------------------------------------------------------------------ */
     const pdz = k.z - pz;
-    if(iframe<=0 && Math.abs(pdz) < (k.len+380)/2 && Math.abs(k.x-playerX) < (k.w+0.26)/2){
+    if(iframe<=0 && Math.abs(pdz) < (k.len+380)/2 && Math.abs(k.x-playerX) < carW(k.w+0.26)/2){
       /* PIT: catch a cruiser on the side, alongside rather than nose to tail,
          while you are actually moving into it and carrying speed, and it goes
          around. Hitting one square-on is still just a crash — the manoeuvre has
@@ -10109,7 +10145,7 @@ function step(dt){
     const c = crates[i];
     if(c.z < pos - 1500){ crates.splice(i,1); continue; }
     if(c.got) continue;
-    if(Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < 0.30){
+    if(Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < carW(0.30)){
       c.got = true;
       const before = dmg, nosBefore = nos;
       dmg = Math.max(0, dmg - 25);
@@ -10140,7 +10176,7 @@ function step(dt){
       let clean = true;
       for(const p of b.parts){
         if(p.cop) continue;
-        if(Math.abs(p.x - playerX) < (p.w + 0.26)/2){ clean=false; break; }
+        if(Math.abs(p.x - playerX) < carW(p.w + 0.26)/2){ clean=false; break; }
       }
       if(clean){
         /* a near miss is its own reward — no nitrous for bravado */
@@ -11416,7 +11452,9 @@ function drawSprite(img, worldX, worldZ, worldW, alpha, flip){
   if(worldZ - pos < 430){ drawWhy = 'behind'; return null; }
   const p = proj(worldX*ROAD, worldZ);
   if(!p.ok){ drawWhy = 'noproj'; return null; }
-  const w = p.scale*worldW*ROAD*W/2*2;
+  /* CAR_UNIT, not ROAD: the position above is in road units because a car sits
+     in a lane, but the SIZE is the car's own and does not grow with the road */
+  const w = p.scale*worldW*CAR_UNIT*W/2*2;
   /* both of these return nothing and count nothing: a sprite too small to see,
      and a sprite so close it fills the screen. The second one is a vehicle
      vanishing at the moment it is nearest, which is worth being able to see. */
@@ -11822,7 +11860,7 @@ function drawPlayer(){
   p.x -= bendPx(pos + PLAYER_Z);
   p.y -= hillPx(pos + PLAYER_Z);
   if(!p.ok) return;
-  const w = p.scale*0.265*ROAD*W/2*2;
+  const w = p.scale*0.265*CAR_UNIT*W/2*2;
   const h = w*SP.player.height/SP.player.width;
   const lean = clamp((playerX-camX)*3.4, -0.28, 0.28);
   const bump = Math.abs(playerX)>1 ? Math.sin(pos*0.02)*w*0.02 : 0;
@@ -12895,7 +12933,7 @@ function drawMirrorFull(mx, my, mw, mh){
   for(const it of back){
     const p1 = rproj(it.o.x*ROAD, it.o.z);
     if(!p1) continue;
-    const sw = p1.scale * it.w * ROAD * mw;
+    const sw = p1.scale * it.w * CAR_UNIT * mw;
     if(sw < 1.4) continue;
     const sh = sw * 0.60;
     const x0 = p1.x - sw/2, y0 = p1.y - sh;
