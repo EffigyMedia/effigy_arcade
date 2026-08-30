@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.84';
+window.ROAD_BUILD = '0.9.85';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5529,6 +5529,8 @@ function sceneryLitArt(key, i){
    and the mirror keeps its own pair because its loop is its own.
    ------------------------------------------------------------------------- */
 let sceneSides = { left:0, right:0, mLeft:0, mRight:0 };
+/* what the far band under the horizon did on the last frame (RLG-059) */
+let farSea = { sea:false, drew:false };
 
 /* ---- one segment's worth, both sides ------------------------------------
    Called from the road pass with the same numbers the lamp uses. It draws
@@ -11560,6 +11562,11 @@ function drawRoad(){
        the camera. */
     if(drawWatch && y2 <= groundMax) skipBy[n] = +(groundMax - y2).toFixed(2);
     if(y2 > groundMax){
+      /* the highest the road pass ever paints, which is the bottom of the band
+         the far field owns. A check for "the sea reaches the horizon" has to
+         know where the road stops, or it measures the road's own sea and
+         passes with the far band removed - which it did, once. */
+      if(farSea.roadTop === undefined || y2 < farSea.roadTop) farSea.roadTop = +y2.toFixed(1);
       ctx.fillRect(0, y2, W, H - y2);
       /* ---- AND THE SEA, IF THIS PLACE HAS ONE (RLG-059) ----------------
          Painted with the ground and on ONE side of it, from a shoreline that
@@ -13016,6 +13023,61 @@ function draw(){
      verge's own colour, lightly hazed, which is the least visible option. */
   ctx.fillStyle = groundBase(0.30);
   ctx.fillRect(0, horizon, W, H-horizon);
+  /* ---- AND THE WATER DOES NOT STOP WHERE THE ROAD DOES (RLG-059) ------
+     Owner, 2026-08-30: "maintaining the ocean sided render into the background
+     up to the horizon?"
+
+     The road is drawn for DRAW segments and stops short of the horizon. The
+     band above it is the fill just made, which is land - so a coast faded into
+     sand at the skyline, and a limit of the renderer showed through as a fact
+     about the world.
+
+     The band takes the sea as well, on the same side, behind the same
+     shoreline. TWO PROJECTED POINTS GIVE ITS SLOPE, and that is the whole
+     trick: a shoreline is a straight line in the world running parallel to the
+     road, so it is a straight line on the screen, and the line through the two
+     furthest drawn slices carries up to the vanishing point on its own. A fill
+     at a fixed offset would have stepped in by thirty pixels at the horizon,
+     which is where the sea is narrowest and the step most obvious.
+
+     It is painted BEFORE the haze, like the ground it sits in, so the distance
+     washes it out the same way rather than leaving a vivid sea behind a faded
+     shore.
+     ------------------------------------------------------------------- */
+  const fFar = Math.floor(pos/SEG) + DRAW, fB = bioAt(fFar);
+  farSea = { sea:!!fB.sea, drew:false };
+  if(fB.sea){
+    const fa = proj(0, fFar*SEG);
+    farSea.y = +fa.y.toFixed(1); farSea.horizon = horizon; farSea.ok = fa.ok;
+    if(fa.ok && fa.y > horizon){
+      const sa = fa.x + seaSide * roadsideAt(fa, fB.beach);
+      /* ---- THE HORIZON'S OWN SHORE IS NOT EXTRAPOLATED --------------
+         The first version read the shoreline at two depths and carried the
+         line between them up to the horizon. It was wrong about a third of
+         the time, and the reason is the vertical curvature: the guard that
+         kept the extrapolation sane - the nearer slice must sit lower on the
+         screen - is simply not true on a road that climbs, so the band was
+         skipped and the coast still ran out at the skyline.
+
+         The vanishing point is a value, not a trend. At infinite distance the
+         perspective term goes to zero and the roadside offset with it, so the
+         shore arrives at the same place the road does: the centre of the
+         screen, shifted by the view offset and by the bend. That is exact, it
+         costs nothing, and no hill can confuse it.
+         ---------------------------------------------------------- */
+      const sh = W/2 + viewShift + bendPx(fFar*SEG);
+      const edge = seaSide < 0 ? 0 : W;
+      ctx.fillStyle = seaTone(fB);
+      ctx.beginPath();
+      ctx.moveTo(sh, horizon);
+      ctx.lineTo(sa, fa.y);
+      ctx.lineTo(edge, fa.y);
+      ctx.lineTo(edge, horizon);
+      ctx.closePath();
+      ctx.fill();
+      farSea.drew = true; farSea.shore = +sh.toFixed(1); farSea.near = +sa.toFixed(1);
+    }
+  }
   /* ---- HAZE IS ATMOSPHERE BEHIND THE ROAD, NOT A FILM OVER IT ----------
      `drawHaze()` ran AFTER `drawRoad()`, so wherever the band and the verge
      overlapped it painted a lighter film across the grass. That is the seam
@@ -13234,6 +13296,27 @@ function drawMirrorFull(mx, my, mw, mh){
   ctx.fillStyle = sky; ctx.fillRect(mx, my, mw, vpy - my);
   ctx.fillStyle = groundBase(0.30, bhd);
   ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
+  /* ---- AND THE SAME BAND IN THE GLASS (RLG-059) ------------------------
+     The mirror's road walks to 34,000 units and stops, so the same strip of
+     land sat between the water and the horizon behind you that sat in front of
+     you. It is only a few pixels in a pane this size, and it is the few pixels
+     where the sea meets the sky.
+     -------------------------------------------------------------------- */
+  const mfB = bioAt(bhd);
+  if(mfB.sea){
+    const ma = rproj(0, pos - 34000), mb = rproj(0, pos - 34000 + 900*12);
+    if(ma && mb && ma.y > vpy && mb.y > ma.y){
+      const s1 = ma.x + seaSide * roadsideAt(ma, mfB.beach, mw);
+      const s2 = mb.x + seaSide * roadsideAt(mb, mfB.beach, mw);
+      const sh = s1 + (s2 - s1) * ((vpy - ma.y) / (mb.y - ma.y));
+      const edge = seaSide < 0 ? mx : mx + mw;
+      ctx.fillStyle = seaTone(mfB);
+      ctx.beginPath();
+      ctx.moveTo(sh, vpy); ctx.lineTo(s1, ma.y);
+      ctx.lineTo(edge, ma.y); ctx.lineTo(edge, vpy);
+      ctx.closePath(); ctx.fill();
+    }
+  }
 
   /* ---- THE SKYLINE BEHIND YOU (RLG-079, RLG-059) -----------------------
      The mirror drew no horizon at all: a flat band of ground met a flat band
@@ -15539,6 +15622,9 @@ requestAnimationFrame(frameLoop);
      without a live frame in it. A live-frame diff is not a visual test
      ([[RLG-053]]): the sky turns and the whole picture moves with it.
      ------------------------------------------------------------------- */
+  /* what the far band decided this frame, for a harness that has to answer why
+     the sea did or did not reach the horizon */
+  API.farSea = function(){ return farSea; };
   API.scenerySides = function(){
     return { left:sceneSides.left, right:sceneSides.right,
              mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:seaSide };

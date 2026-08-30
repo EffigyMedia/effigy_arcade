@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-85"></a>
+## [0.9.85] - 2026-08-30
+- Changed: **the sea reaches the horizon.** Owner: "maintaining the ocean sided render into the
+  background up to the horizon?" The road is drawn for a fixed number of segments and stops short of
+  the skyline; the band above it is the far field, which was land. So a coast faded into sand at the
+  horizon and a limit of the renderer showed through as a fact about the world. The band takes the
+  water now, on the same side, behind the same shoreline, in the windscreen and in the mirror
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **the horizon's shoreline is a value, not a trend.** The first version read the shore at two
+  depths and carried the line between them upward, which needed the nearer slice to sit lower on the
+  screen - not true on a road that climbs, so the band was skipped about a third of the time. At
+  infinite distance the shore arrives where the road does, which is exact and costs nothing
+  ([RLG-059](../fragments/RLG-059.md)).
+- Added: **`tools/coast-test.py` measures the strip the road never paints.** Sampling wider passed
+  two runs in three with the feature removed, because below that strip the road paints its own sea.
+  The engine now reports where the road pass stopped, and the check reads only above it
+  ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-84"></a>
 ## [0.9.84] - 2026-08-30
 - Fixed: **nothing stands in the sea.** Owner: "we need to make sure that scenery objects aren't

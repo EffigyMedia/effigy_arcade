@@ -91,6 +91,37 @@ window.__probe.mirrorWater = function(){
   return { left: left, right: right, area: ww*hh };
 };
 
+
+/* The band just under the horizon, split left and right of the road's vanishing point. It is the
+   strip where the road has stopped being drawn and the far field takes over, which is where a coast
+   used to run out of water. */
+window.__probe.farBand = function(hz, gapY, split){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var g = c.getContext('2d');
+  /* ONLY THE GAP ITSELF. The band between the horizon and the furthest drawn slice is the strip
+     this feature paints; below it the road pass paints its own sea, which would answer the
+     question with the feature removed. Sampling wider made the check pass two runs in three
+     without the code. */
+  var y0 = Math.round((hz + 2) * dpr), hh = Math.max(1, Math.round((gapY - hz - 4) * dpr));
+  var d = g.getImageData(0, y0, c.width, hh).data;
+  /* SPLIT AT THE SHORELINE, NOT AT THE MIDDLE OF THE SCREEN. On a bend the road's vanishing point
+     is well off centre, so a coast on the left can legitimately have water to the right of the
+     centre line. What must never happen is water on the LANDWARD side of the shore itself, which
+     is what an inverted fill would produce. */
+  var half = (split === undefined ? c.width/2 : split * dpr);
+  var left = 0, right = 0;
+  for(var y = 0; y < hh; y++){
+    for(var x = 0; x < c.width; x++){
+      var i = (y*c.width + x)*4;
+      var R = d[i], G = d[i+1], B = d[i+2];
+      if(B > 55 && B < 160 && B > R*1.4 && G > R && G < B){ if(x < half) left++; else right++; }
+    }
+  }
+  return { left: left, right: right, area: c.width*hh };
+};
+
 window.__probe.shot = function(){ return document.querySelector('canvas').toDataURL('image/png'); };
 window.__probe.mirrorShot = function(zoom){
   var c = document.querySelector('canvas');
@@ -213,6 +244,38 @@ def main():
         dry_side = mw['right'] if s['sea'] < 0 else mw['left']
         res.check(wet_side > 200, 'the glass has water in it', str(mw))
         res.check(wet_side > dry_side * 3, 'and it is on the same side as the coast', str(mw))
+
+        # ------------------------------- and it does not stop where the road does
+        hz = page.evaluate('() => window.__probe.road.horizon()')
+        # THE BAND ONLY EXISTS WHERE THE ROAD STOPS SHORT OF THE HORIZON. On a rise the furthest
+        # slice sits above the horizon line and there is no gap to paint - a real state, and not
+        # one this check can read anything into. So it drives until a gap opens.
+        # AND IT HOPS RATHER THAN DRIVES. Driving covered a few hundred segments in ten seconds
+        # and missed a gap about one run in three; a jump moves the car thousands of segments a
+        # step, so the search covers a length of road no amount of waiting would.
+        gap = None
+        page.evaluate('() => window.__probe.road.setSpd(0)')
+        for i in range(40):
+            page.wait_for_timeout(90)
+            f = page.evaluate('() => window.__probe.road.farSea()')
+            if f.get('roadTop') and f['roadTop'] > hz + 10:
+                gap = f
+                break
+            page.evaluate('(n) => window.__probe.road.jumpTo(n)',
+                          200 * 200 * (i + 3))
+        res.check(gap is not None, 'a gap between the road and the horizon was reached')
+        gap_y = gap['roadTop'] if gap else hz + 10
+        split = gap['shore'] if gap and gap.get('shore') is not None else None
+        fb = page.evaluate('([h, g, sp]) => window.__probe.farBand(h, g, sp === null ? undefined : sp)',
+                           [hz, gap_y, split])
+        print('      far band water  seaward %d  landward %d  (of %d px, horizon %s to %s)'
+              % (fb['right'] if s['sea'] > 0 else fb['left'],
+                 fb['left'] if s['sea'] > 0 else fb['right'], fb['area'], hz, gap_y))
+        far_wet = fb['left'] if s['sea'] < 0 else fb['right']
+        far_dry = fb['right'] if s['sea'] < 0 else fb['left']
+        print('      far band decision: %s' % gap)
+        res.check(far_wet > fb['area'] * 0.20, 'the sea reaches the horizon', str(fb))
+        res.check(far_wet > far_dry * 6, 'and none of it on the landward side of the shore', str(fb))
 
         # ------------------------------------------------ what the coast is made of
         kinds = [page.evaluate('(k) => window.__probe.road.sceneryProbe("OCEAN", k)', k)
