@@ -5098,6 +5098,81 @@ function sceneRand(idx, salt){
    beyond the light posts".
    ------------------------------------------------------------------------ */
 const SCENERY = {
+  /* ---- A COAST ROAD (RLG-059) -----------------------------------------
+     Sparse, because a coast is open: what stands beside it is the occasional
+     palm and a lot of nothing. One row, like the desert, and for the same
+     reason - the emptiness is the subject.
+     ------------------------------------------------------------------ */
+  OCEAN:  { density:0.16, w:0.50, h:1.60, out:1.40, spread:2.20, kinds:3,
+            build:(g,W2,H2,i)=>{
+              /* a palm: a leaning trunk with a crown of fronds, or a low rock */
+              if(i === 2){
+                g.fillStyle = '#5c5a52';
+                g.beginPath();
+                g.moveTo(W2*0.18, H2);
+                g.lineTo(W2*0.34, H2*0.74);
+                g.lineTo(W2*0.62, H2*0.70);
+                g.lineTo(W2*0.86, H2);
+                g.closePath(); g.fill();
+                return;
+              }
+              const lean = i ? 0.10 : -0.08;
+              g.strokeStyle = '#5a4a33';
+              g.lineWidth = Math.max(1.5, W2*0.055);
+              g.beginPath();
+              g.moveTo(W2*0.5, H2);
+              g.quadraticCurveTo(W2*(0.5 + lean*1.6), H2*0.55,
+                                 W2*(0.5 + lean*2.4), H2*0.30);
+              g.stroke();
+              const cx = W2*(0.5 + lean*2.4), cy = H2*0.30;
+              g.fillStyle = '#2c5136';
+              for(let f = 0; f < 7; f++){
+                const a = Math.PI + (f/6) * Math.PI;
+                g.beginPath();
+                g.moveTo(cx, cy);
+                g.quadraticCurveTo(cx + Math.cos(a)*W2*0.30, cy + Math.sin(a)*H2*0.10,
+                                   cx + Math.cos(a)*W2*0.46, cy + Math.sin(a)*H2*0.20 + H2*0.05);
+                g.quadraticCurveTo(cx + Math.cos(a)*W2*0.28, cy + Math.sin(a)*H2*0.10 + H2*0.03,
+                                   cx, cy);
+                g.fill();
+              }
+            } },
+  /* ---- A SWAMP (RLG-059) ----------------------------------------------
+     Thick, like the forest, but the wrong shape for it: bare cypress with
+     spreading crowns and moss hanging off them, standing in water rather than
+     in ranks. Four rows so it closes in, and it starts almost at the tarmac -
+     a swamp road has no verge to speak of.
+     ------------------------------------------------------------------ */
+  SWAMP:  { density:0.88, rowDensity:0.58, rows:4, out:0.08, outFar:6.0,
+            w:0.72, h:1.70, spread:1.10, kinds:3,
+            build:(g,W2,H2,i)=>{
+              /* the trunk, wide at the base the way a cypress is. Thicker than
+                 the first attempt, which read as a scatter of sticks rather than
+                 as a swamp - a cypress is a fat-bottomed tree and that flare is
+                 what identifies it at any size. */
+              g.fillStyle = '#241f18';
+              g.beginPath();
+              g.moveTo(W2*0.28, H2);
+              g.lineTo(W2*0.43, H2*0.40);
+              g.lineTo(W2*0.57, H2*0.40);
+              g.lineTo(W2*0.72, H2);
+              g.closePath(); g.fill();
+              /* a spreading crown, wide and horizontal rather than conical, in
+                 three overlapping tiers so it reads as mass and not as a line */
+              g.fillStyle = i === 0 ? '#2d3d24' : i === 1 ? '#26361f' : '#324326';
+              for(let b = 0; b < 3; b++){
+                const y = H2*(0.13 + b*0.10), sp = W2*(0.60 - b*0.10);
+                g.beginPath();
+                g.ellipse(W2*0.5, y, sp, H2*0.075, 0, 0, 6.2832);
+                g.fill();
+              }
+              /* moss, hanging off the lowest branch */
+              g.fillStyle = 'rgba(140,150,110,.55)';
+              for(let m = 0; m < 5; m++){
+                const mx = W2*(0.16 + m*0.17);
+                g.fillRect(mx, H2*0.36, Math.max(1, W2*0.022), H2*(0.10 + (m%3)*0.05));
+              }
+            } },
   /* ---- ROCK, IN LAYERS, CUTTING INTO THE FRAME (RLG-059) ---------------
      Owner, 2026-08-29: mountain draws "rock faces in large mountain slopes
      that cut out from the scene go up and out but various layers so it looks
@@ -5520,12 +5595,21 @@ function buildSkyline(){
         kind = 'peak';
         bw = rint(90, 240); bh = Math.round(rint(70, 200) * band.tall);
         x -= Math.round(rint(20, 70) / band.gap);
-      } else if(B.name === 'FOREST'){
+      } else if(B.name === 'OCEAN'){
+        /* a sea horizon is almost nothing: a low flat band with the occasional
+           island or headland standing off it. The gaps ARE the subject. */
+        kind = 'mesa';
+        bw = rint(40, 150); bh = Math.round(rint(8, 30) * band.tall);
+        x += Math.round(rint(120, 420) * band.gap);
+      } else if(B.name === 'SWAMP' || B.name === 'FOREST'){
         kind = 'tree';
-        bw = rint(12, 30); bh = Math.round(rint(38, 96) * band.tall);
+        const swamp = B.name === 'SWAMP';
+        bw = rint(12, swamp ? 46 : 30);
+        bh = Math.round(rint(swamp ? 24 : 38, swamp ? 62 : 96) * band.tall);
         x -= Math.round(rint(2, 9) / band.gap);
-        /* a treeline has holes in it. Without them it is a comb. */
-        if(Math.random() < 0.06) x += rint(20, 60);
+        /* a treeline has holes in it. Without them it is a comb. A swamp has
+           more of them, because a swamp is half water. */
+        if(Math.random() < (swamp ? 0.16 : 0.06)) x += rint(20, swamp ? 120 : 60);
       } else {
         bw = rint(18, 54); bh = Math.round(rint(30, 180) * band.tall);
         /* windows only on the near band: a window on a tower a mile further
@@ -6796,6 +6880,39 @@ let slipT = 0, coasting = false, slideX = 0;
      city          how built-up the skyline silhouette is, 0 to 1
    =========================================================================== */
 const BIOMES = {
+  /* ---- TWO MORE PLACES (RLG-059) --------------------------------------
+     Owner, 2026-08-30: "can we add ocean and swamp biomes?"
+
+     They are a table entry and some art, and that is the point: everything
+     that makes a place a place now reads from this record - the ground at
+     every hour, the weather odds, the taper the place imposes on weather
+     arriving from elsewhere, the skyline, the roadside scenery, and how much
+     the road climbs and turns. Nothing needed a new branch to accept them.
+
+     OCEAN is a coast road. It rains often and never snows, the ground is pale
+     sand rather than grass, and it is nearly flat but winds along the water -
+     so `bend` is well above `hill`, the only place besides forest where that
+     is true.
+
+     SWAMP is the wettest place on the board at 0.62, which is the same number
+     tundra snows at - the two are opposites made of the same figure. Flatter
+     than anything but a city, and it turns a lot, because a road through
+     standing water goes round what it cannot cross.
+     ------------------------------------------------------------------ */
+  OCEAN:    { name:'OCEAN',    rain:0.34, snow:0.00, hill:0.30, bend:0.60,
+              grassLo:'#7d7458', grassHi:'#9c9370',
+              /* ---- THE BAND UNDER THE HORIZON IS THE SEA -----------------
+                 Without this an ocean is a beach: pale sand either side, palms,
+                 and no water anywhere. `farGround` is what the land BECOMES at
+                 the far end of the draw, which for a coast is not land at all.
+                 Every other biome leaves it out and the band stays the ground's
+                 own colour, as it always has.
+                 ------------------------------------------------------- */
+              farGround:'#1d4a63',
+              sky:'#2f4a63', city:0.08, trees:0.20 },
+  SWAMP:    { name:'SWAMP',    rain:0.62, snow:0.00, hill:0.25, bend:0.70,
+              grassLo:'#22301f', grassHi:'#33422a',
+              sky:'#2c3a2e', city:0.06, trees:0.70 },
   FOREST:   { name:'FOREST',   rain:0.42, snow:0.06, hill:0.70, bend:0.85,
               grassLo:'#1d3a24', grassHi:'#2a4f31',
               sky:'#3a2c52', city:0.18, trees:0.85 },
@@ -10548,11 +10665,16 @@ function hazeRGB(){
    segments to alternate between and a strobe needs two.
    ------------------------------------------------------------------------- */
 function groundBase(mix, atIdx){
+  /* a place whose distance is water paints the band from that instead. It still
+     goes through the same darkening, weather and haze below, so the sea takes
+     the hour and the rain exactly as the land does. */
   /* `atIdx` is for the MIRROR, which looks the other way: the band under ITS
      horizon is the land BEHIND you, and during a biome change that is still the
      place you came from. Absent, it is the far edge of the road ahead. */
   const far = atIdx === undefined ? Math.floor(pos/SEG) + DRAW : atIdx;
-  const c = hexRGB(groundTone(far, false));
+  const farB = bioAt(far);
+  const c = hexRGB(farB.farGround ? mixRGB(farB.farGround, settle * 0.85, SNOW_DAY)
+                                  : groundTone(far, false));
   let r = c[0], g2 = c[1], b2 = c[2];
   const want = LUM(r, g2, b2);
   /* the far field gets the same weather the drawn slices get, or the band under

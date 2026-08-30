@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-82"></a>
+## [0.9.82] - 2026-08-30
+- Added: **two more places, an OCEAN coast and a SWAMP.** Seven biomes now. They are a table entry
+  and some art, which is the point of the last two days: the ground at every hour, the weather odds,
+  the taper a place imposes on weather arriving from elsewhere, the skyline, the roadside scenery and
+  how much the road climbs and turns all read from that one record. Neither needed a new branch
+  anywhere to be accepted ([RLG-059](../fragments/RLG-059.md)).
+- Added: **an ocean has sea under its horizon.** Without it a coast is just a beach - pale sand
+  either side, palms, no water anywhere. `farGround` is what the land BECOMES at the far end of the
+  draw, and it goes through the same hour, weather and haze the land does. Every other biome leaves
+  it out and the band stays the ground's own colour ([RLG-059](../fragments/RLG-059.md)).
+- OCEAN rains 0.34 and never snows, nearly flat but winding along the water - the only place besides
+  forest that bends more than it climbs. SWAMP is the wettest on the board at 0.62, the same figure
+  tundra snows at, and turns a lot because a road through standing water goes round what it cannot
+  cross ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-81"></a>
 ## [0.9.81] - 2026-08-30
 - Added: **the biome shapes the road - how much it climbs and how much it turns.** Owner: "the biome
