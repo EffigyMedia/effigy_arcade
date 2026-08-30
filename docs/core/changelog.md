@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-70"></a>
+## [0.9.70] - 2026-08-30
+- Added: **mountain draws rock faces in three layers, and the road cuts through them.** "Various
+  layers" was the one thing the owner described structurally rather than by subject, so there are
+  three bands at three distances out, each paler and taller than the one in front, with slopes that
+  lean OUT of the frame rather than standing square to it. The layer rises with how far out the rock
+  stands, because the palette is what makes depth read ([RLG-059](../fragments/RLG-059.md)).
+- Added: **tundra is mountain, painted white** - the same shapes with a different palette rather than
+  a sixth set of art, which is what makes the two places read as one landscape under different
+  weather. Its skyline is pale now too: against white cliffs and snow-covered ground the near-black
+  silhouette read as a hole cut in the picture ([RLG-059](../fragments/RLG-059.md)).
+- Note: **every other skyline is still one flat near-black at one depth**, and beside the new rock it
+  now looks it. That is [RLG-080](../fragments/RLG-080.md), which the owner has already asked for and
+  which follows this.
+
 <a id="v0-9-69"></a>
 ## [0.9.69] - 2026-08-29
 - Changed: **the roadside is measured from the road EDGE, in its own unit, so widening the road

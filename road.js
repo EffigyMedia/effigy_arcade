@@ -4933,6 +4933,91 @@ function CITY_WINDOWS(bw, bh, x0, y0, put){
   }
 }
 
+/* ---- ONE ROCK FACE, AT ONE OF THREE DEPTHS (RLG-059) --------------------
+   `i` carries two things at once: `i % 3` is which layer it belongs to, and
+   `i / 3 | 0` is which of two silhouettes it uses. Six kinds from one function.
+
+   THE LAYER DECIDES THE PALETTE, and that is what makes depth read. Distance
+   washes rock toward the haze, so the far band is pale and low-contrast and the
+   near one is dark and hard-edged. Painting all three the same colour gives
+   three ridges at one distance, which is a wall rather than a range.
+
+   `snow` swaps the palette for tundra without touching the shapes.
+   ------------------------------------------------------------------------- */
+function ROCKFACE(g, W2, H2, i, snow){
+  /* ---- THE LAYER HAS TO RISE WITH THE DISTANCE OUT ---------------------
+     `kind` and the lateral offset are drawn from the SAME hash, so they move
+     together - and the mapping has to keep them together. `i % 3` cycles
+     0,1,2,0,1,2 as the offset rises, which would have put a far-band palette on
+     a rock standing at the kerb and a near-band one on a ridge in the distance.
+     `(i/2)|0` gives 0,0,1,1,2,2: the further out it stands, the further away it
+     is painted. */
+  const layer = (i / 2) | 0;           /* 0 near, 2 far */
+  const form = i % 2;
+  const pal = snow
+    ? [['#e8eef6','#cfdae8','#aebfd4'], ['#ffffff','#e3ebf4','#c3d1e2']]
+    : [['#3a3a40','#4a4a52','#5d6068'], ['#4c4c54','#5c5f68','#70747e']];
+  const face = pal[0][layer], lit = pal[1][layer];
+
+  /* the slope leans OUT of frame - a wall of rock the road passes between,
+     rather than a triangle standing beside it */
+  const lean = 0.16 + layer*0.10;
+  const top = H2 * (0.14 + layer*0.16);
+  const base = H2;
+  g.beginPath();
+  if(form === 0){
+    /* a buttress: one long face falling to the road */
+    g.moveTo(0, base);
+    g.lineTo(0, top + H2*0.10);
+    g.lineTo(W2*(0.42 - lean*0.4), top);
+    g.lineTo(W2*0.78, top + H2*0.22);
+    g.lineTo(W2, base);
+  } else {
+    /* a notched ridge: two peaks with a saddle, so a run of them is not a comb */
+    g.moveTo(0, base);
+    g.lineTo(W2*0.06, top + H2*0.30);
+    g.lineTo(W2*0.30, top);
+    g.lineTo(W2*0.52, top + H2*0.20);
+    g.lineTo(W2*0.74, top + H2*0.04);
+    g.lineTo(W2*0.94, top + H2*0.34);
+    g.lineTo(W2, base);
+  }
+  g.closePath();
+  g.fillStyle = face;
+  g.fill();
+
+  /* the sunward flank, a slab of the same shape shifted, so the mass has a
+     direction to it rather than reading as a flat cut-out */
+  g.save();
+  g.clip();
+  g.fillStyle = lit;
+  g.beginPath();
+  g.moveTo(W2*0.34, base);
+  g.lineTo(W2*(0.42 - lean*0.4), top - H2*0.02);
+  g.lineTo(W2*1.02, top + H2*0.40);
+  g.lineTo(W2*1.02, base);
+  g.closePath();
+  g.fill();
+
+  /* and a snow line on the rock ones, high up, so a mountain reads as a
+     mountain and not as a quarry. Tundra is white to the ground already. */
+  if(!snow){
+    g.fillStyle = 'rgba(226,236,248,.80)';
+    g.beginPath();
+    g.moveTo(0, top + H2*0.16);
+    g.lineTo(W2*0.30, top - H2*0.01);
+    g.lineTo(W2*0.62, top + H2*0.20);
+    g.lineTo(W2, top + H2*0.30);
+    g.lineTo(W2, top + H2*0.10);
+    g.lineTo(W2*0.62, top + H2*0.02);
+    g.lineTo(W2*0.30, top - H2*0.06);
+    g.lineTo(0, top + H2*0.02);
+    g.closePath();
+    g.fill();
+  }
+  g.restore();
+}
+
 /* a stable pseudo-random in 0..1 from a segment index and a salt. Two calls with
    the same pair always agree, which is what stops the roadside boiling. */
 function sceneRand(idx, salt){
@@ -4949,6 +5034,33 @@ function sceneRand(idx, salt){
    beyond the light posts".
    ------------------------------------------------------------------------ */
 const SCENERY = {
+  /* ---- ROCK, IN LAYERS, CUTTING INTO THE FRAME (RLG-059) ---------------
+     Owner, 2026-08-29: mountain draws "rock faces in large mountain slopes
+     that cut out from the scene go up and out but various layers so it looks
+     like you're driving through them."
+
+     "VARIOUS LAYERS" IS THE WHOLE OF IT, and it is the one biome the owner
+     described structurally rather than by subject. So there are three bands at
+     three distances out from the road, each paler and each taller than the one
+     in front, and a slope leans OUT of the frame rather than standing square
+     to it - which is what makes the road read as a cut through rock rather than
+     a road past some rocks.
+
+     The layers are separate SCENERY entries under one biome, chosen by the
+     placement hash, so a near buttress and a far ridge can stand on the same
+     segment without either knowing about the other.
+     ------------------------------------------------------------------- */
+  MOUNTAIN: { density:0.85, w:1.60, h:2.30, out:1.05, spread:2.60, kinds:6,
+              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, false) },
+  TUNDRA:   { density:0.85, w:1.60, h:2.30, out:1.05, spread:2.60, kinds:6,
+              /* ---- THE SAME ROCK, PAINTED WHITE (RLG-059) --------------
+                 Owner: the tundra's "mountains will be white and the scenery
+                 rock faces cliff faces and mountain sides would also be white
+                 to match with the ground". So it is not a sixth set of art: it
+                 is mountain's set with a palette, which halves the work and
+                 guarantees the two places read as the same landscape under
+                 different weather. */
+              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, true) },
   CITY:   { density:0.62, w:1.10, h:3.40, out:2.24, spread:1.50, kinds:4, lit:true,
             build:(g,W2,H2,i)=>{
               /* ---- A BUILDING, AND ITS WINDOWS ARE A SECOND SHEET ---------
@@ -5209,7 +5321,18 @@ function buildSkyline(){
   skyline = sprite(w,h,(g)=>{
     g.clearRect(0,0,w,h);
     for(const b of plan){
-      g.fillStyle = '#150c22';
+      /* ---- A TUNDRA'S HORIZON IS WHITE TOO (RLG-059) -------------------
+         Owner, 2026-08-29: "the tundras mountains will be white and the
+         scenery rock faces cliff faces and mountain sides would also be white
+         to match with the ground."
+
+         Every silhouette was one near-black, and against a tundra's white
+         cliffs and snow-covered ground that read as a hole cut in the picture
+         rather than as a range in the distance. This is the tundra half of the
+         ruling; making every OTHER skyline more than one flat colour is
+         [[RLG-080]] and is not this.
+         -------------------------------------------------------------- */
+      g.fillStyle = B.name === 'TUNDRA' ? '#c8d6e6' : '#150c22';
       if(b.kind === 'peak'){
         g.beginPath();
         g.moveTo(b.x, h);
