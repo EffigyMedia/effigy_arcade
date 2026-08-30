@@ -201,7 +201,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.99';
+window.ROAD_BUILD = '0.10.0';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -261,6 +261,13 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 let state='title';
 let pos, playerX, camX, targetX, spd, dmg, nos, nosOn, nosTime;
 let dist, score, combo, comboTime, heat, heatT, runTopMph = 0;
+/* how long nobody has been on you, and whether a trap has caught you at 170.
+   Both are the pursuit's memory rather than the clock's (RLG-030). */
+let coolT = 0, supersEarned = false;
+/* HOW LONG OUTRUNNING THEM TAKES, as a tunable with a committed default rather
+   than a number edited in place. Twelve seconds clear of every cruiser drops one
+   star; five stars therefore take a minute of clean driving to shed. */
+const HEAT_COOL = 12;
 
 /* ---- THE CLOCK ------------------------------------------------------------
    Out Run's spine: you are always running out of time, and the only thing that
@@ -6336,6 +6343,12 @@ function trapWatch(dt){
       snd.warnCop();
       flashWarn('SPEED TRAP');
       heat = Math.min(5, heat + 1);
+      coolT = 0;                       /* seen again: the cooling clock restarts */
+      /* ---- AND HOW FAST YOU WENT PAST IT IS REMEMBERED (RLG-030) ------
+         Owner: a super cruiser is dispatched only at heat three and above AND
+         after you have gone past a trap at 170. So the trap records the speed
+         it caught you at, and nothing else has to reconstruct it later. */
+      if(spd > MAX_SPD * (170/200)) supersEarned = true;
       continue;
     }
     /* and anything else on the road — a rogue tuner gets pulled too */
@@ -6357,9 +6370,19 @@ function trapWatch(dt){
    seconds with heat already on you. */
 let fastFor = 0;
 function superWatch(dt){
+  /* ---- A SUPER CRUISER IS EARNED TWICE OVER (RLG-030) ------------------
+     Owner, 2026-08-30: "Super cruisers should not be dispatched unless you are
+     heat three and above and have gone 170 miles an hour past a speed trap."
+
+     Two conditions, and they are different in kind. HEAT THREE is a standing
+     state - how wanted you are. THE 170 IS AN EVENT - a thing you did, in front
+     of a trap, which is what makes the force send its own car after you rather
+     than laying more of the ordinary kind. The old rule asked only for heat one
+     and four seconds above 150, which any fast car does by accident.
+     ------------------------------------------------------------------- */
   const fast = spd > MAX_SPD * (150/200);
   fastFor = fast ? fastFor + dt : 0;
-  if(!optEasy && heat >= 1 && fastFor > 4){
+  if(!optEasy && heat >= 3 && supersEarned && fastFor > 4){
     const want = Math.min(4, Math.ceil(heat / 1.5));
     const have = cops.filter(k => k.superc && k.wreck <= 0).length;
     if(have < want){
@@ -6473,6 +6496,7 @@ function reset(){
   const pw = document.getElementById('placeWrap');
   if(pw) pw.hidden = (mode !== 'race');
   dist=0; score=0; combo=0; comboTime=0; heat=1; heatT=0; runTopMph=0;
+  coolT=0; supersEarned=false;
   clock = CLOCK_START; nextCP = 1; cpGantries = []; lastBeep = -1; wreckWait = 0;
   /* if you are driving one, the force matches you; otherwise the night decides */
   barOn = false; wonTraffic = false; coasting = false;
@@ -10099,11 +10123,36 @@ function step(dt){
   /* Heat exists only to summon cruisers and roadblocks. With them off it is a
      number that escalates and does nothing, and the HUD would still announce
      it — so the whole pursuit system stands down together. */
+  /* ---- HEAT IS EARNED AND IT COOLS (RLG-030) ---------------------------
+     Owner, 2026-08-30: "I don't think time should increase it at all. It should
+     purely be from speed traps and taking out cops. I think if you outrun a cop
+     for long enough, your heat would probably go down so long as you don't pass
+     another speed trap over the speed limit."
+
+     IT USED TO BE A CLOCK. Heat rose by one every twenty seconds whatever you
+     did and never fell, so it reached five inside eighty seconds of any run and
+     the number meant "how long have you been playing". That is a timer wearing
+     a wanted level's costume, and it was about to be five stars on the screen.
+
+     Now: it goes UP when you trip a speed trap over the limit, and when you put
+     a cruiser out. It comes DOWN when nobody has been on you for long enough -
+     which is what outrunning them means - and that clock RESETS the moment a
+     trap catches you again, so the way to cool off is to stop being seen rather
+     than to wait.
+     ------------------------------------------------------------------- */
   if(!optEasy){
-    heatT += dt;
-    /* and the warning only means something when there is something to be
-       heated about */
-    if(heatT > 20 && heat < 5){ heatT=0; heat++; if(!optEasy) flashWarn('HEAT '+heat); }
+    /* A PARKED TRAP IS NOT CHASING YOU. It is a cruiser on the verge with its
+       engine off, and there are always two to four of them on the road - so
+       counting them as pursuit meant the cooling clock reset every frame and
+       heat could never come down at all. Found by the check for cooling failing
+       with nobody behind the car. */
+    const chased = cops.some(k => k.wreck <= 0 && k.onPlayer !== false && !k.trap);
+    if(chased) coolT = 0;
+    else coolT += dt;
+    if(coolT > HEAT_COOL && heat > 1){
+      coolT = 0; heat--;
+      flashWarn('HEAT ' + heat);
+    }
   }
   nextCopT -= dt; nextBlockT -= dt; nextCrateT -= dt;
   /* ---- A CIRCUIT IS NOT A HIGHWAY --------------------------------------
@@ -10795,6 +10844,8 @@ function step(dt){
 function wreckCop(k, how){
   k.wreck = 1.2; k.spd *= 0.55;
   snd.copDown();
+  /* taking one out is the other way to earn heat (RLG-030, owner 2026-08-30) */
+  if(!optEasy){ heat = Math.min(5, heat + 1); coolT = 0; }
   /* the crate: a proper repair and a proper slug of nitrous, which is what
      makes it worth crossing the road for */
   nos = Math.min(100, nos + 25); dmg = Math.max(0, dmg - 25);
@@ -15640,6 +15691,19 @@ requestAnimationFrame(frameLoop);
   API.launchKick = function(){ return launchKick; };
   API.cops = function(){ return cops; };
   API.heat = function(v){ if(v!==undefined) heat=v; return heat; };
+  /* the pursuit's whole state, so a check can watch heat be EARNED rather than
+     read the number back out of the setter it just called (RLG-030) */
+  API.pursuit = function(){
+    return { heat:heat, cool:+coolT.toFixed(2), earned:supersEarned,
+             chasing:cops.filter(k => k.wreck<=0 && k.onPlayer !== false).length,
+             supers:cops.filter(k => k.superc && k.wreck<=0).length,
+             coolNeeds:HEAT_COOL, easy:!!optEasy };
+  };
+  API.earnSupers = function(v){ supersEarned = !!v; return supersEarned; };
+  /* take every cruiser off the road, so a check for what happens with NOBODY on you
+     can be exactly that. There is no in-game way to clear them and a harness that
+     waits for them to leave is waiting on the thing it is measuring. */
+  API.copsClear = function(){ const n = cops.length; cops.length = 0; return n; };
   API.setSpd = function(v){ spd = v; };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };

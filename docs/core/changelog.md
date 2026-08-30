@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-0"></a>
+## [0.10.0] - 2026-08-30
+- Fixed: **the gap the eye sees, not the gap the boxes have.** The owner saw more space above the
+  bottle than below it on a build whose numbers said 7.4 and 7.4, and named the cause: the gauges
+  have their own padding. They do - the two faces are drawn into a canvas that reaches 2.5 px lower
+  than anything painted in it. Both gaps are 9.8 to the INK now
+  ([RLG-082](../fragments/RLG-082.md)).
+- Changed: **heat is earned and it cools; it is not a clock.** Owner: "I don't think time should
+  increase it at all. It should purely be from speed traps and taking out cops. I think if you outrun
+  a cop for long enough, your heat would probably go down." It used to rise by one every twenty
+  seconds whatever you did and never fall, reaching five inside eighty seconds of any run - a timer
+  wearing a wanted level's costume, and about to be five stars on the screen. Up on a trap and on
+  taking a cruiser out; down after twelve seconds with nobody on you; the cooling clock resets the
+  moment a trap catches you again ([RLG-030](../fragments/RLG-030.md)).
+- Fixed: **a parked trap is not chasing you.** There are always two to four cruisers parked on the
+  verge, and they counted as pursuit - so the cooling clock reset every frame and heat could never
+  come down at all. Found by the check for cooling failing with nobody behind the car
+  ([RLG-030](../fragments/RLG-030.md)).
+- Changed: **a super cruiser is earned twice over.** Owner: "not dispatched unless you are heat three
+  and above and have gone 170 miles an hour past a speed trap." Two conditions of different kinds - a
+  standing state and an event. The old rule asked for heat one and four seconds above 150, which any
+  fast car does by accident ([RLG-030](../fragments/RLG-030.md)).
+- Added: **`tools/heat-test.py`**, which says plainly what it cannot isolate: the speed a super needs
+  is above the limit a trap watches, so driving fast enough to trigger one earns heat while the check
+  watches ([RLG-030](../fragments/RLG-030.md)).
+
 <a id="v0-9-99"></a>
 ## [0.9.99] - 2026-08-30
 - Removed: **DISTANCE from the top row, permanently.** Owner: "it's already currently displayed in

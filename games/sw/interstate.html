@@ -243,7 +243,15 @@ body.nonos{ --bottle:0px }
      above. One gap, used on both sides: 6 below, 6 above, and the dials move
      up by the same 6 so the stack keeps its rhythm.
      ------------------------------------------------------------- */
-  left:calc((104px - 72px) / 2);right:auto;bottom:90px;width:72px;height:30px;
+  /* ---- AND THE GAP IS MEASURED TO THE INK (RLG-082) ----------------
+     The owner saw that the gap above the bottle was still bigger than the one
+     below it, on a build whose numbers said they were equal - and named the
+     cause: the gauges have their own padding. They do. The two faces are drawn
+     into a canvas that reaches 2.5 pixels lower than anything painted in it, so
+     a distance measured to the BOX is smaller than the distance anybody can
+     see. Both gaps are 8 to the INK now, which is what the eye is judging.
+     ------------------------------------------------------------- */
+  left:calc((104px - 72px) / 2);right:auto;bottom:92px;width:72px;height:30px;
 }
 
 #nitro i{
@@ -433,12 +441,12 @@ body.hardware #horn,
      with the scale — while these were fixed pixels. At any scale above 1 the
      bottle rose into the dials and they covered a third of it. Multiplying the
      offsets by the same variable keeps the stack together at every size. */
-  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (104px + var(--bottle,36px)) * var(--ark-ui,1));
   width:115px;height:59px;
   transition:bottom .18s ease-out;
 }
 body.manual #dials{
-  bottom:calc(env(safe-area-inset-bottom,0px) + (202px + var(--bottle,36px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (204px + var(--bottle,36px)) * var(--ark-ui,1));
 }
 /* ---- the wheel ----------------------------------------------------------
    Bottom-left, opposite the pedals. It ROTATES with the car and it FOLLOWS the
@@ -528,7 +536,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (104px + var(--bottle,36px)) * var(--ark-ui,1));
   /* ---- THE PLATE IS THE GATE, PLUS THE KNOB, PLUS ITS PADDING (RLG-069)
      Three hand-set widths that did not follow from anything: 86 for a
      six-speed, 92 for a five and 74 for a four - so a FIVE-SPEED gate was
@@ -549,7 +557,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (104px + var(--bottle,36px)) * var(--ark-ui,1));
   width:132px;height:64px;touch-action:none;
   display:flex;align-items:stretch;gap:6px;
 }

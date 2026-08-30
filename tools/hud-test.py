@@ -104,6 +104,32 @@ window.__probe.hud = function(){
   return out;
 };
 
+/* ---- WHERE THE INK IS, NOT WHERE THE BOX IS -----------------------------------------
+   A canvas box is not the picture in it. The gauges are two round faces drawn into a wider
+   canvas, so the box reaches lower than anything painted - and a gap measured to the box is
+   smaller than the gap anybody can see. The owner saw it and the check did not.
+   -------------------------------------------------------------------------------------- */
+window.__probe.inkOf = function(id){
+  var c = document.getElementById(id);
+  if(!c || !c.getContext) return null;
+  var g = c.getContext('2d');
+  var d = g.getImageData(0, 0, c.width, c.height).data;
+  var top = -1, bot = -1;
+  for(var y = 0; y < c.height; y++){
+    for(var x = 0; x < c.width; x++){
+      if(d[(y*c.width + x)*4 + 3] > 16){ if(top < 0) top = y; bot = y; break; }
+    }
+  }
+  if(bot < 0) return null;
+  var r = c.getBoundingClientRect();
+  var h = document.documentElement.clientHeight;
+  var sy = r.height / c.height;               /* canvas pixels to CSS pixels */
+  return { boxBottom:+(h - r.bottom).toFixed(1),
+           inkBottom:+(h - (r.top + (bot + 1) * sy)).toFixed(1),
+           inkTop:+(h - (r.top + top * sy)).toFixed(1),
+           padBelow:+(((c.height - 1 - bot) * sy)).toFixed(1) };
+};
+
 window.__probe.cluster = function(){
   var h = document.documentElement.clientHeight;
   var out = {};
@@ -240,10 +266,16 @@ def main():
         g, br, nz, dl = c0.get('gas'), c0.get('brake'), c0.get('nitro'), c0.get('dials')
         if g and br and nz and dl:
             pads_mid = ((g['x'] + g['w']/2) + (br['x'] + br['w']/2)) / 2                        if 'x' in g else None
+            # TO THE INK, NOT TO THE BOX. The gauge faces are drawn into a canvas that
+            # reaches lower than anything painted in it, so a gap measured to the box is
+            # smaller than the gap on screen - which is how a build whose numbers said
+            # 7.4 and 7.4 still looked wrong to the owner.
+            ink = page.evaluate('() => window.__probe.inkOf("gauges")')
             below = nz['bottom'] - max(g['top'], br['top'])
-            above = dl['bottom'] - nz['top']
-            print('      the bottle: %.1f px above the pads, %.1f px below the gauges'
-                  % (below, above))
+            above = (ink['inkBottom'] if ink else dl['bottom']) - nz['top']
+            print('      the bottle: %.1f px above the pads, %.1f px below the gauge FACES'
+                  ' (the canvas reaches %.1f px lower than its ink)'
+                  % (below, above, ink['padBelow'] if ink else 0))
             res.check(abs(below - above) <= 2.0,
                       'the bottle has equal padding above the pads and below the gauges',
                       '%.1f below against %.1f above' % (below, above))
