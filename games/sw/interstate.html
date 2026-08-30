@@ -81,8 +81,26 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    glass does and nobody has to remember. The fallbacks are the old values, so
    a cabinet whose engine has not published yet still lays out correctly.
    -------------------------------------------------------------------- */
+/* ---- WHAT SITS UNDER THE GLASS (RLG-082) -----------------------------
+   Owner, 2026-08-30: the countdown belongs centred below the mirror; the
+   pursuit's information belongs there too, as a set of stars for the wanted
+   level; and with both on they are one group, centred, clock left and stars
+   right with a gap between.
+
+   So the row is CENTRED rather than spread, and it holds only the panels that
+   are live. One of them centres itself; two of them centre as a pair, which is
+   what a flex row does for nothing. DISTANCE has left the row entirely - it is
+   on the odometer, where a car keeps it.
+   -------------------------------------------------------------------- */
 .toprow{ padding-top:calc(var(--mirror-top,6px) + var(--mirror-h,44px) + 8px * var(--ark-ui,1));
-  display:flex;justify-content:space-between;align-items:flex-start}
+  display:flex;justify-content:center;align-items:flex-start;
+  gap:calc(22px * var(--ark-ui,1))}
+/* the wanted level: five stars, filled to the heat you have earned */
+#wantedWrap b{ font-size:calc(19px * var(--ark-ui,1));letter-spacing:.10em;color:#ff8a3d;
+  text-shadow:0 0 14px rgba(255,138,61,.55) }
+/* the unearned stars have to be VISIBLE or the level reads as "three" rather
+   than "three of five", which is the whole of what a wanted level tells you */
+#wantedWrap b .off{ color:rgba(255,238,222,.34);text-shadow:none }
 .stat span{display:block;font-size:calc(8.5px * var(--ark-ui,1));font-weight:700;letter-spacing:.22em;color:var(--dim)}
 .stat b{font-family:var(--disp);font-weight:800;font-size:calc(26px * var(--ark-ui,1));line-height:1.05;
   font-variant-numeric:tabular-nums;letter-spacing:.01em}
@@ -150,7 +168,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + 12px);
+  /* ---- THE BOX'S OWN OFFSET IS IN THE SCALED SPACE TOO (RLG-082) ----
+     Everything INSIDE this box is scaled by --ark-ui and this offset was not,
+     so the gap below the bottle grew with the scale while the gap above it did
+     not: 7.4 and 10.2 where both were meant to be 7.4. Two distances in the
+     same stack have to be in the same units, which is the same rule that put
+     the dials' offsets into this space in the first place.
+     ------------------------------------------------------------- */
+  bottom:calc(env(safe-area-inset-bottom,0px) + 12px * var(--ark-ui,1));
   width:104px;height:126px;
 }
 #pedals button{
@@ -202,13 +227,23 @@ body.nonos #nitro, body.nonos #nosWrap{ display:none !important }
    that space, so setting it to zero closes the gap and nothing else has to know
    why. One number, and the layout follows the car.
    ---------------------------------------------------------------------- */
-body{ --bottle:38px }
+body{ --bottle:36px }   /* the bottle's 30, plus one 6px gap */
 body.nonos{ --bottle:0px }
 #nitro{
   /* The dials and the gate were landing on top of it. 92px cleared the pedals
      but nothing above, so it needed the gap raising — not by much, or it
      drifts away from the thumb that presses it. */
-  right:0;bottom:84px;width:72px;height:30px;
+  /* ---- CENTRED OVER THE PAIR, AND EVENLY SPACED (RLG-082) ---------
+     Owner, 2026-08-30: the bottle should be centred above the brake and the
+     accelerator, and have equal padding between them and the gauges.
+
+     It was neither. `right:0` put it 16px right of the pads' own centre - the
+     pads are 46 wide at each end of a 104-wide box, so their centre is 52 and
+     the bottle's was 68. And it sat ON the pads with a 0 gap below it and 6
+     above. One gap, used on both sides: 6 below, 6 above, and the dials move
+     up by the same 6 so the stack keeps its rhythm.
+     ------------------------------------------------------------- */
+  left:calc((104px - 72px) / 2);right:auto;bottom:90px;width:72px;height:30px;
 }
 
 #nitro i{
@@ -398,12 +433,12 @@ body.hardware #horn,
      with the scale — while these were fixed pixels. At any scale above 1 the
      bottle rose into the dials and they covered a third of it. Multiplying the
      offsets by the same variable keeps the stack together at every size. */
-  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
   width:115px;height:59px;
   transition:bottom .18s ease-out;
 }
 body.manual #dials{
-  bottom:calc(env(safe-area-inset-bottom,0px) + (202px + var(--bottle,38px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (202px + var(--bottle,36px)) * var(--ark-ui,1));
 }
 /* ---- the wheel ----------------------------------------------------------
    Bottom-left, opposite the pedals. It ROTATES with the car and it FOLLOWS the
@@ -493,7 +528,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
   /* ---- THE PLATE IS THE GATE, PLUS THE KNOB, PLUS ITS PADDING (RLG-069)
      Three hand-set widths that did not follow from anything: 86 for a
      six-speed, 92 for a five and 74 for a four - so a FIVE-SPEED gate was
@@ -514,7 +549,7 @@ body.pedals-left #wheel{ left:auto; right:calc(env(safe-area-inset-right,0px) + 
   transform-origin:100% 100%;
   transform:scale(var(--ark-ui,1));
   right:calc(env(safe-area-inset-right,0px) + 10px);
-  bottom:calc(env(safe-area-inset-bottom,0px) + (94px + var(--bottle,38px)) * var(--ark-ui,1));
+  bottom:calc(env(safe-area-inset-bottom,0px) + (102px + var(--bottle,36px)) * var(--ark-ui,1));
   width:132px;height:64px;touch-action:none;
   display:flex;align-items:stretch;gap:6px;
 }
@@ -783,10 +818,10 @@ body.titling #veil h1{display:none}
       <div class="toprow">
         <!-- DISTANCE moved into the speedometer as a mechanical odometer. In
              RACE it comes back, because how far is left is the whole point. -->
-        <div class="stat" id="distWrap" hidden><span>TO GO</span><b id="dist">0.0<i>MI</i></b></div>
         <div class="stat c" id="clockWrap"><span>TIME</span><b id="clock">60</b></div>
+        <div class="stat c" id="wantedWrap" hidden><span>WANTED</span><b id="wanted"></b></div>
+        <div class="stat c" id="distWrap" hidden><span>TO GO</span><b id="dist">0.0<i>MI</i></b></div>
         <div class="stat c" id="placeWrap" hidden><span>PLACE</span><b id="place">12/12</b></div>
-        <div class="stat r"><span>DISTANCE</span><b id="score">0</b></div>
       </div>
       <div id="pursuit">PURSUIT</div>
     </div>

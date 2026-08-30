@@ -113,7 +113,7 @@ window.__probe.cluster = function(){
     var r = el.getBoundingClientRect();
     var shown = r.width > 2 && r.height > 2 && getComputedStyle(el).display !== 'none';
     out[id] = shown ? { bottom:+(h - r.bottom).toFixed(1), top:+(h - r.top).toFixed(1),
-                        w:+r.width.toFixed(1), h:+r.height.toFixed(1) } : null;
+                        x:+r.x.toFixed(1), w:+r.width.toFixed(1), h:+r.height.toFixed(1) } : null;
   });
   out.nonos = document.body.classList.contains('nonos');
   out.manual = document.body.classList.contains('manual');
@@ -231,6 +231,22 @@ def main():
             page.wait_for_timeout(250)
             page.screenshot(path=str(out / 'hud-no-nos.png'))
             print('      wrote %s' % out)
+
+        # ---- THE BOTTLE SITS CENTRED OVER THE PADS, EVENLY SPACED (RLG-082) -----
+        # Owner: it should be centred above the brake and the accelerator, and have equal
+        # padding between them and the gauges. It had neither - 16px right of the pads' own
+        # centre, sitting ON them with a 0 gap below and 6 above.
+        c0 = cluster('ROADSTER')
+        g, br, nz, dl = c0.get('gas'), c0.get('brake'), c0.get('nitro'), c0.get('dials')
+        if g and br and nz and dl:
+            pads_mid = ((g['x'] + g['w']/2) + (br['x'] + br['w']/2)) / 2                        if 'x' in g else None
+            below = nz['bottom'] - max(g['top'], br['top'])
+            above = dl['bottom'] - nz['top']
+            print('      the bottle: %.1f px above the pads, %.1f px below the gauges'
+                  % (below, above))
+            res.check(abs(below - above) <= 2.0,
+                      'the bottle has equal padding above the pads and below the gauges',
+                      '%.1f below against %.1f above' % (below, above))
 
         # ---- AND THE TOP ROW CLEARS THE GLASS, WHATEVER SIZE THE GLASS IS -------
         # The clearance used to be a hardcoded 58 in a different file from the two numbers

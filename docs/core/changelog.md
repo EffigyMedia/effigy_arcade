@@ -14,6 +14,29 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-99"></a>
+## [0.9.99] - 2026-08-30
+- Removed: **DISTANCE from the top row, permanently.** Owner: "it's already currently displayed in
+  the odometer." Interstate's markup no longer has the panel, and the engine writes to it only if a
+  cabinet still has one - Motorsport does, and its HUD is a separate conversation
+  ([RLG-082](../fragments/RLG-082.md)).
+- Added: **the wanted level is five stars, centred under the glass.** `heat` runs 1 to 5, so it maps
+  to five stars with nothing to scale or round. Shown whenever the pursuit system is on rather than
+  only while a cruiser is behind you - the level is a thing you carry, and it is what decides how
+  thickly the traps ahead are laid. The banner below still says how many are chasing you right now,
+  and no longer repeats the heat ([RLG-082](../fragments/RLG-082.md)).
+- Changed: **the top row is centred rather than spread.** The countdown centres itself when it is
+  alone; with the stars it becomes one group, clock left and stars right with a gap between - which
+  is what a flex row does for nothing ([RLG-082](../fragments/RLG-082.md)).
+- Fixed: **the NOS bottle is centred over the pads and evenly spaced.** Owner: it should be centred
+  above the brake and accelerator with equal padding between them and the gauges. It was 16 px right
+  of the pads' own centre and sat ON them - 0 px below, 6 above
+  ([RLG-082](../fragments/RLG-082.md)).
+- Fixed: **the pedal box's own offset is in the scaled space too.** Everything inside it scales with
+  the UI and the offset did not, so the gap below the bottle grew with the scale while the gap above
+  it did not: 7.4 and 10.2 where both were meant to be 7.4. Two distances in one stack have to be in
+  the same units ([RLG-082](../fragments/RLG-082.md)).
+
 <a id="v0-9-98"></a>
 ## [0.9.98] - 2026-08-30
 - Changed: **the rear-view mirror is larger and actually centred.** Owner: "make the rearview mirror

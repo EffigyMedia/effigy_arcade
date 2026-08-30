@@ -201,7 +201,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.98';
+window.ROAD_BUILD = '0.9.99';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -14053,9 +14053,15 @@ function drawBust(){
 function hud(){
 
 
-  /* the score slot now carries the one number that matters */
-  $('score').textContent = CFG.hudScore ? CFG.hudScore(dist)
-                                        : (dist.toFixed(1) + ' MI');
+  /* ---- DISTANCE HAS LEFT THE TOP ROW (RLG-082) -------------------------
+     Owner, 2026-08-30: "we can permanently remove the distance information as
+     it's already currently displayed in the odometer." So the panel is gone
+     from Interstate's markup and this writes to it only if a cabinet still has
+     one - Motorsport does, and its HUD is a separate conversation.
+     ------------------------------------------------------------------ */
+  const sc = $('score');
+  if(sc) sc.textContent = CFG.hudScore ? CFG.hudScore(dist)
+                                       : (dist.toFixed(1) + ' MI');
 
   const cw = $('clockWrap');
   if(cw){
@@ -14086,9 +14092,31 @@ function hud(){
   drawDials();
   drawWheel();
 
+  /* ---- THE WANTED LEVEL IS FIVE STARS (RLG-082) ------------------------
+     Owner, 2026-08-30: "maybe we just have a set of stars to represent your
+     wanted level." `heat` runs 1 to 5, so it maps to five stars exactly with
+     nothing to scale or round.
+
+     It is shown whenever the pursuit system is ON rather than only while a
+     cruiser is actually behind you: the level is a thing you carry, and it is
+     what decides how thickly the traps ahead are laid. The banner below it
+     still says how many are chasing you RIGHT NOW, which is a different fact -
+     and it no longer repeats the heat, because the stars are the heat.
+     ------------------------------------------------------------------ */
+  const ww = $('wantedWrap');
+  if(ww){
+    const on = !optEasy;
+    ww.hidden = !on;
+    if(on){
+      let stars = '';
+      for(let i = 1; i <= 5; i++)
+        stars += (i <= heat) ? '\u2605' : '<span class="off">\u2605</span>';
+      $('wanted').innerHTML = stars;
+    }
+  }
   const active = cops.some(k=>k.wreck<=0 && k.onPlayer !== false);
   $('pursuit').className = active ? 'on' : '';
-  $('pursuit').textContent = 'PURSUIT \u00D7'+cops.filter(k=>k.wreck<=0 && k.onPlayer !== false).length+'  \u00B7  HEAT '+heat +
+  $('pursuit').textContent = 'PURSUIT \u00D7'+cops.filter(k=>k.wreck<=0 && k.onPlayer !== false).length +
     (combo>1 ? '  \u00B7  \u00D7'+combo : '');
   nitroBtn.disabled = nos<=8;
   brakeBtn.disabled = state!=='driving';
