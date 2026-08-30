@@ -1096,6 +1096,16 @@ function pushCurve(){
   else if(roll < 0.82){ k = rnd(2.4, 4.2);    len = rnd(5000, 10000); }
   else {                k = rnd(5.0, 8.0);    len = rnd(4000, 7000); }
   if(k && Math.random() < 0.5) k = -k;
+  /* the place this corner will BE decides how much of a corner it is (RLG-059).
+     Scaled at generation rather than at draw, so the geometry is consistent for
+     the whole life of the segment - a bend that changed magnitude as you
+     approached it would be the road moving under you. */
+  k *= shapeAt(bendZ0 + totalLen(curveSegs)).bend;
+  /* the roll and the scaling, kept together so a harness can sample the SHAPE
+     of a place without driving through it. Over a short run the roll's own
+     variance is far larger than the difference between two biomes - measured, a
+     desert out-bent a mountain in one sample of ten segments - so the only
+     honest way to show the factor lands is a large sample of the generator. */
   /* ---- warning boards ----------------------------------------------------
      A bend you cannot see coming is a trap rather than a corner. Every turn
      gets a board a little way before it, on the OUTSIDE of the bend where you
@@ -1105,6 +1115,8 @@ function pushCurve(){
      ------------------------------------------------------------------------ */
   const startZ = bendZ0 + totalLen(curveSegs);
   if(k !== 0){
+    /* the board counts chevrons for the corner AS SCALED - a city bend that has
+       been calmed to a third must not be signed as the hairpin it was rolled as */
     const mag = Math.abs(k) < 2.0 ? 1 : Math.abs(k) < 4.4 ? 2 : 3;
     signs.push({ z: startZ - 5200, dir: Math.sign(k), mag,
                  side: Math.sign(k) > 0 ? 1 : -1 });
@@ -1120,6 +1132,7 @@ function pushHill(){
   else if(roll < 0.66){ g2 = rnd(1.2, 2.8);   len = rnd(6000, 12000); }
   else {                g2 = rnd(3.4, 5.6);   len = rnd(5000, 9000); }
   if(g2 && Math.random() < 0.5) g2 = -g2;
+  g2 *= shapeAt(bendZ0 + totalLen(hillSegs)).hill;
   hillSegs.push({ k:g2, len });
   if(g2 !== 0) hillSegs.push({ k:0, len: rnd(3000, 6000) });
 }
@@ -6783,16 +6796,16 @@ let slipT = 0, coasting = false, slideX = 0;
      city          how built-up the skyline silhouette is, 0 to 1
    =========================================================================== */
 const BIOMES = {
-  FOREST:   { name:'FOREST',   rain:0.42, snow:0.06,
+  FOREST:   { name:'FOREST',   rain:0.42, snow:0.06, hill:0.70, bend:0.85,
               grassLo:'#1d3a24', grassHi:'#2a4f31',
               sky:'#3a2c52', city:0.18, trees:0.85 },
-  DESERT:   { name:'DESERT',   rain:0.04, snow:0.00,
+  DESERT:   { name:'DESERT',   rain:0.04, snow:0.00, hill:0.45, bend:0.40,
               grassLo:'#6b5330', grassHi:'#8a6d42',
               sky:'#5a3520', city:0.05, trees:0.05 },
-  MOUNTAIN: { name:'MOUNTAIN', rain:0.30, snow:0.34,
+  MOUNTAIN: { name:'MOUNTAIN', rain:0.30, snow:0.34, hill:1.00, bend:1.00,
               grassLo:'#2b3a33', grassHi:'#3c4f45',
               sky:'#33405e', city:0.10, trees:0.55 },
-  CITY:     { name:'CITY',     rain:0.38, snow:0.10,
+  CITY:     { name:'CITY',     rain:0.38, snow:0.10, hill:0.30, bend:0.30,
               grassLo:'#2c2f36', grassHi:'#3b3f48',
               sky:'#2a2438', city:1.00, trees:0.10 },
   /* ---- TUNDRA IS WHITE BEFORE ANYTHING FALLS (RLG-059) ----------------
@@ -6806,13 +6819,40 @@ const BIOMES = {
      zero. Every other biome has none, which is why the field is absent from
      them rather than written as 0 - a place either lies under snow or it does
      not. */
-  TUNDRA:   { name:'TUNDRA',   rain:0.10, snow:0.62, snowFloor:0.50,
+  TUNDRA:   { name:'TUNDRA',   rain:0.10, snow:0.62, hill:0.80, bend:0.75, snowFloor:0.50,
               grassLo:'#3e4a52', grassHi:'#54626c',
               sky:'#2e3c50', city:0.06, trees:0.22 }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
 let biome = 'FOREST';
 function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
+
+/* ---- HOW MUCH A PLACE CLIMBS AND HOW MUCH IT TURNS (RLG-059) ------------
+   Owner, 2026-08-29: "the biome should probably also drive the magnitude of the
+   road's vertical curvature - mountains on one extreme and desert > city on the
+   other. Never completely flat but much less so." And 2026-08-30: "the
+   verticality AND BENDINESS of the road is also dictated by the biome."
+
+   `hill` and `bend` scale the magnitude of a segment as it is GENERATED, from
+   the biome at the place that segment will be. Mountain is 1.00 on both, which
+   means the road as it has always been IS the mountain road - everywhere else
+   is calmer than it used to be, and nothing gets steeper or tighter than the
+   renderer has always handled. That matters: the corner cap in this engine is a
+   renderer limit rather than a taste one, and past about 90 degrees the road
+   leaves the frame.
+
+   NEVER COMPLETELY FLAT, which the owner said twice. City is 0.30, not 0 - a
+   city road still rises and turns, just far less than a mountain pass.
+
+   The ordering is the owner's: mountain at one extreme, then tundra, forest,
+   desert, and city flattest. Forest bends more than it climbs, because a road
+   through trees winds without needing to be steep.
+   ------------------------------------------------------------------------- */
+function shapeAt(z){
+  const B = bioAt(Math.floor(z / SEG));
+  return { hill: B.hill === undefined ? 0.8 : B.hill,
+           bend: B.bend === undefined ? 0.8 : B.bend };
+}
 
 /* ---- THE BIOME IS A PROPERTY OF THE ROAD, NOT OF THE MOMENT (RLG-022) ----
    Owner, 2026-08-29: "As a new biome is entered we paint the road slices, the
@@ -14811,6 +14851,48 @@ requestAnimationFrame(frameLoop);
   /* what a destination does to the weather already falling: how much it wants
      it, and what fraction of the crossing it gives it before it is gone. 0 is
      "keeps it entirely" (RLG-022). */
+  /* the road's own shape for a place: how much it climbs and how much it turns
+     (RLG-059). Sampling the generated geometry directly would take a run per
+     biome; this is the factor that scales every segment as it is made. */
+  /* the generator's own output for a place, over a large sample. It runs the
+     same roll `pushCurve` and `pushHill` run and applies the same factor, into
+     nothing - the live road is untouched. */
+  API.sampleShape = function(key, n){
+    const B = BIOMES[key] || BIOMES.FOREST;
+    n = n || 4000;
+    let cb = 0, hb = 0;
+    for(let i = 0; i < n; i++){
+      let roll = Math.random(), k;
+      if(roll < 0.30) k = 0;
+      else if(roll < 0.56) k = rnd(0.9, 1.9);
+      else if(roll < 0.82) k = rnd(2.4, 4.2);
+      else k = rnd(5.0, 8.0);
+      cb += Math.abs(k) * (B.bend === undefined ? 0.8 : B.bend);
+      roll = Math.random();
+      let g;
+      if(roll < 0.34) g = 0;
+      else if(roll < 0.66) g = rnd(1.2, 2.8);
+      else g = rnd(3.4, 5.6);
+      hb += Math.abs(g) * (B.hill === undefined ? 0.8 : B.hill);
+    }
+    return { name:B.name, bend:+(cb/n).toFixed(3), hill:+(hb/n).toFixed(3), n:n };
+  };
+  API.roadShape = function(k){
+    const B = BIOMES[k || biome] || BIOMES.FOREST;
+    return { name:B.name, hill:B.hill, bend:B.bend };
+  };
+  /* what the road ACTUALLY came out as over a stretch: the mean magnitude of
+     the curve and hill segments now standing ahead of the car. This is the
+     effect rather than the factor. */
+  API.roadRoughness = function(){
+    const c = curveSegs, h = hillSegs;
+    const mean = (list) => {
+      if(!list.length) return 0;
+      let a = 0; for(const g of list) a += Math.abs(g.k);
+      return +(a / list.length).toFixed(3);
+    };
+    return { bend: mean(c), hill: mean(h), segs: c.length + h.length };
+  };
   API.weatherTaper = function(dest, isSnow){
     const B = BIOMES[dest] || BIOMES.FOREST;
     const support = isSnow ? B.snow : B.rain;

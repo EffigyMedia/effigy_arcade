@@ -585,6 +585,50 @@ def main():
                   'tundra %.2f, city %.2f, desert %.2f'
                   % (taper['TUNDRA']['span'], taper['CITY']['span'], taper['DESERT']['span']))
 
+        # ------------------------------ the biome shapes the road itself
+        print()
+        print('  THE BIOME SHAPES THE ROAD')
+        shapes = {}
+        for k in ('MOUNTAIN', 'TUNDRA', 'FOREST', 'DESERT', 'CITY'):
+            shapes[k] = page.evaluate('(k) => window.__probe.road.roadShape(k)', k)
+            print('      %-9s climbs %.2f   turns %.2f'
+                  % (k, shapes[k]['hill'], shapes[k]['bend']))
+        order = ['MOUNTAIN', 'TUNDRA', 'FOREST', 'DESERT', 'CITY']
+        hills = [shapes[k]['hill'] for k in order]
+        res.check(all(a >= b for a, b in zip(hills, hills[1:])),
+                  'the ordering is the owner\'s: mountain at one extreme, city at the other',
+                  ' '.join('%.2f' % v for v in hills))
+        res.check(shapes['MOUNTAIN']['hill'] > shapes['DESERT']['hill'] > shapes['CITY']['hill'],
+                  'and desert climbs more than city, which is the pair the owner named',
+                  'desert %.2f, city %.2f' % (shapes['DESERT']['hill'], shapes['CITY']['hill']))
+        res.check(min(shapes[k]['hill'] for k in order) > 0
+                  and min(shapes[k]['bend'] for k in order) > 0,
+                  'NEVER COMPLETELY FLAT - the owner said so twice, so nothing is zero',
+                  'flattest climb %.2f, straightest turn %.2f'
+                  % (min(shapes[k]['hill'] for k in order),
+                     min(shapes[k]['bend'] for k in order)))
+        res.check(shapes['MOUNTAIN']['hill'] <= 1.0 and shapes['MOUNTAIN']['bend'] <= 1.0,
+                  'and nothing exceeds the road as it was, because the corner cap is a renderer limit',
+                  'mountain climbs %.2f turns %.2f'
+                  % (shapes['MOUNTAIN']['hill'], shapes['MOUNTAIN']['bend']))
+
+        # the FACTORS are one thing; what the generator actually produces is another
+        print('    the generator over 4,000 segments each')
+        gen = {}
+        for k in order:
+            gen[k] = page.evaluate('([k, n]) => window.__probe.road.sampleShape(k, n)', [k, 4000])
+            print('      %-9s mean turn %.2f   mean climb %.2f'
+                  % (k, gen[k]['bend'], gen[k]['hill']))
+        gbend = [gen[k]['bend'] for k in order]
+        ghill = [gen[k]['hill'] for k in order]
+        res.check(all(a > b for a, b in zip(ghill, ghill[1:])),
+                  'the road the generator MAKES climbs less at every step down the order',
+                  ' '.join('%.2f' % v for v in ghill))
+        res.check(gen['MOUNTAIN']['bend'] > gen['CITY']['bend'] * 2.5,
+                  'and a mountain turns more than twice as hard as a city',
+                  'mountain %.2f, city %.2f' % (gen['MOUNTAIN']['bend'], gen['CITY']['bend']))
+
+
         # ------------------------------------------- and the distinction can fail
         print()
         print('  NOT VACUOUS - the old flip goes back and the sweep check must catch it')

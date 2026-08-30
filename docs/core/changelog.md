@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-81"></a>
+## [0.9.81] - 2026-08-30
+- Added: **the biome shapes the road - how much it climbs and how much it turns.** Owner: "the biome
+  should probably also drive the magnitude of the road's vertical curvature - mountains on one
+  extreme and desert > city on the other. Never completely flat but much less so", and "the
+  verticality and bendiness of the road is also dictated by the biome." Each segment is scaled as it
+  is GENERATED, by the biome at the place that segment will be - not at draw, because a bend that
+  changed magnitude as you approached it would be the road moving under you
+  ([RLG-059](../fragments/RLG-059.md)).
+- Mountain is 1.00 on both, so **the road as it has always been IS the mountain road** and everywhere
+  else is calmer. Nothing gets steeper or tighter than the renderer has always handled, which matters
+  because the corner cap is a renderer limit rather than a taste one. City is 0.30, never 0
+  ([RLG-059](../fragments/RLG-059.md)).
+- Measured over 4,000 generated segments each: mountain turns 2.42 and climbs 2.16; city turns 0.69
+  and climbs 0.67. A short drive could NOT show this - the roll's own variance is larger than the
+  difference between two biomes, and a desert out-bent a mountain in one ten-segment sample. The
+  chevron boards count for the corner as scaled, so a calmed city bend is not signed as the hairpin
+  it was rolled as ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-80"></a>
 ## [0.9.80] - 2026-08-30
 - Changed: **the place you are entering decides how fast its weather ends.** Owner: "the speed of the
