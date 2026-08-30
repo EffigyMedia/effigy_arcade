@@ -105,7 +105,11 @@ const SCENE_UNIT = 1900;
    Named `roadside`, not `verge`: `VERGE` already exists further down and means
    something else - the edge of the drivable surface in LANE units. Two things
    called verge in one file is how a later reader picks the wrong one. */
-function roadsideAt(p, out){ return p.w + p.scale * SCENE_UNIT * W/2 * out; }
+function roadsideAt(p, out, wid){
+  /* `wid` is the width of the surface being drawn into - the screen, or the
+     mirror's glass. Absent, the screen. */
+  return p.w + p.scale * SCENE_UNIT * (wid || W)/2 * out;
+}
 const LANES = 4;
 const DRAW = 150;   /* was 95 — the road stopped short of the horizon and
                        the ground base showed as a band under the skyline */             // segments drawn
@@ -12686,6 +12690,49 @@ function drawMirrorFull(mx, my, mw, mh){
   ctx.fillStyle = groundBase(0.30, bhd);
   ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
 
+  /* ---- THE SKYLINE BEHIND YOU (RLG-079, RLG-059) -----------------------
+     The mirror drew no horizon at all: a flat band of ground met a flat band
+     of sky at a hard line, and the place you had just driven through simply was
+     not in it.
+
+     It is the SAME sprite the windscreen uses, from the same cache, so it is
+     the same biome, the same three depth bands and the same hour's light with
+     no second description of any of it. The one thing that differs is WHICH
+     biome: `biomeFrom` is where you have been, and behind you is where you have
+     been. During a crossing the windscreen shows the place arriving and the
+     glass shows the place leaving, which is the whole reason the biome lives on
+     the road rather than on the car (RLG-022).
+
+     It does NOT scroll with the bend the way the forward one does. A mirror
+     shows a reversed view, so the parallax runs the other way, and getting the
+     sign wrong is a horizon that slides the wrong way when you turn - a fault
+     that reads as the whole world being loose. The camera's own lateral offset
+     is enough of a cue in a pane this size.
+     -------------------------------------------------------------------- */
+  const mSky = skylineFor(biomeFrom);
+  if(mSky && mSky.body){
+    /* THE SAME PROPORTION THE WINDSCREEN USES. Forward, the skyline is H*0.13
+       tall against a horizon at H*0.40 - about a third of the sky band. At 1.15
+       of the mirror's band the treeline filled the glass and read as a hedge
+       three feet behind the car. */
+    const sh2 = (vpy - my) * 0.38;
+    const sw2 = sh2 * (mSky.body.width / mSky.body.height);
+    let sox = (camX * mw * 0.02) % sw2;
+    if(sox > 0) sox -= sw2;
+    for(let x = sox; x < mw + sw2; x += sw2)
+      ctx.drawImage(mSky.body, mx + x, vpy - sh2, sw2, sh2);
+    /* and its windows, on the same clock as everything else that lights up */
+    const litNow = lampsOn();
+    if(mSky.lit && litNow > 0.04){
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, litNow * 1.25);
+      for(let x = sox; x < mw + sw2; x += sw2)
+        ctx.drawImage(mSky.lit, mx + x, vpy - sh2, sw2, sh2);
+      ctx.restore();
+    }
+  }
+
   /* the road, drawn far-to-near in real z steps so it converges properly */
   const MSEG = 900;
   /* ---- THE ROAD BEHIND IS IN THE SAME WEATHER AS THE ROAD AHEAD ---------
@@ -12729,6 +12776,67 @@ function drawMirrorFull(mx, my, mw, mh){
       ctx.lineWidth = Math.max(0.5, a.w*0.03);
       ctx.beginPath(); ctx.moveTo(a.x-a.w, a.y); ctx.lineTo(b2.x-b2.w, b2.y); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(a.x+a.w, a.y); ctx.lineTo(b2.x+b2.w, b2.y); ctx.stroke();
+    }
+    /* ---- AND WHAT STOOD BESIDE IT (RLG-079) --------------------------
+       The same sprites, from the same cache, placed by the same hash of the
+       same world segment index - so a tree you have just driven past is in the
+       glass, at the size and the place it was. Anything less than that is a
+       second roadside that disagrees with the first.
+
+       `widx` is the WORLD segment index, not the mirror's own step. The mirror
+       walks in 900-unit steps and the world is in 200s; hashing the mirror's
+       index would have produced a roadside that is stable but has nothing to do
+       with the one out of the windscreen.
+
+       Two rows, not five. This is a strip of glass 44 pixels tall and the far
+       rows land inside a pixel of each other.
+       -------------------------------------------------------------- */
+    const widx = Math.floor((pos - d2)/SEG);
+    const mB = bioAt(widx);
+    const mSpec = SCENERY[mB.name];
+    if(mSpec){
+      const msc = a.scale * SCENE_UNIT * mw/2;
+      if(msc > 0.6){
+        /* ONE ROW. Two cost about four frames a second in a forest and put a
+           second rank of trees inside a strip of glass where the first rank
+           already reaches the top of the pane. The mirror is a glance, not a
+           second window. */
+        const mrows = 1;
+        for(const mside of [-1, 1]){
+          for(let mrow = mrows - 1; mrow >= 0; mrow--){
+            const ms = mrow * 101;
+            if(sceneRand(widx, (mside < 0 ? 11 : 23) + ms) > (mSpec.rowDensity || mSpec.density)) continue;
+            const q1 = sceneRand(widx, (mside < 0 ? 37 : 41) + ms);
+            const q2 = sceneRand(widx, (mside < 0 ? 53 : 59) + ms);
+            const mart = sceneryArt(mB.name, Math.floor(q1 * mSpec.kinds) % mSpec.kinds);
+            if(!mart) continue;
+            const mw2 = msc * mSpec.w * (0.72 + q2 * 0.56);
+            /* 1.5 pixels, not 0.7. A sub-pixel tree costs a full drawImage and
+               contributes a smudge: the forest mirror measured 54.8 fps against
+               60 everywhere else, and most of that was spent on objects too
+               small to be seen. It is 60 at this threshold. */
+            if(mw2 < 1.5) continue;
+            /* ---- AND NOTHING LOOMS IN A PANE THIS SMALL -----------------
+               The sizes are proportionally right - a tree is the same fraction
+               of the road's width here as it is out of the windscreen - but the
+               windscreen is 900 pixels tall and this is 44. The nearest trees
+               filled the glass and buried the road and the cars on it, which is
+               the one thing the mirror is for. Anything that would take more
+               than a fifth of the width is left out; it is a foot from the
+               bumper and out of the mirror's useful field anyway.
+               ------------------------------------------------------- */
+            if(mw2 > mw * 0.20) continue;
+            const mh2 = mw2 * (mart.height / mart.width);
+            const mband = (mSpec.rows || 1) > 1 ? (mSpec.outFar - mSpec.out) / mSpec.rows : 0;
+            const moff = mSpec.out + mband * (mrow + q1)
+                       + ((mSpec.rows || 1) > 1 ? 0 : q1 * mSpec.spread);
+            const mxi = a.x + mside * roadsideAt(a, moff, mw);
+            const mxx = mxi + mside * mw2/2;
+            if(mxx + mw2 < mx || mxx - mw2 > mx + mw) continue;
+            ctx.drawImage(mart, mxx - mw2/2, a.y - mh2, mw2, mh2);
+          }
+        }
+      }
     }
     prev = b2;
   }

@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-75"></a>
+## [0.9.75] - 2026-08-30
+- Added: **the mirror shows the skyline and the roadside behind you.** The same sprites, from the
+  same cache, placed by the same hash of the same world segment index - so a tree you have just
+  driven past is in the glass at the size and place it was. It shows `biomeFrom`, because behind you
+  is where you have been: during a crossing the windscreen shows the place arriving and the glass
+  shows the place leaving ([RLG-079](../fragments/RLG-079.md)).
+- Added: **nothing looms in a pane 44 pixels tall.** The sizes are proportionally right, but the
+  windscreen is 900 pixels and the mirror is 44, so the nearest trees buried the road and the cars on
+  it - the one thing the mirror is for. Anything over a fifth of the glass is left out
+  ([RLG-079](../fragments/RLG-079.md)).
+- Added: **`tools/fps-test.py`, which reports its SPREAD.** On one unchanged build a forest measured
+  54.5, 60.2 and 57.0 fps in three consecutive runs, and over more samples 48.0 to 60.4. Two rounds
+  of scenery tuning had already been done against single readings inside that spread. A change is
+  only real if two ranges do not overlap ([RLG-059](../fragments/RLG-059.md)).
+- Corrected: **the frame-rate claim in v0.9.71 was noise.** "Mountain measured 54.5 fps against 60
+  everywhere else" is a single reading inside a 12-fps spread and it did not support the conclusion
+  drawn from it. The mountain row count stays at three because it still reads as a valley, which was
+  confirmed by looking - not because of the number ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-74"></a>
 ## [0.9.74] - 2026-08-30
 - Fixed: **the roadside takes the hour's light, not only the horizon.** The scenery sprites baked
