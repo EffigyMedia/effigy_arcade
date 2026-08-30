@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-63"></a>
+## [0.9.63] - 2026-08-29
+- Added: **the tundra lies under snow before anything falls.** `snowFloor` is 50% there and absent
+  everywhere else, and it is a floor rather than a level: a fall builds from it in the ordinary way
+  and every path that takes snow away stops at it. It crosses on the WEATHER band rather than the
+  ground's, because it is weather - the white should arrive with the cold, not with the colour of the
+  verge ([RLG-059](../fragments/RLG-059.md)).
+- Added: **arriving somewhere that lies under snow whitens the ground over seconds, not in a frame.**
+  Clamping the level up to the floor would have snapped it white the instant the floor rose, which is
+  the switch this run of work exists to remove. The decay stops at the floor when it is already above
+  it, and a separate gentle climb handles arriving below it - about four seconds from bare to a
+  tundra's half cover ([RLG-057](../fragments/RLG-057.md)).
+- Changed: **the tundra is permanently slipperier, and nothing was added to say so.** `wetGrip`
+  already costs `settle * 0.30`, so a floor of 0.5 takes about 15% of dry grip before a flake falls.
+  That is a consequence of the ruling rather than a separate decision
+  ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-62"></a>
 ## [0.9.62] - 2026-08-29
 - Fixed: **the skyline belongs to the horizon, not to the car.** The far-field ground already showed

@@ -6136,7 +6136,18 @@ const BIOMES = {
   CITY:     { name:'CITY',     rain:0.38, snow:0.10,
               grassLo:'#2c2f36', grassHi:'#3b3f48',
               sky:'#2a2438', city:1.00, trees:0.10 },
-  TUNDRA:   { name:'TUNDRA',   rain:0.10, snow:0.62,
+  /* ---- TUNDRA IS WHITE BEFORE ANYTHING FALLS (RLG-059) ----------------
+     Owner, 2026-08-29: "let's make the tundra automatically snow covered
+     whether it's snowing or not. So let's assume that base tundra is 50% snow
+     coverage and then if it does snow then it just increases from there like
+     normal."
+
+     `snowFloor` is that, and it is a FLOOR rather than a level: accumulation
+     builds from it in the ordinary way and the unwind stops at it instead of at
+     zero. Every other biome has none, which is why the field is absent from
+     them rather than written as 0 - a place either lies under snow or it does
+     not. */
+  TUNDRA:   { name:'TUNDRA',   rain:0.10, snow:0.62, snowFloor:0.50,
               grassLo:'#3e4a52', grassHi:'#54626c',
               sky:'#2e3c50', city:0.06, trees:0.22 }
 };
@@ -6170,6 +6181,23 @@ let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
 /* the weather target from the moment a band reached the car, so the thinning
    scales one value instead of multiplying the live one down every frame */
 let bandBase = -1;
+/* how far the car is through the WEATHER crossing, kept where the snow floor
+   can read it. `stepBiome` computes it once a frame. */
+let biomeCrossW = 1;
+
+/* ---- HOW MUCH SNOW THIS PLACE HOLDS ON ITS OWN (RLG-059) -----------------
+   It crosses on the weather's band rather than the ground's, because it IS
+   weather: driving into a tundra, the white should arrive with the cold and not
+   with the colour of the verge. Between two places it is the blend of the two,
+   so leaving a tundra lowers the floor as you go instead of dropping it at a
+   line - and the melt that follows is then the ordinary unwind rather than a
+   special case.
+   ------------------------------------------------------------------------- */
+function snowFloorNow(){
+  const a = (BIOMES[biomeFrom] || {}).snowFloor || 0;
+  const b = (BIOMES[biomeTo] || {}).snowFloor || 0;
+  return a === b ? a : a + (b - a) * biomeCrossW;
+}
 /* how many segments the blend spans. The owner's range was "several to a dozen
    or a couple dozen"; 18 sits in the middle of it. A tunable with a committed
    default, never a constant edited in place. */
@@ -6371,6 +6399,7 @@ function stepBiome(dt){
      is what driving out of a snowfield actually feels like.
      -------------------------------------------------------------------- */
   const crossW = clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1);
+  biomeCrossW = crossW;
   if(biomeFrom !== biomeTo){
     const Bnew = BIOMES[biomeTo] || bio();
     if(crossW > 0){
@@ -6551,6 +6580,19 @@ function stepWeather(dt){
      takes the cover away outright rather than unwinding it - driving out of a
      tundra into a desert should not leave the sand white behind you.
      ------------------------------------------------------------------- */
+  /* ---- NOTHING GOES BELOW WHAT THE PLACE HOLDS ON ITS OWN (RLG-059) ----
+     `floor` is the tundra's permanent cover, blended across a crossing. Every
+     path that takes snow AWAY stops at it.
+
+     THE LIMIT IS NOT `Math.max(floor, ...)`, and the difference matters. That
+     form YANKS settle UP to the floor the instant the floor rises, so driving
+     into a tundra would snap the ground white in one frame - which is the
+     switch this work exists to remove. The decay stops at the floor only when
+     it is already above it; arriving with less than the floor is a separate,
+     gentle climb below.
+     -------------------------------------------------------------------- */
+  const floor = snowFloorNow();
+  const decayFloor = settle > floor ? floor : 0;
   if(settleMelt > 0){
     /* A RATE, NOT A FLAG. It used to be 1 or 0, so the ground went from holding
        snow to shedding it at full speed the instant a line was crossed. It is
@@ -6558,20 +6600,25 @@ function stepWeather(dt){
        crossing (RLG-022). `endImpossibleWeather` still sets it to 1 outright,
        for the case where the place changed under you rather than being driven
        into. */
-    settle = Math.max(0, settle - dt * 0.55 * settleMelt);
+    settle = Math.max(decayFloor, settle - dt * 0.55 * settleMelt);
     if(settle < 0.02){ settle = 0; settleMelt = 0; }
   } else if(snowy && wet > 0.04){
     /* about forty seconds of heavy snow to cover the ground completely, and
        three or four minutes of a flurry - which is the difference a driver
-       should feel between weather passing through and weather setting in */
+       should feel between weather passing through and weather setting in.
+       It builds FROM the floor, because that is where the ground already is. */
     settleFall = wet * 0.030;
     settle = Math.min(1, settle + dt * settleFall);
   } else {
     /* the same slope, walked back down. `settleFall` holds its last value, so
        a run that has never seen snow unwinds at the flurry rate rather than at
        zero and stalls at whatever it happens to be carrying. */
-    settle = Math.max(0, settle - dt * (settleFall || 0.006));
+    settle = Math.max(decayFloor, settle - dt * (settleFall || 0.006));
   }
+  /* and the ground WHITENS when you arrive somewhere that lies under snow, over
+     a few seconds rather than in a frame. About four seconds from bare to a
+     tundra's half cover, which is the same order as the crossing itself. */
+  if(settle < floor) settle = Math.min(floor, settle + dt * 0.12);
   /* Standing water, by the same arithmetic and with its own numbers. It builds
      about twice as fast as snow - a road is wet long before it is white - and
      it goes twice as fast again once the rain stops, because water runs off a
@@ -13592,6 +13639,8 @@ requestAnimationFrame(frameLoop);
   /* snow and how much of it has settled, so the two-layer cover can be
      photographed rather than driven to */
   API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };
+  /* what this place holds on its own, blended across a crossing (RLG-059) */
+  API.snowFloor = function(){ return +snowFloorNow().toFixed(3); };
   /* standing water, the rain half of the accumulation. It is read and set on
      its own because `wet` is what is falling and `pool` is what is lying. */
   API.pool = function(){ return +pool.toFixed(3); };

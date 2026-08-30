@@ -104,6 +104,67 @@ READ_WEATHER = """() => {
            settle:R.settle(), inb:s.player };
 }"""
 
+READ_FLOORS = """() => {
+  const R = window.__probe.road, out = {};
+  const keep = R.biomeSweep().player;
+  for(const k of R.BIOME_KEYS()){ R.setBiomePair(k, k); out[k] = R.snowFloor(); }
+  R.setBiomePair(keep, keep);
+  return out;
+}"""
+
+BARE_THEN_TUNDRA = """() => {
+  const R = window.__probe.road;
+  R.setBiomePair('DESERT', 'DESERT');
+  R.setWet(0); R.setSnow(0); R.setPool(0);
+  R.setBiomePair('TUNDRA', 'TUNDRA');
+}"""
+
+# snow ON TOP of the floor, so the unwind has somewhere above it to come down from
+TUNDRA_DEEP = """() => {
+  const R = window.__probe.road;
+  R.setBiomePair('TUNDRA', 'TUNDRA');
+  R.setWet(0.9); R.setSnow(0.95);
+}"""
+
+DRY_DESERT = """() => {
+  const R = window.__probe.road;
+  R.setBiomePair('DESERT', 'DESERT');
+  R.setWet(0); R.setSnow(0); R.setPool(0);
+}"""
+
+# IT HAS TO SNOW FIRST, and that is not set dressing. The unwind runs at the rate
+# the last fall was depositing at, and a run that never accumulated falls back to
+# 0.006 a second - which moves settle by 0.025 over the whole reading and reaches
+# no floor at all. The first version of this check set the level directly and then
+# measured a slope so shallow that a floor and no floor were indistinguishable.
+SNOW_FIRST = """(k) => {
+  const R = window.__probe.road;
+  R.setBiomePair(k, k);
+  R.setWet(0.9); R.setSnow(0.30);
+}"""
+
+# then stop it, just above the floor, with the fall rate now set
+STOP_JUST_ABOVE = """() => {
+  const R = window.__probe.road;
+  R.setSnow(0.58); R.setWet(0);
+}"""
+
+GRIP_IN_TUNDRA = """() => {
+  const R = window.__probe.road;
+  R.setBiomePair('TUNDRA', 'TUNDRA');
+  R.setWet(0); R.setSnow(0.5); R.setPool(0);
+  return R.wetGrip();
+}"""
+
+READ_SETTLE = "() => window.__probe.road.settle()"
+
+# THE WEATHER TIMER KEEPS RUNNING while a measurement is going on, and in a tundra
+# it starts snowing again within seconds - snow chance 0.62. The first version of
+# the unwind check watched settle fall to 0.536 and then climb back to 0.554, and
+# read that as the floor holding it. It was fresh snow. This holds the sky dry for
+# the length of the reading, which is the only way to measure what the GROUND does.
+HOLD_DRY = """() => { const R = window.__probe.road; R.setWet(0); return R.settle(); }"""
+
 def lum(css):
     """Perceived brightness of an 'rgb(r,g,b)' string."""
     r, g, b = [float(v) for v in css[css.index('(') + 1:css.index(')')].split(',')]
@@ -294,6 +355,88 @@ def main():
         res.check(len(mids) >= 2,
                   'and it passes through intermediate values rather than stepping off',
                   '%d intermediate: %s' % (len(mids), ' '.join('%.2f' % w for w in mids[:6])))
+
+        # -------------------------------------------------- the tundra lies under snow
+        print()
+        print('  THE TUNDRA IS WHITE BEFORE ANYTHING FALLS')
+        floors = page.evaluate(READ_FLOORS)
+        print('      floors: %s' % floors)
+        res.check(floors.get('TUNDRA', 0) > 0.4,
+                  'the tundra holds snow on its own', 'floor %.2f' % floors.get('TUNDRA', 0))
+        res.check(all(v == 0 for k, v in floors.items() if k != 'TUNDRA'),
+                  'and nowhere else does', str(floors))
+
+        # Bare ground, then a tundra arrives. It must CLIMB to the floor rather than
+        # snapping to it - a Math.max would have yanked it up in one frame, which is
+        # the switch this whole piece of work exists to remove.
+        page.evaluate(BARE_THEN_TUNDRA)
+        climb = []
+        for _ in range(12):
+            page.wait_for_timeout(250)
+            climb.append(page.evaluate(READ_SETTLE))
+        print('      settle climbing: %s' % ' '.join('%.3f' % v for v in climb))
+        res.check(climb[-1] > climb[0], 'it whitens when you arrive somewhere that lies under snow',
+                  '%.3f -> %.3f' % (climb[0], climb[-1]))
+        steps = [b - a for a, b in zip(climb, climb[1:])]
+        res.check(max(steps) < 0.10,
+                  'and it CLIMBS rather than snapping - no single step is most of the way',
+                  'largest step %.3f' % max(steps))
+
+        # It must also not unwind past the floor. The first version of this check
+        # let a deep fall unwind for five seconds and asserted it was still above
+        # 0.5 - and it rested at 0.823, which is nowhere near the floor. That would
+        # have passed with the floor ignored completely: it was measuring that the
+        # unwind is slow, not that it stops. So it starts JUST above the floor, where
+        # the only thing that can hold it is the floor itself.
+        page.evaluate(SNOW_FIRST, 'TUNDRA')
+        page.wait_for_timeout(900)
+        page.evaluate(STOP_JUST_ABOVE)
+        deep0 = page.evaluate(READ_SETTLE)
+        rest = []
+        for _ in range(14):
+            page.wait_for_timeout(300)
+            rest.append(page.evaluate(HOLD_DRY))
+        print('      settle unwinding: %.3f -> %s' % (deep0, ' '.join('%.3f' % v for v in rest[-6:])))
+        res.check(rest[0] < deep0, 'a fall on top of the floor does unwind',
+                  '%.3f -> %.3f' % (deep0, rest[0]))
+        # NEVER BELOW, rather than exactly at. It rests a little above the floor
+        # because a tundra's own weather timer keeps putting snow back during the
+        # reading - snow chance 0.62 - and that is the game working, not the check
+        # failing. What the floor claims is that nothing takes the ground below it,
+        # so that is what is asserted, over every sample rather than the last one.
+        # AGAINST THE OWNER'S NUMBER, not against whatever the engine reports. Read
+        # from `floors` this compared `min(rest) >= 0 - 0.02` on a build with the
+        # floor deleted, which is true of anything - the check switched itself off
+        # exactly when its subject went missing. 0.50 is the ruling; it is written
+        # here so the assertion cannot be neutralised by the fault it tests for.
+        res.check(min(rest) >= 0.48,
+                  'and nothing takes it below the 50% the owner asked for, at any point',
+                  'lowest %.3f' % min(rest))
+        res.check(abs(rest[-1] - rest[-4]) < 0.01,
+                  'and it settles rather than still sliding',
+                  '%.3f then %.3f, four samples apart' % (rest[-4], rest[-1]))
+        # AND THE SAME START WITHOUT A FLOOR MUST NOT STOP. If it did, this would be
+        # measuring the unwind running out rather than the floor holding it.
+        page.evaluate(SNOW_FIRST, 'DESERT')
+        page.wait_for_timeout(900)
+        page.evaluate(STOP_JUST_ABOVE)
+        noFloor = []
+        for _ in range(14):
+            page.wait_for_timeout(300)
+            noFloor.append(page.evaluate(HOLD_DRY))
+        print('      the same, in a place with no floor: %s'
+              % ' '.join('%.3f' % v for v in noFloor[-6:]))
+        res.check(min(noFloor) < 0.47,
+                  'in a place with no floor the same snow goes straight past that level, '
+                  'so the floor is what held it',
+                  'desert reached %.3f, tundra never below %.3f' % (min(noFloor), min(rest)))
+        grip_tundra = page.evaluate(GRIP_IN_TUNDRA)
+        page.evaluate(DRY_DESERT)
+        page.wait_for_timeout(300)
+        grip_desert = page.evaluate("() => window.__probe.road.wetGrip()")
+        res.check(grip_tundra < grip_desert - 0.05,
+                  'and the tundra is permanently slipperier for it, with nothing added to say so',
+                  'tundra %.3f, dry desert %.3f' % (grip_tundra, grip_desert))
 
         # ------------------------------------------- and the distinction can fail
         print()
