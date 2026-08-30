@@ -501,6 +501,33 @@ def main():
                   ' '.join(str(e) for e in edges))
         page.evaluate('(r) => window.__probe.road.setRoadHalfWidth(r)', 2300)
 
+        # ------------------------------- a beam is only visible in the dark
+        print()
+        print('  HEADLIGHT BEAMS FOLLOW THE CLOCK, NOT THE WEATHER')
+        # The owner saw beams on the road at midday and guessed it was the rain.
+        # It was: lampsOn() treats weather as night by their own earlier ruling, so
+        # a shower at noon switched the beams on. The LAMPS should still do that -
+        # everyone drives with lights on in rain - but the pool of light lying on
+        # the tarmac is invisible in daylight however wet it is.
+        page.evaluate('() => window.__probe.road.setPhase(0.75)')
+        page.evaluate("() => { const R = window.__probe.road; R.setSnow(0); R.setWet(1); }")
+        page.wait_for_timeout(250)
+        noon = page.evaluate('() => window.__probe.road.lightLevels()')
+        page.evaluate('() => window.__probe.road.setPhase(0.25)')
+        page.wait_for_timeout(250)
+        dark = page.evaluate('() => window.__probe.road.lightLevels()')
+        print('      midday in heavy rain: lamps %.2f  beam %.2f' % (noon['lamps'], noon['clock']))
+        print('      midnight, same rain:  lamps %.2f  beam %.2f' % (dark['lamps'], dark['clock']))
+        res.check(noon['lamps'] > 0.5,
+                  'the LAMPS still come on in daytime rain, which is the owner ruling that stands',
+                  '%.2f' % noon['lamps'])
+        res.check(noon['clock'] < 0.04,
+                  'but the BEAM does not - a light pool is invisible at noon however wet it is',
+                  '%.2f' % noon['clock'])
+        res.check(dark['clock'] > 0.5, 'and at night the beam is on',
+                  '%.2f' % dark['clock'])
+        page.evaluate("() => { const R = window.__probe.road; R.setWet(0); R.setPool(0); R.setPhase(0.75); }")
+
         # ------------------------------------------- and the distinction can fail
         print()
         print('  NOT VACUOUS - the old flip goes back and the sweep check must catch it')

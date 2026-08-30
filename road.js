@@ -12372,7 +12372,27 @@ function drawSpeedLines(){
    its beams point at the camera and that judgement has to be made again.
    ========================================================================= */
 function drawBeams(){
-  const lit = lampsOn();
+  /* ---- A BEAM IS ONLY VISIBLE IN THE DARK (RLG-060) --------------------
+     Owner, 2026-08-30, from the device: "my headlights were on midday. The
+     headlights need to follow the time of day like all other lights. It might
+     have been because it was raining."
+
+     It was the rain. `lampsOn()` deliberately treats weather as night - the
+     owner's own earlier ruling, "even if it is daytime, if there is a weather
+     event we need to turn the lights on as if it is night-time" - so a shower
+     at noon turned the beams on.
+
+     BOTH RULINGS ARE RIGHT AND THEY ARE ABOUT DIFFERENT THINGS. A lamp is a
+     lamp: headlights, tail lamps and street lighting all come on in rain, and
+     that stays. A BEAM is not a lamp - it is the light you can see LYING ON THE
+     ROAD, and you cannot see that in daylight however wet it is. Your
+     headlights are on in a midday shower and the road ahead shows nothing.
+
+     So the lamps keep `lampsOn()` and the beam takes `clockLamps()`, which is
+     the day cycle alone. Weather can still darken it through the sky, but it
+     cannot switch it on at noon.
+     -------------------------------------------------------------------- */
+  const lit = clockLamps(phase());
   if(lit < 0.04) return;
   /* how far the light throws, and how wide the cone opens. In world units, so
      a wider road (RLG-024) does not widen the headlights. */
@@ -14712,6 +14732,13 @@ requestAnimationFrame(frameLoop);
      the glass as a fraction of it - 0 at the mirror's horizon, 1 at the bottom.
      It is the number that says whether the view looks DOWN on the road or along
      it, which is the thing the owner has reported twice. */
+  /* the two lighting schedules, so a check can tell them apart: `lamps` turns
+     on in weather by the owner's ruling, `clock` is the day cycle alone and is
+     what decides whether a beam on the road is visible at all (RLG-060) */
+  API.lightLevels = function(){
+    return { lamps:+lampsOn().toFixed(3), clock:+clockLamps(phase()).toFixed(3),
+             phase:+phase().toFixed(3), wet:+wet.toFixed(3) };
+  };
   API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
   API.mirrorHorizon = function(v){ if(v > 0) MIRROR_HORIZON = v; return MIRROR_HORIZON; };
   /* ---- WHERE THE ROADSIDE SITS, IN PIXELS (RLG-024) ---------------------

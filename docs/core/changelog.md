@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-78"></a>
+## [0.9.78] - 2026-08-30
+- Fixed: **headlight beams follow the clock, not the weather.** Owner: "my headlights were on midday.
+  The headlights need to follow the time of day like all other lights. It might have been because it
+  was raining." It was. `lampsOn()` treats weather as night by the owner's own earlier ruling, so a
+  shower at noon switched the beams on. Both rulings stand and they are about different things: a
+  LAMP comes on in rain, and a BEAM is the light you can see lying on the road, which is invisible in
+  daylight however wet it is. The lamps keep `lampsOn()`; the beam takes the day cycle alone
+  ([RLG-060](../fragments/RLG-060.md)).
+- Added: **a check that keeps the two apart.** Measured in heavy rain: at midday the lamps read 1.00
+  and the beam 0.00; at midnight both read 1.00 ([RLG-060](../fragments/RLG-060.md)).
+
 <a id="v0-9-77"></a>
 ## [0.9.77] - 2026-08-30
 - Fixed: **the road widens and the cars do not.** Owner: "the road was supposed to get wider while
