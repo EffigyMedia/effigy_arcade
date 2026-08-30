@@ -81,11 +81,17 @@ def stint(browser, secs):
         page.wait_for_timeout(1200)
         if not page.evaluate("() => !!(window.__road && window.__road.spriteStats)"):
             return None, 0, errs
-        # PINNED TO A BIOME THAT HAS SCENERY. The biome is picked fresh per load, and
-        # the crest ledger can only show what was drawn - a stint that landed in CITY
-        # would report no scenery and the check would read as a failure of the gate
-        # rather than of the tree supply.
-        page.evaluate("() => { window.__road.setBiomePair && window.__road.setBiomePair('FOREST','FOREST'); }")
+        # PINNED TO CITY, which is the only place that now has BOTH kinds. The biome is
+        # picked fresh per load and the crest ledger can only report what was drawn, so
+        # a stint that landed somewhere without the subject reads as a failure of the
+        # gate rather than an absence of lamps.
+        #
+        # It was pinned to FOREST until the lamps became city scenery (RLG-059), at
+        # which point the lamp assertions went red at asked=0 - the harness measuring a
+        # thing the ruling had just moved. Recorded rather than quietly repinned,
+        # because "the check went red and the fix was to change the check" is the
+        # shape that hides a real regression.
+        page.evaluate("() => { window.__road.setBiomePair && window.__road.setBiomePair('CITY','CITY'); }")
         page.evaluate("() => { window.__road.setSpd && window.__road.setSpd(9000); }")
         page.evaluate("() => { window.__road.resetCrestStats && window.__road.resetCrestStats(); }")
         tot = {'drawn': 0, 'clipped': 0, 'culled': 0}

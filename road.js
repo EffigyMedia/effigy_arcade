@@ -4876,6 +4876,26 @@ function buildSprites(){
    the road where the ground colour changes, rather than switching under you.
    ========================================================================= */
 
+
+/* ---- ONE DESCRIPTION OF WHERE A BUILDING'S WINDOWS ARE (RLG-059) ---------
+   Walked twice: once by the dark sheet that gives the building its texture by
+   day, and once by the lit sheet that glows at night. Two walks of one function
+   rather than two lists of coordinates, because a lit window that does not line
+   up with its hole is the fault this shape exists to make impossible.
+   ------------------------------------------------------------------------- */
+function CITY_WINDOWS(bw, bh, x0, y0, put){
+  const cols = Math.max(2, Math.round(bw / 13));
+  const rows = Math.max(3, Math.round(bh / 15));
+  const gw = bw / cols, gh = bh / rows;
+  for(let r = 0; r < rows; r++){
+    for(let c = 0; c < cols; c++){
+      /* the ground floor is a lobby, not a grid of offices */
+      if(r === rows - 1) continue;
+      put(x0 + c*gw + gw*0.26, y0 + r*gh + gh*0.24, gw*0.48, gh*0.46, r, c);
+    }
+  }
+}
+
 /* a stable pseudo-random in 0..1 from a segment index and a salt. Two calls with
    the same pair always agree, which is what stops the roadside boiling. */
 function sceneRand(idx, salt){
@@ -4892,6 +4912,34 @@ function sceneRand(idx, salt){
    beyond the light posts".
    ------------------------------------------------------------------------ */
 const SCENERY = {
+  CITY:   { density:0.62, w:0.55, h:1.70, out:1.62, spread:0.75, kinds:4, lit:true,
+            build:(g,W2,H2,i)=>{
+              /* ---- A BUILDING, AND ITS WINDOWS ARE A SECOND SHEET ---------
+                 Owner, 2026-08-29: city buildings "will need to have their
+                 illuminated windows for nighttime for consistency with the
+                 skyline". The skyline already paints windows onto their own
+                 canvas so they can be lit by the clock rather than baked, and
+                 this does the same - `sceneryLit` builds the same shape with
+                 only the glass on it. Two sheets from one plan is what keeps a
+                 lit window in the same place as the hole it shines out of.
+                 --------------------------------------------------------- */
+              const tall = 0.42 + i*0.185;         /* four heights, not random */
+              const bw = W2*(0.60 - i*0.045), bh = H2*tall;
+              const x0 = (W2-bw)/2, y0 = H2-bh;
+              g.fillStyle = '#1b1f2c';
+              g.fillRect(x0, y0, bw, bh);
+              /* a setback on the taller ones, so a roofline is not always flat */
+              if(i >= 2){
+                const sw = bw*0.55, sh = bh*0.16;
+                g.fillRect(x0 + (bw-sw)/2, y0 - sh, sw, sh);
+              }
+              /* the lit face catches a little more light than the flank */
+              g.fillStyle = 'rgba(255,255,255,.045)';
+              g.fillRect(x0, y0, bw*0.30, bh);
+              /* the window grid, drawn dark so the shape reads by day too */
+              g.fillStyle = '#12151f';
+              CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh) => g.fillRect(wx, wy, ww, wh));
+            } },
   FOREST: { density:0.92, w:0.30, h:0.95, out:1.35, spread:0.55, kinds:3,
             build:(g,W2,H2,i)=>{
               /* a conifer: a dark stack of triangles on a short trunk */
@@ -4949,6 +4997,36 @@ function sceneryArt(key, i){
   return sceneryCache[id];
 }
 
+/* ---- THE LIT SHEET, WHICH IS THE SAME BUILDING WITH ONLY ITS GLASS ON ----
+   Drawn over the top with `lighter` and an alpha that follows the clock, so a
+   city lights up at dusk and goes dark by mid-morning - the same treatment the
+   skyline's windows already get, which is the consistency the owner asked for.
+   A biome with no `lit` in its spec builds nothing here and pays nothing.
+   ------------------------------------------------------------------------- */
+function sceneryLitArt(key, i){
+  const spec = SCENERY[key];
+  if(!spec || !spec.lit) return null;
+  const id = key + i + 'L';
+  if(!(id in sceneryCache)){
+    const pw = 96, ph = Math.round(96 * (spec.h / spec.w));
+    sceneryCache[id] = sprite(pw, ph, (g)=>{
+      g.clearRect(0,0,pw,ph);
+      const tall = 0.42 + i*0.185;
+      const bw = pw*(0.60 - i*0.045), bh = ph*tall;
+      const x0 = (pw-bw)/2, y0 = ph-bh;
+      CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh, r, c) => {
+        /* not every office is occupied, and the pattern must not change frame
+           to frame - so it is a function of the window's own position, not of
+           chance */
+        if(((r*7 + c*13 + i*5) % 11) < 4) return;
+        g.fillStyle = ((r*3 + c*5) % 7) ? 'rgba(255,214,140,.92)' : 'rgba(190,224,255,.85)';
+        g.fillRect(wx, wy, ww, wh);
+      });
+    });
+  }
+  return sceneryCache[id];
+}
+
 /* ---- one segment's worth, both sides ------------------------------------
    Called from the road pass with the same numbers the lamp uses. It draws
    nothing at all for a biome with no scenery declared, which is how CITY and
@@ -4988,6 +5066,14 @@ function drawScenery(idx, p1, y1, z1, fade){
        whole at the edge of the world. The lamps do the same. */
     ctx.globalAlpha = Math.min(1, fade * 4);
     ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
+    /* the windows, on the same schedule as the street lamps */
+    const litArt = spec.lit ? sceneryLitArt(B.name, kind) : null;
+    if(litArt && lampsOn() > 0.02){
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, fade * 4) * lampsOn();
+      ctx.drawImage(litArt, x - w2/2, y1 - h2, w2, h2);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     ctx.globalAlpha = 1;
     ctx.restore();
   }
@@ -10649,7 +10735,24 @@ function drawRoad(){
        daylight. Now the column and head draw at every hour and only the bulb
        and its bloom are switched.
        ---------------------------------------------------------------------- */
-    if(idx % 8 === 0){
+    /* ---- THE LAMPS ARE CITY SCENERY (RLG-059) -------------------------
+       Owner, 2026-08-29: "the light posts are probably specifically only city
+       scenery. So the cities scenery would be the light posts and building
+       buildings to make it feel like you're in the city."
+
+       They were drawn on every eighth segment of everywhere, so a desert at
+       midnight was lit by street lighting and a forest had a lamp standard
+       every eighth segment of nowhere. It is the SEGMENT'S biome that decides,
+       not the car's, so a lamp stops existing at the same point on the road
+       where the buildings stop - and driving out of a city, the lighting ends
+       where the city does rather than under you.
+
+       THE CONSEQUENCE IS THAT FOUR BIOMES GO DARK AT NIGHT, and that is a large
+       change to how they look which nobody asked for in those words. It follows
+       from the ruling rather than being a separate decision, and it is the kind
+       of thing the owner should see rather than read about.
+       -------------------------------------------------------------------- */
+    if(idx % 8 === 0 && bioAt(idx).name === 'CITY'){
       const side = ((idx/8)|0) % 2 ? 1 : -1;
       const lx = p1.x + side * p1.scale * ROAD * W * 1.15;
       const sc = p1.scale * ROAD * W;

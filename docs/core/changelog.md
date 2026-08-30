@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-68"></a>
+## [0.9.68] - 2026-08-29
+- Added: **the city has buildings, and their windows light up at night.** Four heights with setbacks
+  on the taller ones, a window grid that reads as texture by day, and a second sheet carrying only
+  the glass, drawn over the top with an alpha that follows the same clock the street lamps use. The
+  two sheets come from one description of where the windows are, so a lit window cannot drift away
+  from the hole it shines out of ([RLG-059](../fragments/RLG-059.md)).
+- Changed: **the street lamps are city scenery, and nowhere else has them.** They were drawn on every
+  eighth segment of everywhere, so a desert at midnight was lit by street lighting. The segment's
+  biome decides, so the lighting ends where the city ends rather than under the car
+  ([RLG-059](../fragments/RLG-059.md)).
+- Consequence, stated because nobody asked for it in those words: **four biomes are now dark at
+  night.** A forest at midnight has no light in it but the moon. That follows from the ruling rather
+  than being a separate decision, and it is the kind of thing to look at rather than read about
+  ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-67"></a>
 ## [0.9.67] - 2026-08-29
 - Added: **roadside scenery, per biome, drawn toward the camera like the lamps.** FOREST puts thick
