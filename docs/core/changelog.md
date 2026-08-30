@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-64"></a>
+## [0.9.64] - 2026-08-29
+- Changed: **the mirror looks down from higher up.** The owner reported from the device that it still
+  shows too low to the ground. The eye rises from 2.15x the driving height to 3.00x, which spreads
+  the road down the glass instead of leaving it flat along the bottom - a car 6,000 units behind moves
+  from 0.158 of the pane below its horizon to 0.242.
+- Changed: **the mirror height is a named tunable rather than a number inside an expression.** It has
+  moved three times now - 1.55x, 2.15x, 3.00x - so `MIRROR_EYE` is the one thing about this view that
+  keeps needing to move and it is findable. `API.mirrorEye()` sets it live and `API.mirrorAt()` says
+  where a car at a given distance lands, so the next adjustment can be measured rather than guessed.
+- Known limit, stated rather than discovered later: **the eye height and the vertical zoom are the
+  same knob** in this projection, so looking further down also pushes near things off the bottom edge.
+  A follower closer than about 1,300 units is now below the glass, where the limit used to be 950.
+  Clamping such a car to the bottom edge - which is what a real mirror shows - would fix it and is not
+  built.
+
 <a id="v0-9-63"></a>
 ## [0.9.63] - 2026-08-29
 - Added: **the tundra lies under snow before anything falls.** `snowFloor` is 50% there and absent

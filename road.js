@@ -73,6 +73,10 @@ const LANES = 4;
 const DRAW = 150;   /* was 95 — the road stopped short of the horizon and
                        the ground base showed as a band under the skyline */             // segments drawn
 const CAM_H = 1050;
+/* how far above the driving eye the mirror sits, as a multiple of it. See the
+   note in `drawMirrorFull`: this has moved three times and is the number that
+   keeps needing to. */
+let MIRROR_EYE = 3.00;
 const FOV = 100;
 const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
@@ -11822,10 +11826,34 @@ function drawMirrorFull(mx, my, mw, mh){
      while a lorry's looked down from a cab — and in a pane this small the low
      ones showed nothing but the road surface with a lorry filling it.
 
-     Fixed at 2.15x the driving eye for every vehicle, which is high enough to
-     see OVER whatever is following you rather than at its bumper.
+     Fixed at the same height for every vehicle, which is high enough to see
+     OVER whatever is following you rather than at its bumper.
      ------------------------------------------------------------------- */
-  const CAM_H_M = CAM_H * 2.15;
+  /* ---- AND IT HAS BEEN RAISED THREE TIMES NOW -------------------------
+     1.55x, then 2.15x, and the owner still reported it "shows too low to the
+     ground" from the device. So it is a named tunable rather than a number
+     buried in an expression: the value is the one thing about this view that
+     keeps needing to move, and the next session should be able to find it.
+
+     Higher here means the eye looks further DOWN on the road, so the ground
+     plane falls away faster in the glass and you see over what is behind you
+     instead of along the tarmac at it.
+
+     AND THE COST IS NEAR DEPTH, WHICH IS NOT OBVIOUS. In this projection the
+     eye height and the vertical zoom are the SAME KNOB - `y` is
+     `vpy + scale * CAM_H_M * H_M/2`, a product - so there is no way to look
+     further down without also pushing near things off the bottom edge. Where
+     the pane's bottom edge falls, in units behind the car:
+
+       1.55x    683      2.15x    947      3.00x   1322
+
+     So a follower closer than about 1,300 units is now below the glass rather
+     than in it. That was already true under 950 and it is a real limit rather
+     than a rounding: a car on your bumper is the one you most want to see.
+     Clamping such a car to the bottom edge - which is what a real mirror shows,
+     the top of it filling the frame - would fix that and is NOT built here.
+     -------------------------------------------------------------------- */
+  const CAM_H_M = CAM_H * MIRROR_EYE;
   /* the same camera constants as the forward view, remapped to this glass */
   function rproj(worldX, worldZ){
     const dz = pos - worldZ;           /* BEHIND is positive here */
@@ -13641,6 +13669,17 @@ requestAnimationFrame(frameLoop);
   API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };
   /* what this place holds on its own, blended across a crossing (RLG-059) */
   API.snowFloor = function(){ return +snowFloorNow().toFixed(3); };
+  /* the mirror's eye height, and where a car a given distance behind lands in
+     the glass as a fraction of it - 0 at the mirror's horizon, 1 at the bottom.
+     It is the number that says whether the view looks DOWN on the road or along
+     it, which is the thing the owner has reported twice. */
+  API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
+  API.mirrorAt = function(dz){
+    if(!(dz > 200)) return null;
+    /* the same arithmetic `rproj` does, in fractions of the glass below its
+       horizon, so it does not depend on where the pane happens to be drawn */
+    return +((CAM_D/dz) * (CAM_H * MIRROR_EYE) / 2).toFixed(4);
+  };
   /* standing water, the rain half of the accumulation. It is read and set on
      its own because `wet` is what is falling and `pool` is what is lying. */
   API.pool = function(){ return +pool.toFixed(3); };
