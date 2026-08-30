@@ -6954,6 +6954,9 @@ let wet = 0, wetTarget = 0, wetNext = 0, snowy = 0, settle = 0;
    feels different from a mountain one without anything else being said.
    ---------------------------------------------------------------------- */
 let biomeNext = 0;
+/* whether this run has chosen its opening biome yet. A fact about the run, not
+   something to infer from the length of a frame - see stepBiome. */
+let biomeStarted = 0;
 
 /* ---- WEATHER BELONGS TO A PLACE, SO IT HAS TO LEAVE WITH IT ---------------
    The biome decided what MIGHT fall, and then nothing checked it again. A front
@@ -7086,9 +7089,33 @@ function stepBiome(dt){
   }
   biomeNext -= dt;
   if(biomeNext <= 0){
-    if(biomeNext < -1){                            /* first call: pick one */
+    /* ---- THE FIRST CALL PICKS A PLACE. IT DOES NOT CHANGE ONE (RLG-022) --
+       Owner, 2026-08-30, from the device: "my first test run started with a
+       raining desert."
+
+       It did, and here is how. `biomeNext` starts at 0, so this fires on the
+       very first frame - and the test for "first call" was `biomeNext < -1`,
+       which needs a frame longer than a SECOND to be true. A real first frame
+       is about sixteen milliseconds, so it took the CHANGE branch instead: the
+       car started in the declared default of FOREST with a transition to a
+       random biome placed at the horizon.
+
+       Then `stepWeather` ran in the same frame, with `wetNext` also at 0, and
+       rolled the weather against FOREST - which rains 42% of the time. Seconds
+       later the car crossed into whatever had been placed ahead. A desert with
+       forest weather falling on it.
+
+       An explicit flag now, because "has this run started" is a fact about the
+       run and not something to infer from how slow a frame was. The place is
+       chosen outright with no transition, and `stepWeather` runs after this in
+       the same frame, so the first roll is against the place you are actually
+       in.
+       ------------------------------------------------------------------ */
+    if(!biomeStarted){
+      biomeStarted = 1;
       biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
       biomeFrom = biomeTo = biome;
+      biomeEdge = -1e9;
       buildSkyline();
     } else {
       let k = biome;
@@ -14735,6 +14762,12 @@ requestAnimationFrame(frameLoop);
   /* the two lighting schedules, so a check can tell them apart: `lamps` turns
      on in weather by the owner's ruling, `clock` is the day cycle alone and is
      what decides whether a beam on the road is visible at all (RLG-060) */
+  /* what a place can actually produce, so a check can ask whether the weather
+     falling on it is weather it could have made (RLG-022) */
+  API.biomeOdds = function(k){
+    const B = BIOMES[k || biome] || BIOMES.FOREST;
+    return { name:B.name, rain:B.rain, snow:B.snow };
+  };
   API.lightLevels = function(){
     return { lamps:+lampsOn().toFixed(3), clock:+clockLamps(phase()).toFixed(3),
              phase:+phase().toFixed(3), wet:+wet.toFixed(3) };

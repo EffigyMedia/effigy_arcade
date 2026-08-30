@@ -14,6 +14,20 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-79"></a>
+## [0.9.79] - 2026-08-30
+- Fixed: **a run starts in one place, with that place's weather.** Owner: "my first test run started
+  with a raining desert." `biomeNext` began at 0, so the biome timer fired on the very first frame -
+  and the guard for "first call" tested whether that frame had been longer than a SECOND. A real
+  first frame is about sixteen milliseconds, so it took the CHANGE branch instead: the car started in
+  the declared default of FOREST with a transition placed at the horizon, and the weather rolled
+  against FOREST, which rains 42% of the time. Seconds later the car drove into whatever had been
+  placed ahead ([RLG-022](../fragments/RLG-022.md)).
+- Added: **a check read before anything else touches the state** - that a run does not begin part-way
+  through a biome change, and that whatever is falling is weather the starting place can produce. It
+  was watched failing on the old code, reproducing the report exactly: started in FOREST, changing to
+  TUNDRA ([RLG-022](../fragments/RLG-022.md)).
+
 <a id="v0-9-78"></a>
 ## [0.9.78] - 2026-08-30
 - Fixed: **headlight beams follow the clock, not the weather.** Owner: "my headlights were on midday.

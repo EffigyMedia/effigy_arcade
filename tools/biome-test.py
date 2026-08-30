@@ -219,6 +219,34 @@ def main():
         res.check('biomeSweep' in api and 'startBiomeChange' in api,
                   'the engine reports the sweep', str(sorted(api)))
 
+        # ---------------------------------- a run starts in one place
+        # THIS IS READ BEFORE ANYTHING ELSE TOUCHES THE STATE. The owner's first
+        # test run "started with a raining desert": biomeNext began at 0 so the
+        # first frame fired the biome timer, and the guard for "first call" tested
+        # whether the frame was longer than a SECOND. A real first frame is 16ms,
+        # so it took the CHANGE branch - the car started in the declared default of
+        # FOREST with a transition placed at the horizon, and the weather rolled
+        # against FOREST, which rains 42% of the time. Seconds later the car drove
+        # into whatever had been placed ahead.
+        start = page.evaluate('() => window.__probe.road.biomeSweep()')
+        odds = page.evaluate('() => window.__probe.road.biomeOdds()')
+        wx0 = page.evaluate("""() => { const R = window.__probe.road;
+          return { wet: R.wet(), snowy: R.snowy() }; }""")
+        print('      started in %s (rain %.2f snow %.2f), wet %.2f snowy %d, from=%s to=%s'
+              % (odds['name'], odds['rain'], odds['snow'], wx0['wet'], wx0['snowy'],
+                 start['from'], start['to']))
+        res.check(start['from'] == start['to'],
+                  'a run does not begin part-way through a biome change',
+                  'from %s, to %s' % (start['from'], start['to']))
+        res.check(start['player'] == start['from'],
+                  'and the place the car is in is the place it started in',
+                  '%s vs %s' % (start['player'], start['from']))
+        possible = (odds['snow'] > 0) if wx0['snowy'] else (odds['rain'] > 0)
+        res.check(wx0['wet'] < 0.02 or possible,
+                  'and whatever is falling is weather this place can produce',
+                  '%s: wet %.2f snowy %d against rain %.2f snow %.2f'
+                  % (odds['name'], wx0['wet'], wx0['snowy'], odds['rain'], odds['snow']))
+
         # ------------------------------------------------------ the ground is strict
         print()
         print('  STRICT - each biome has its own ground, at every hour')
