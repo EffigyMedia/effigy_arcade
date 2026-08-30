@@ -14,6 +14,28 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-2"></a>
+## [0.10.2] - 2026-08-30
+- Fixed: **the headlights lay light on the road instead of standing two grey slabs on it.** The
+  owner reported that the beams did not look right, and two of the three causes were geometry
+  rather than taste. The throw began 485 world units ahead of the car, which projects ABOVE the
+  car's own roofline, so the tarmac beside the bumper - the road a dipped beam lights most
+  brightly - had nothing on it and the light appeared to start in mid-air. And a cone whose
+  world half-width grows linearly with distance projects to a CONSTANT width on screen, which is
+  what made it read as two parallel-sided stripes on a road that converges away behind them. The
+  throw now starts at the car, the near width carries the shape, and three nested cones summed
+  under `lighter` give a bright core with a soft shoulder in place of one hard-edged polygon. The
+  hot spot at the bumper is a short wide cone rather than an ellipse on the glass: the old one was
+  spread over most of the screen and had never once been visible
+  ([RLG-060](../fragments/RLG-060.md)).
+- Added: **`beam-test.py`, which photographs the same road with the beam and without it.** It asks
+  whether the light reaches the road at the car, stays below the horizon, dies out before the
+  horizon rather than stopping at a line, and is held off at midday by the CLOCK rather than by
+  luck. The old geometry fails its first check. Two debug hooks serve it and nothing in the game
+  calls either: one turns the beam off, and one clears the road, because a car driving up the
+  picture lifts a long run of rows in exactly the way a beam does and three statistical dodges
+  were tried against that before the obvious answer ([RLG-060](../fragments/RLG-060.md)).
+
 <a id="v0-10-1"></a>
 ## [0.10.1] - 2026-08-30
 - Fixed: **the bottle is centred by its ink, and the nozzle is part of the ink.** The owner saw that

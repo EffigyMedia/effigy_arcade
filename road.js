@@ -13033,7 +13033,18 @@ function drawSpeedLines(){
    protect anyone from. If oncoming traffic is ever added to the forward view,
    its beams point at the camera and that judgement has to be made again.
    ========================================================================= */
+/* ---- A HARNESS HAS TO BE ABLE TO TURN THEM OFF ------------------------
+   The only way to measure what the beam puts on the road is to photograph the
+   same road with it and without it. `beamsOff` is that switch and nothing in
+   the game ever sets it: it is not an option, it is not saved, and it is not an
+   unlock. The alternative was to compare two different TIMES OF DAY, which
+   changes the sky, the ground tone and every lamp in the scene along with the
+   thing being measured.
+   ---------------------------------------------------------------------- */
+let beamsOff = false;
+
 function drawBeams(){
+  if(beamsOff) return;
   /* ---- A BEAM IS ONLY VISIBLE IN THE DARK (RLG-060) --------------------
      Owner, 2026-08-30, from the device: "my headlights were on midday. The
      headlights need to follow the time of day like all other lights. It might
@@ -13067,10 +13078,41 @@ function drawBeams(){
      shape was wrong at all, which is the argument for turning an effect UP
      before tuning it down.
      -------------------------------------------------------------------- */
-  const NEAR = PLAYER_Z * 0.55, FAR = 9000;
-  const HW0 = ROAD * 0.10, SPREAD = 0.058;
-  const STEP = 380;
+  /* ---- AND IT IS LIGHT, NOT TWO GREY SLABS (RLG-060) -------------------
+     Owner, 2026-08-30: the beams do not look right. They did not. Three faults,
+     and the first two are geometry rather than taste.
+
+     THE LIGHT NEVER REACHED THE TARMAC. `NEAR` was 0.55 of PLAYER_Z ahead of
+     the car, about 485 world units - far enough that the first row of the cone
+     projected ABOVE the car's own roofline. So the road you can see beside the
+     bumper, which is the road a dipped beam lights most brightly, had nothing
+     on it at all, and the light appeared to begin in mid-air. It starts at the
+     car now.
+
+     A CONE THAT WIDENS LINEARLY IS A RECTANGLE ON SCREEN. The half-width was
+     230 world units plus 0.058 for every unit of distance, so past a few
+     thousand units the 0.058 dominates and the projected width settles at a
+     constant: two parallel-sided stripes standing on a road that converges away
+     behind them. The near width carries the shape now and the spread is small,
+     so the throw narrows toward the horizon the way the road does.
+
+     AND A HARD-EDGED POLYGON IS NOT A BEAM. One polygon has one edge. Three
+     nested cones summed under `lighter` give a bright core with a soft
+     shoulder, which is what a headlight puts on tarmac, and it costs three
+     fills rather than a gradient per row.
+     -------------------------------------------------------------------- */
+  /* the throw starts AT the car and dies well before the horizon. It ran to
+     9000 and simply stopped, which is the hard top edge the owner saw. */
+  const NEAR = 140, FAR = 7200;
+  /* the near pool carries the width; the spread only stops the throw closing to
+     a point. In world units, so a wider road (RLG-024) does not widen the lamps */
+  const HW0 = ROAD * 0.20, SPREAD = 0.026;
+  const STEP = 260;
   const carX = playerX * ROAD;
+
+  /* the three shells: how wide, and how much light each one adds. They sum, so
+     the middle of the throw gets all three and the edge gets only the widest */
+  const SHELLS = [[1.00, 0.150], [0.66, 0.120], [0.34, 0.110]];
 
   ctx.save();
   /* the ground plane only. A beam has no business above the horizon, and
@@ -13084,30 +13126,39 @@ function drawBeams(){
        merge into one throw further out - which is what a pair of headlights
        actually does */
     const off = side * ROAD * 0.17;
-    const left = [], right = [];
-    for(let z = NEAR; z <= FAR; z += STEP){
-      const p = proj(carX + off, pos + PLAYER_Z + z);
-      if(!p.ok) break;
-      const hw = (HW0 + (z - NEAR) * SPREAD) * p.scale * W/2;
-      left.push([p.x - hw, p.y]);
-      right.push([p.x + hw, p.y]);
+    for(const shell of SHELLS){
+      const wide = shell[0], alpha = shell[1];
+      const left = [], right = [];
+      for(let z = NEAR; z <= FAR; z += STEP){
+        const p = proj(carX + off, pos + PLAYER_Z + z);
+        if(!p.ok) break;
+        const hw = (HW0 + (z - NEAR) * SPREAD) * wide * p.scale * W/2;
+        left.push([p.x - hw, p.y]);
+        right.push([p.x + hw, p.y]);
+      }
+      if(left.length < 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(left[0][0], left[0][1]);
+      for(let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+      for(let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+      ctx.closePath();
+      /* bright at the car, gone before the end of the throw. The gradient runs
+         between the two ends of the beam ON SCREEN, so it stays right over a
+         crest where the far end is higher than usual. */
+      /* IT REACHES ZERO AT 0.62 OF THE THROW rather than at the end of it, so
+         the light dies out on the road instead of stopping at a line. The rest
+         of the polygon is filled at zero alpha and paints nothing. */
+      const y0 = left[0][1], y1 = left[left.length-1][1];
+      const g = ctx.createLinearGradient(0, y0, 0, y1);
+      /* warmer than it was: at a quarter alpha over dark tarmac the old
+         near-white read as grey, which is half of why they looked like slabs */
+      g.addColorStop(0,    'rgba(255,236,178,' + (alpha * lit) + ')');
+      g.addColorStop(0.26, 'rgba(255,230,166,' + (alpha * 0.52 * lit) + ')');
+      g.addColorStop(0.62, 'rgba(255,226,160,0)');
+      g.addColorStop(1,    'rgba(255,226,160,0)');
+      ctx.fillStyle = g;
+      ctx.fill();
     }
-    if(left.length < 3) continue;
-    ctx.beginPath();
-    ctx.moveTo(left[0][0], left[0][1]);
-    for(let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
-    for(let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
-    ctx.closePath();
-    /* bright at the car, gone before the end of the throw. The gradient runs
-       between the two ends of the beam ON SCREEN, so it stays right over a
-       crest where the far end is higher than usual. */
-    const y0 = left[0][1], y1 = left[left.length-1][1];
-    const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0,    'rgba(255,244,214,' + (0.26 * lit) + ')');
-    g.addColorStop(0.32, 'rgba(255,240,200,' + (0.13 * lit) + ')');
-    g.addColorStop(1,    'rgba(220,232,255,0)');
-    ctx.fillStyle = g;
-    ctx.fill();
   }
 
   /* ---- THE HOT SPOT AT THE CAR'S OWN FEET -----------------------------
@@ -13117,21 +13168,37 @@ function drawBeams(){
      bumper. This is that pool, and it is what makes the beams read as coming
      from the car rather than from the camera.
      ------------------------------------------------------------------- */
-  const pn = proj(carX, pos + PLAYER_Z + NEAR), pf = proj(carX, pos + PLAYER_Z + 2400);
-  if(pn.ok && pf.ok){
-    const cx = (pn.x + pf.x) / 2, cy = (pn.y + pf.y) / 2;
-    const rx = Math.abs(pn.x - proj(carX + ROAD*0.62, pos + PLAYER_Z + NEAR).x);
-    const ry = Math.max(6, (pn.y - pf.y) * 0.62);
-    const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
-    g2.addColorStop(0,   'rgba(255,246,220,' + (0.19 * lit) + ')');
-    g2.addColorStop(0.5, 'rgba(255,240,205,' + (0.075 * lit) + ')');
-    g2.addColorStop(1,   'rgba(255,240,205,0)');
-    ctx.save();
-    ctx.translate(cx, cy); ctx.scale(1, Math.max(0.18, ry / Math.max(rx, 1)));
-    ctx.translate(-cx, -cy);
+  /* ---- AND IT IS A SHORT CONE, NOT AN ELLIPSE ON THE GLASS ------------
+     This was a radial gradient squashed into an ellipse, and it never appeared.
+     Its radius came from projecting ROAD*0.62 a few hundred units ahead, which
+     is most of the screen wide, so the same light was spread over an area far
+     too large to see. An ellipse on the glass is also the fixed-triangle
+     mistake the top of this function argues against: it would sit flat while
+     the road bent underneath it.
+
+     The pool is a third cone instead - short, wide and soft, walked in world
+     space like the other two, so it rides the crests and follows the bend.
+     -------------------------------------------------------------------- */
+  const POOL_FAR = 1500, POOL_HW = ROAD * 0.22;
+  const pl = [], pr = [];
+  for(let z = 0; z <= POOL_FAR; z += 150){
+    const p = proj(carX, pos + PLAYER_Z + z);
+    if(!p.ok) break;
+    const hw = POOL_HW * (1 - 0.30 * (z / POOL_FAR)) * p.scale * W/2;
+    pl.push([p.x - hw, p.y]); pr.push([p.x + hw, p.y]);
+  }
+  if(pl.length >= 3){
+    ctx.beginPath();
+    ctx.moveTo(pl[0][0], pl[0][1]);
+    for(let i = 1; i < pl.length; i++) ctx.lineTo(pl[i][0], pl[i][1]);
+    for(let i = pr.length - 1; i >= 0; i--) ctx.lineTo(pr[i][0], pr[i][1]);
+    ctx.closePath();
+    const g2 = ctx.createLinearGradient(0, pl[0][1], 0, pl[pl.length-1][1]);
+    g2.addColorStop(0,    'rgba(255,240,196,' + (0.070 * lit) + ')');
+    g2.addColorStop(0.55, 'rgba(255,234,180,' + (0.0245 * lit) + ')');
+    g2.addColorStop(1,    'rgba(255,234,180,0)');
     ctx.fillStyle = g2;
-    ctx.beginPath(); ctx.arc(cx, cy, Math.max(rx, ry), 0, 6.2832); ctx.fill();
-    ctx.restore();
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -15552,6 +15619,8 @@ requestAnimationFrame(frameLoop);
   /* put the clock where a harness needs it. The day is 240 seconds long, so a
      check that waited for night would take two minutes to ask one question. */
   API.setPhase = function(v){ dayClock = (v % 1) * DAY_SECONDS; return phase(); };
+  /* debug only - see `beamsOff`. Returns the state so a harness can assert it took */
+  API.setBeams = function(on){ beamsOff = !on; return !beamsOff; };
   API.skylinePixel = function(key){
     const a = skylineFor(key || biome);
     const g = a.body.getContext('2d');
@@ -15705,6 +15774,20 @@ requestAnimationFrame(frameLoop);
      waits for them to leave is waiting on the thing it is measuring. */
   API.copsClear = function(){ const n = cops.length; cops.length = 0; return n; };
   API.setSpd = function(v){ spd = v; };
+  /* ---- AN EMPTY ROAD, FOR A HARNESS THAT PHOTOGRAPHS ONE ----------------
+     Debug only, and nothing in the game calls it. A check that subtracts one
+     frame from another has to hold everything but the thing it is measuring
+     still, and moving traffic is the one thing in this scene that will not
+     hold: a car driving up the picture lifts a long unbroken run of rows in
+     exactly the way a headlight beam does. Three separate statistical dodges
+     were tried against it before the obvious answer, which is to take the cars
+     off the road. They come back on the next spawn.
+     ------------------------------------------------------------------- */
+  API.clearTraffic = function(){
+    traffic.length = 0; cops.length = 0; blocks.length = 0;
+    crates.length = 0; fx.length = 0; racers.length = 0;
+    return traffic.length + cops.length + racers.length;
+  };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };
   API.mass = function(){ return bodyMass(); };
