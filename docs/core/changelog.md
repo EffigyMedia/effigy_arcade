@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-80"></a>
+## [0.9.80] - 2026-08-30
+- Changed: **the place you are entering decides how fast its weather ends.** Owner: "the speed of the
+  taper should be dictated by the new biome... a snowy forest transitioning to tundra should more
+  than likely not even taper off at all, a snowy forest transitioning to city could have a chance of
+  tapering it off at a normal rate, and a snowy forest transitioning to desert should quickly taper
+  off." The engine asked only whether the destination could produce the weather AT ALL, so a tundra
+  and a city were treated identically and a desert like both - snow carried into a tundra only by
+  accident of the test rather than because the place wants it
+  ([RLG-022](../fragments/RLG-022.md)).
+- Measured, snow leaving a forest: into TUNDRA support 0.62 and **no taper at all**; into CITY
+  support 0.10 and the ordinary crossing; into DESERT support 0.00 and gone over a third of it -
+  quick, but still a taper rather than the snap it used to be. Settled snow melts only in the last
+  case: a city that snows one time in ten does not melt what is already lying
+  ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-79"></a>
 ## [0.9.79] - 2026-08-30
 - Fixed: **a run starts in one place, with that place's weather.** Owner: "my first test run started

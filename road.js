@@ -6863,6 +6863,15 @@ function snowFloorNow(){
 const BIOME_BAND = 18;
 /* the weather's own crossing width, four times the colour band. See stepBiome. */
 const WEATHER_BAND = 72;
+/* ---- HOW MUCH A PLACE HAS TO WANT WEATHER TO KEEP IT (RLG-022) ----------
+   Read against a biome's own odds for whatever is falling. Above `KEEP` the new
+   place produces it often enough that carrying it in needs no explanation -
+   tundra snows 0.62 of the time, so snow arriving from a forest simply stays.
+   Below `THIN` it effectively never produces it - a desert snows 0.00 - and it
+   ends quickly. Between them is the ordinary taper: city snow at 0.10, forest
+   snow at 0.06.
+   ------------------------------------------------------------------------- */
+const WEATHER_KEEP = 0.30, WEATHER_THIN = 0.05;
 
 /* how far into the NEW biome segment `idx` is: 0 entirely the old one, 1
    entirely the new, and a ramp across the band in between */
@@ -7066,11 +7075,46 @@ function stepBiome(dt){
     const Bnew = BIOMES[biomeTo] || bio();
     if(crossW > 0){
       if(bandBase < 0) bandBase = wetTarget;
-      if(snowy ? Bnew.snow <= 0 : Bnew.rain <= 0){
-        wetTarget = bandBase * (1 - crossW);
-        /* and what has settled starts going, at a rate that comes on with the
-           crossing rather than at full melt the instant a line is passed */
-        if(snowy && Bnew.snow <= 0) settleMelt = Math.max(settleMelt, crossW);
+      /* ---- THE PLACE YOU ARE ENTERING SETS THE RATE (RLG-022) ----------
+         Owner, 2026-08-30: "I don't mind whether tapering off into a new biome
+         instead of just snapping off, but the speed of the taper should be
+         dictated by the new biome. For example, a snowy forest transitioning to
+         tundra should more than likely not even taper off the snow at all, a
+         snowy forest transitioning to city could have a chance of tapering it
+         off at a normal rate, and a snowy forest transitioning to desert should
+         quickly taper off."
+
+         What was here asked one question - can the new place produce this AT
+         ALL - and tapered at one fixed rate if the answer was no. So a tundra
+         and a city were treated identically to each other, and a desert
+         identically to both. Snow carried into a tundra only because tundra's
+         chance is above zero, by accident of the test rather than because the
+         place wants it.
+
+         `support` is what the new place's odds actually say about what is
+         falling on it, and it sets the whole behaviour:
+
+           at or above WEATHER_KEEP    it belongs here too. Nothing tapers, and
+                                       the snow simply carries on into the
+                                       tundra as if it had always been there.
+           between the two             the ordinary crossing: it thins out over
+                                       the full weather band.
+           below WEATHER_THIN          this place refuses it. It goes over a
+                                       third of the band, which is quick without
+                                       being the snap that was there before.
+
+         SETTLED SNOW IS A SEPARATE QUESTION and only the last case melts it. A
+         city that snows one time in ten does not melt what is already lying;
+         a desert does.
+         ---------------------------------------------------------------- */
+      const support = snowy ? Bnew.snow : Bnew.rain;
+      const span = support >= WEATHER_KEEP ? 0
+                 : support >= WEATHER_THIN ? 1
+                 : 0.30;
+      if(span > 0){
+        wetTarget = bandBase * clamp(1 - crossW / span, 0, 1);
+        if(snowy && support < WEATHER_THIN)
+          settleMelt = Math.max(settleMelt, clamp(crossW / span, 0, 1));
       }
     }
     if(cross >= 0.5 && biome !== biomeTo){
@@ -14764,6 +14808,15 @@ requestAnimationFrame(frameLoop);
      what decides whether a beam on the road is visible at all (RLG-060) */
   /* what a place can actually produce, so a check can ask whether the weather
      falling on it is weather it could have made (RLG-022) */
+  /* what a destination does to the weather already falling: how much it wants
+     it, and what fraction of the crossing it gives it before it is gone. 0 is
+     "keeps it entirely" (RLG-022). */
+  API.weatherTaper = function(dest, isSnow){
+    const B = BIOMES[dest] || BIOMES.FOREST;
+    const support = isSnow ? B.snow : B.rain;
+    return { dest:B.name, support:support,
+             span: support >= WEATHER_KEEP ? 0 : support >= WEATHER_THIN ? 1 : 0.30 };
+  };
   API.biomeOdds = function(k){
     const B = BIOMES[k || biome] || BIOMES.FOREST;
     return { name:B.name, rain:B.rain, snow:B.snow };

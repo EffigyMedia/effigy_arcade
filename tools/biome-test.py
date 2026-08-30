@@ -556,6 +556,35 @@ def main():
                   '%.2f' % dark['clock'])
         page.evaluate("() => { const R = window.__probe.road; R.setWet(0); R.setPool(0); R.setPhase(0.75); }")
 
+        # --------------------------- the destination sets the taper rate
+        print()
+        print('  SNOW LEAVING A FOREST, AND WHERE IT IS GOING')
+        # Owner's three cases, in their words: to a tundra it should "more than
+        # likely not even taper off at all", to a city "a normal rate", to a desert
+        # "quickly taper off instead of just snapping off". Before this the engine
+        # asked only whether the destination could produce the weather AT ALL, so a
+        # tundra and a city were treated identically and a desert like both.
+        taper = {}
+        for dest in ('TUNDRA', 'CITY', 'FOREST', 'DESERT'):
+            taper[dest] = page.evaluate('([d, s]) => window.__probe.road.weatherTaper(d, s)',
+                                        [dest, True])
+            print('      snow into %-9s support %.2f   taper over %.2f of the crossing'
+                  % (dest, taper[dest]['support'], taper[dest]['span']))
+        res.check(taper['TUNDRA']['span'] == 0,
+                  'snow carried into a TUNDRA does not taper at all - it belongs there',
+                  'span %.2f at support %.2f' % (taper['TUNDRA']['span'], taper['TUNDRA']['support']))
+        res.check(taper['CITY']['span'] == 1,
+                  'into a CITY it thins over the ordinary crossing',
+                  'span %.2f at support %.2f' % (taper['CITY']['span'], taper['CITY']['support']))
+        res.check(0 < taper['DESERT']['span'] < 0.5,
+                  'and into a DESERT it goes quickly - but it still goes, rather than snapping',
+                  'span %.2f at support %.2f' % (taper['DESERT']['span'], taper['DESERT']['support']))
+        res.check(taper['DESERT']['span'] < taper['CITY']['span'] < 1.01
+                  and taper['TUNDRA']['span'] < taper['DESERT']['span'],
+                  'so the three cases the owner named are three different behaviours',
+                  'tundra %.2f, city %.2f, desert %.2f'
+                  % (taper['TUNDRA']['span'], taper['CITY']['span'], taper['DESERT']['span']))
+
         # ------------------------------------------- and the distinction can fail
         print()
         print('  NOT VACUOUS - the old flip goes back and the sweep check must catch it')
