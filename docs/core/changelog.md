@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-96"></a>
+## [0.9.96] - 2026-08-30
+- Fixed: **the driving HUD's readouts are anchored in the same space as its controls.** Owner: "fix
+  the anchored relative spacing of UI elements", on the driving HUD. The shell publishes a UI scale
+  that runs from 1 on a phone to 1.8 on a big screen, and its own note says a game opts in by scaling
+  its overlay - this cabinet opted its CONTROLS in and left its READOUTS behind. At 1.8 the wheel,
+  pedals, bottle and dials were half as big again while TIME and DISTANCE were the same 26px they are
+  on a phone, stranded in corners 200 pixels further out. Nothing was resized: every number is what
+  it was, times the scale everything beside it already used, so a phone is unchanged to the pixel
+  ([RLG-082](../fragments/RLG-082.md)).
+- Note: **the mirror clearance is deliberately NOT scaled.** The glass is drawn on the canvas at a
+  fixed 44px and does not grow, so the row below it is measured against the glass rather than against
+  the scale ([RLG-082](../fragments/RLG-082.md)).
+- Added: **`hud-test.py` measures a readout at two viewports** and asserts it grew by the factor the
+  scale did: 26.0px at scale 1 and 46.8px at 1.8, against 26.0 and 26.0 before
+  ([RLG-082](../fragments/RLG-082.md)).
+
 <a id="v0-9-95"></a>
 ## [0.9.95] - 2026-08-30
 - Fixed: **a car with no bottle leaves no hole.** Owner: cars without NOS did not have the gauges

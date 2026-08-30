@@ -55,6 +55,44 @@ window.addEventListener('error', function(e){ window.__probe.errors.push(String(
 
 /* every box in the thumb cluster, in CSS pixels from the BOTTOM of the stage - which is the
    direction the cluster is anchored in, so it is the direction to measure in */
+/* the HUD's own furniture, measured from the edges it is anchored to. The mirror is drawn on the
+   CANVAS rather than in the DOM, so its box is repeated here the way mirror-shot.py repeats it. */
+window.__probe.hud = function(){
+  var st = document.getElementById('stage') || document.body;
+  var sr = st.getBoundingClientRect();
+  var cv = document.querySelector('canvas');
+  var cr = cv.getBoundingClientRect();
+  var mw = Math.min(cr.width * 0.62, 250), mh = 44, my = 6;
+  var out = { scale: +getComputedStyle(document.documentElement)
+                       .getPropertyValue('--ark-ui').trim(),
+              stage: { w:+sr.width.toFixed(1), h:+sr.height.toFixed(1) },
+              mirror: { top:my, bottom:my + mh, w:+mw.toFixed(1) } };
+  ['.toprow', '.botrow'].forEach(function(sel){
+    var el = document.querySelector(sel);
+    if(!el) return;
+    var r = el.getBoundingClientRect();
+    out[sel.slice(1)] = { top:+(r.top - cr.top).toFixed(1),
+                          bottom:+(cr.bottom - r.bottom).toFixed(1),
+                          h:+r.height.toFixed(1) };
+  });
+  /* the gap between the mirror's lower edge and the first thing under it */
+  if(out.toprow) out.mirrorGap = +(out.toprow.top - out.mirror.bottom).toFixed(1);
+  /* and between the bottom row and the tallest thing in the thumb cluster */
+  var tallest = 0;
+  ['dials','shifter','nitro','gas','wheel'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var r = el.getBoundingClientRect();
+    if(r.width > 2 && r.height > 2) tallest = Math.max(tallest, cr.bottom - r.top);
+  });
+  out.clusterTop = +tallest.toFixed(1);
+  /* the size of a readout, which must grow with the controls beside it */
+  var st2 = document.querySelector('.stat b');
+  out.statPx = st2 ? +parseFloat(getComputedStyle(st2).fontSize).toFixed(2) : null;
+  if(out.botrow) out.clusterGap = +(out.botrow.bottom - tallest).toFixed(1);
+  return out;
+};
+
 window.__probe.cluster = function(){
   var h = document.documentElement.clientHeight;
   var out = {};
@@ -173,6 +211,34 @@ def main():
             page.wait_for_timeout(250)
             page.screenshot(path=str(out / 'hud-no-nos.png'))
             print('      wrote %s' % out)
+
+        # ---- AND THE READOUTS ARE IN THE SAME SPACE AS THE CONTROLS (RLG-082) ----
+        # The shell publishes --ark-ui and the cabinet opted its CONTROLS in and left its
+        # READOUTS behind, so at 1.8 the wheel and the pedals were half as big again while
+        # TIME and DISTANCE were the same 26px they are on a phone. Two viewports, and the
+        # readout must have grown by the same factor the scale did.
+        sizes = []
+        for w, hh in ((390, 844), (820, 1180)):
+            pg2 = browser.new_context(viewport={'width': w, 'height': hh},
+                                      has_touch=True, is_mobile=True).new_page()
+            pg2.add_init_script(INIT)
+            pg2.goto('http://127.0.0.1:%d/%s' % (port, GAME), wait_until='load')
+            pg2.wait_for_timeout(1600)
+            pg2.click('[data-act="play"]')
+            pg2.wait_for_timeout(400)
+            pg2.click('[data-act="drive"]')
+            pg2.wait_for_timeout(1200)
+            d = pg2.evaluate('() => window.__probe.hud()')
+            sizes.append((w, d['scale'], d['statPx']))
+            pg2.context.close()
+        (w1, s1, p1), (w2, s2, p2) = sizes
+        print('      a readout is %.1fpx at scale %s and %.1fpx at scale %s' % (p1, s1, p2, s2))
+        res.check(s2 > s1 * 1.5, 'the two viewports really are at different UI scales',
+                  '%s and %s' % (s1, s2))
+        want = p1 * (s2 / s1)
+        res.check(abs(p2 - want) < 1.0,
+                  'a readout grows with the controls beside it',
+                  '%.1fpx where %.1f was expected' % (p2, want))
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))

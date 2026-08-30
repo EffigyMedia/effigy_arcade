@@ -48,19 +48,41 @@ html,body{
 canvas{display:block;width:100%;height:100%;touch-action:none}
 
 /* ------------ HUD ------------ */
+/* ---- THE READOUTS ARE ANCHORED IN THE SAME SPACE AS THE CONTROLS (RLG-082)
+   Owner, 2026-08-30: "fix the anchored relative spacing of UI elements", on the
+   driving HUD.
+
+   The shell publishes `--ark-ui`, which is 1 on a phone and rises to 1.8 on a
+   big screen, and its note says games opt in by scaling their own overlay -
+   "the shell cannot do it for them without knowing what is a control and what
+   is the game itself". This cabinet opted its CONTROLS in and left its
+   READOUTS behind. So at 1.8 the wheel, the pedals, the bottle and the dials
+   are half as big again while TIME and DISTANCE are the same 26px they are on
+   a phone, stranded in corners that have moved 200 pixels further out.
+
+   Nothing here is a new size. Every number is the size it already was,
+   multiplied by the same scale everything beside it already uses - so a phone
+   is unchanged to the pixel and a bigger screen gets a HUD in proportion with
+   the hands using it.
+   ---------------------------------------------------------------------- */
 #hud{position:absolute;inset:0;pointer-events:none;z-index:10;
-  padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 14px);
+  padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 12px * var(--ark-ui,1))
+          calc(14px * var(--ark-ui,1))
+          calc(env(safe-area-inset-bottom,0px) + 14px * var(--ark-ui,1));
   display:flex;flex-direction:column;justify-content:space-between}
-.toprow{ padding-top:58px; /* clear of the rear-view mirror */ display:flex;justify-content:space-between;align-items:flex-start}
-.stat span{display:block;font-size:8.5px;font-weight:700;letter-spacing:.22em;color:var(--dim)}
-.stat b{font-family:var(--disp);font-weight:800;font-size:26px;line-height:1.05;
+/* clear of the rear-view mirror, which is drawn on the CANVAS at a fixed 44px
+   and 6 from the top - so this clearance is NOT scaled: it is measured against
+   the glass, and the glass does not grow. */
+.toprow{ padding-top:58px; display:flex;justify-content:space-between;align-items:flex-start}
+.stat span{display:block;font-size:calc(8.5px * var(--ark-ui,1));font-weight:700;letter-spacing:.22em;color:var(--dim)}
+.stat b{font-family:var(--disp);font-weight:800;font-size:calc(26px * var(--ark-ui,1));line-height:1.05;
   font-variant-numeric:tabular-nums;letter-spacing:.01em}
-.stat i{font-style:normal;font-size:11px;font-weight:600;color:var(--dim);margin-left:2px}
+.stat i{font-style:normal;font-size:calc(11px * var(--ark-ui,1));font-weight:600;color:var(--dim);margin-left:2px}
 .stat.r{text-align:right}
 .stat.c{text-align:center;flex:0 0 auto}
 /* the clock is the loudest thing in the HUD, because it is the thing that
    ends the run */
-#clockWrap b{font-size:30px;color:#ffb347;letter-spacing:.02em;
+#clockWrap b{font-size:calc(30px * var(--ark-ui,1));color:#ffb347;letter-spacing:.02em;
   text-shadow:0 0 18px rgba(255,179,71,.55)}
 #clockWrap.low b{color:#ff5a4a;text-shadow:0 0 22px rgba(255,90,74,.75)}
 
@@ -86,15 +108,18 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 @keyframes wn{0%{opacity:0;transform:scale(1.3)}12%{opacity:1;transform:scale(1)}
               70%{opacity:1}100%{opacity:0}}
 
-.botrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
-.speedo{display:flex;align-items:baseline;gap:5px}
+.botrow{display:flex;align-items:flex-end;justify-content:space-between;gap:calc(12px * var(--ark-ui,1))}
+.speedo{display:flex;align-items:baseline;gap:calc(5px * var(--ark-ui,1))}
+/* the speed reading is already viewport-relative through `vw`, which is the
+   same idea by another route - it is left alone rather than scaled twice */
 .speedo b{font-family:var(--disp);font-weight:800;font-size:clamp(46px,15vw,68px);
   line-height:.8;font-variant-numeric:tabular-nums;text-shadow:0 0 26px rgba(255,138,61,.45)}
-.speedo span{font-size:9px;font-weight:700;letter-spacing:.2em;color:var(--dim);padding-bottom:4px}
-.bars{flex:1;max-width:140px;display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
-.bar{display:flex;align-items:center;gap:6px}
-.bar em{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.16em;color:var(--dim);width:26px}
-.trk{flex:1;height:7px;background:rgba(255,238,222,.10);position:relative;overflow:hidden;
+.speedo span{font-size:calc(9px * var(--ark-ui,1));font-weight:700;letter-spacing:.2em;color:var(--dim);padding-bottom:4px}
+.bars{flex:1;max-width:calc(140px * var(--ark-ui,1));display:flex;flex-direction:column;
+  gap:calc(5px * var(--ark-ui,1));margin-bottom:calc(6px * var(--ark-ui,1))}
+.bar{display:flex;align-items:center;gap:calc(6px * var(--ark-ui,1))}
+.bar em{font-style:normal;font-size:calc(8px * var(--ark-ui,1));font-weight:700;letter-spacing:.16em;color:var(--dim);width:calc(26px * var(--ark-ui,1))}
+.trk{flex:1;height:calc(7px * var(--ark-ui,1));background:rgba(255,238,222,.10);position:relative;overflow:hidden;
   transform:skewX(-18deg)}
 .trk i{position:absolute;inset:0;width:0;display:block;transition:width .12s linear}
 #dmgFill{background:linear-gradient(90deg,#7a2233,var(--red))}
