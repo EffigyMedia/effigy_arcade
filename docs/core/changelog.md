@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-72"></a>
+## [0.9.72] - 2026-08-30
+- Added: **the skylines have depth.** Three bands are painted back to front into one strip, the far
+  one small and pale and the near one large and dark, each mixed toward the sky AT THE HORIZON by its
+  own amount. A ridge behind a ridge in the same colour is a wall, not a range
+  ([RLG-080](../fragments/RLG-080.md)).
+- Added: **every shape has an inside.** Towers get setbacks and masts, peaks a snow line and a
+  sunward shoulder, mesas a talus skirt, treelines holes in them. Each is the thing that says what
+  kind of object it is from a mile away, rather than detail for its own sake
+  ([RLG-080](../fragments/RLG-080.md)).
+- Added: **the silhouettes take the hour's own light.** A tint pass was tried before and removed
+  because `source-atop` washed the sky as well as the buildings - the sky is opaque, so painting over
+  every opaque pixel paints the sky. The colours are mixed in at BUILD time from the same `skyStops`
+  the windscreen uses, so nothing passes over the frame at all
+  ([RLG-080](../fragments/RLG-080.md)).
+- Fixed: **the skyline cache is keyed by the hour as well as the biome.** A cached sprite is now a
+  sprite of one hour, so without the bucket it would hold the colour of whatever moment it was first
+  drawn at, through dusk and midnight - which would have looked like the tint not working rather than
+  like a stale cache. One entry per biome, replaced when the bucket moves: keeping all forty would be
+  180MB of canvas for a horizon ([RLG-080](../fragments/RLG-080.md)).
+
 <a id="v0-9-71"></a>
 ## [0.9.71] - 2026-08-30
 - Fixed: **a thick biome fills from the road edge out past the side of the screen.** One object per

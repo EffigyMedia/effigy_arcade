@@ -5296,110 +5296,217 @@ let SKY_SWAP = 'move';
    for a picture that does not change.
    ------------------------------------------------------------------------- */
 const skylineCache = {};
+/* ---- THE CACHE FOLLOWS THE LIGHT AS WELL AS THE PLACE (RLG-080) ----------
+   The silhouette's colour is mixed in at build time now, so a cached sprite is
+   a sprite of one HOUR as well as of one biome. Without the bucket the skyline
+   would take the colour of whatever moment it was first drawn at and hold it
+   through dusk, sunset and midnight - a fault that would look like the tint not
+   working at all rather than like a stale cache.
+
+   One entry per biome, replaced when the bucket moves. Keeping every bucket
+   would be forty sprites per biome at 1024x220, which is a hundred and eighty
+   megabytes of canvas for a horizon.
+   ------------------------------------------------------------------------- */
 function skylineFor(key){
-  if(!skylineCache[key]){
+  const bucket = skyBucket();
+  const hit = skylineCache[key];
+  if(!hit || hit.bucket !== bucket){
     const keep = biome;
     biome = key;                 /* buildSkyline reads bio() */
     buildSkyline();
-    skylineCache[key] = { body: skyline, lit: skylineLit };
+    skylineCache[key] = { bucket: bucket, body: skyline, lit: skylineLit };
     biome = keep;
   }
   return skylineCache[key];
 }
 
-function buildSkyline(){
-  /* ---- THE HORIZON BELONGS TO THE BIOME --------------------------------
-     Biomes changed the ground and the weather and left the skyline alone, so
-     a DESERT still showed a city of lit towers. What stands on the horizon is
-     the strongest single signal of where you are, and it was the one thing
-     that never changed.
+/* ---- THE SKYLINE HAS DEPTH, FORM AND THE HOUR'S LIGHT (RLG-080) ----------
+   Owner, 2026-08-29: "I think we should make the skylines more detailed."
 
-     The same plan structure carries all of them — a silhouette is a silhouette
-     — so only the SHAPE generator differs. Lit windows are a city idea and are
-     suppressed everywhere else.
-     ------------------------------------------------------------------- */
+   What was here was ONE silhouette in ONE flat colour at ONE depth, tiled
+   across the horizon. Beside the roadside scenery built the day before - which
+   has three layers and a palette that recedes - it looked exactly as flat as it
+   was. Three things were missing and all three are here:
+
+   DEPTH. Three bands are painted back to front into one sprite. The far band is
+   small and pale, the near one large and dark, and each is mixed toward the sky
+   AT THE HORIZON by its own amount. That mix is what makes distance read: a
+   ridge behind a ridge in the same colour is a wall, not a range.
+
+   FORM. A tower was a rectangle and a peak was a triangle. Towers get setbacks
+   and masts, peaks get a snow line and a sunward shoulder, mesas get a talus
+   skirt, treelines get holes. Each shape now has an inside as well as an
+   outline, and every one of those is the thing that says what kind of object it
+   is from a mile away rather than detail for its own sake.
+
+   THE HOUR'S LIGHT, and this is the one that was tried before and removed. The
+   note in drawSky records why: a tint pass with source-atop painted over every
+   opaque pixel, and the sky is opaque, so it washed a band across the sky as
+   well as the buildings. The answer is to tint the SPRITE rather than the frame
+   - the colours are mixed in at BUILD time from skyStops(), so the silhouette
+   is already the right colour when it is drawn and no pass over the frame is
+   needed at all.
+
+   WHICH MEANS THE SPRITE IS REBUILT AS THE DAY TURNS. It is keyed by an hour
+   BUCKET - one fortieth of the cycle, about six seconds - so it rebuilds about
+   ten times a minute per visible biome and the colour step between two buckets
+   is too small to see. Caching every bucket would be 200 sprites of 1024x220;
+   the cache holds the current bucket per biome and drops the rest.
+   ------------------------------------------------------------------------- */
+
+/* how far through the day, in coarse steps, so the skyline can follow the light
+   without being rebuilt every frame */
+function skyBucket(){ return Math.round(phase() * 40); }
+
+function buildSkyline(){
   const w = 1024, h = 220;
   const B = bio();
-  const plan = [];
-  let x = 0;
-  while(x < w){
-    let bw, bh, wins = [], kind = 'tower';
+  /* the sky where it meets the ground: what distance washes a silhouette
+     toward, and the reason the skyline changes colour at dusk on its own */
+  const haze = hexRGB(skyStops()[3]);
+  const base = B.name === 'TUNDRA' ? [200,214,230] : [21,12,34];
+  const mixTo = (t) => 'rgb(' + Math.round(base[0] + (haze[0]-base[0])*t) + ','
+                              + Math.round(base[1] + (haze[1]-base[1])*t) + ','
+                              + Math.round(base[2] + (haze[2]-base[2])*t) + ')';
+  /* far to near: how much haze, how tall, and how spread out */
+  const BANDS = [ {haze:0.70, tall:0.55, gap:1.35},
+                  {haze:0.42, tall:0.78, gap:1.15},
+                  {haze:0.12, tall:1.00, gap:1.00} ];
 
-    if(B.name === 'DESERT'){
-      /* mesas and buttes: wide, flat-topped, far apart */
-      kind = 'mesa';
-      bw = rint(70, 190); bh = rint(24, 74);
-      x += rint(10, 70);
-    } else if(B.name === 'MOUNTAIN' || B.name === 'TUNDRA'){
-      /* peaks: tall triangles, overlapping, snow-capped in tundra */
-      kind = 'peak';
-      bw = rint(90, 240); bh = rint(70, 200);
-      x -= rint(20, 70);
-    } else if(B.name === 'FOREST'){
-      /* a treeline: many narrow conifers of similar height */
-      kind = 'tree';
-      bw = rint(12, 30); bh = rint(38, 96);
-      x -= rint(2, 9);
-    } else {
-      bw = rint(18,54); bh = rint(30,180);
-      for(let k=0;k<bh/16;k++){
-        if(Math.random() < 0.42)
-          wins.push([x + rint(3, bw-6), h - bh + rint(4, bh-8)]);
-      }
-    }
-    plan.push({ x, bw, bh, wins, kind });
-    x += bw + (kind === 'tower' ? rint(2,12) : rint(1,6));
-  }
-  skyline = sprite(w,h,(g)=>{
-    g.clearRect(0,0,w,h);
-    for(const b of plan){
-      /* ---- A TUNDRA'S HORIZON IS WHITE TOO (RLG-059) -------------------
-         Owner, 2026-08-29: "the tundras mountains will be white and the
-         scenery rock faces cliff faces and mountain sides would also be white
-         to match with the ground."
-
-         Every silhouette was one near-black, and against a tundra's white
-         cliffs and snow-covered ground that read as a hole cut in the picture
-         rather than as a range in the distance. This is the tundra half of the
-         ruling; making every OTHER skyline more than one flat colour is
-         [[RLG-080]] and is not this.
-         -------------------------------------------------------------- */
-      g.fillStyle = B.name === 'TUNDRA' ? '#c8d6e6' : '#150c22';
-      if(b.kind === 'peak'){
-        g.beginPath();
-        g.moveTo(b.x, h);
-        g.lineTo(b.x + b.bw*0.5, h - b.bh);
-        g.lineTo(b.x + b.bw, h);
-        g.closePath(); g.fill();
-      } else if(b.kind === 'tree'){
-        g.beginPath();
-        g.moveTo(b.x, h);
-        g.lineTo(b.x + b.bw*0.5, h - b.bh);
-        g.lineTo(b.x + b.bw, h);
-        g.closePath(); g.fill();
-        g.fillRect(b.x + b.bw*0.42, h - b.bh*0.12, b.bw*0.16, b.bh*0.12);
-      } else if(b.kind === 'mesa'){
-        /* flat on top, sloped at the shoulders */
-        g.beginPath();
-        g.moveTo(b.x, h);
-        g.lineTo(b.x + b.bw*0.14, h - b.bh);
-        g.lineTo(b.x + b.bw*0.86, h - b.bh);
-        g.lineTo(b.x + b.bw, h);
-        g.closePath(); g.fill();
+  const plans = BANDS.map(band => {
+    const plan = [];
+    let x = 0;
+    while(x < w){
+      let bw, bh, wins = [], kind = 'tower';
+      if(B.name === 'DESERT'){
+        kind = 'mesa';
+        bw = rint(70, 190); bh = Math.round(rint(24, 74) * band.tall);
+        x += Math.round(rint(10, 70) * band.gap);
+      } else if(B.name === 'MOUNTAIN' || B.name === 'TUNDRA'){
+        kind = 'peak';
+        bw = rint(90, 240); bh = Math.round(rint(70, 200) * band.tall);
+        x -= Math.round(rint(20, 70) / band.gap);
+      } else if(B.name === 'FOREST'){
+        kind = 'tree';
+        bw = rint(12, 30); bh = Math.round(rint(38, 96) * band.tall);
+        x -= Math.round(rint(2, 9) / band.gap);
+        /* a treeline has holes in it. Without them it is a comb. */
+        if(Math.random() < 0.06) x += rint(20, 60);
       } else {
-        g.fillRect(b.x, h-b.bh, b.bw, b.bh);
+        bw = rint(18, 54); bh = Math.round(rint(30, 180) * band.tall);
+        /* windows only on the near band: a window on a tower a mile further
+           back cannot be picked out, and drawing one there is a shimmer */
+        if(band.haze < 0.2){
+          for(let k = 0; k < bh/16; k++){
+            if(Math.random() < 0.42)
+              wins.push([x + rint(3, Math.max(4, bw-6)), h - bh + rint(4, Math.max(5, bh-8))]);
+          }
+        }
       }
+      plan.push({ x, bw, bh, wins, kind });
+      x += bw + Math.round((kind === 'tower' ? rint(2,12) : rint(1,6)) * band.gap);
     }
+    return plan;
   });
-  skylineLit = sprite(w,h,(g)=>{
-    g.clearRect(0,0,w,h);
-    for(const b of plan){
-      for(const [wx,wy] of b.wins){
+
+  skyline = sprite(w, h, (g) => {
+    g.clearRect(0, 0, w, h);
+    BANDS.forEach((band, bi) => {
+      const face = mixTo(band.haze);
+      /* the sunward flank, a shade off the face, so a mass has a direction */
+      const flank = mixTo(Math.min(1, band.haze + 0.13));
+      for(const b of plans[bi]) paintSkylineShape(g, h, b, face, flank, band);
+    });
+  });
+
+  skylineLit = sprite(w, h, (g) => {
+    g.clearRect(0, 0, w, h);
+    for(const b of plans[2]){
+      for(const wp of b.wins){
         g.fillStyle = Math.random() < 0.22 ? 'rgba(190,225,255,.95)' : 'rgba(255,190,110,.95)';
-        g.fillRect(wx, wy, 2, 3);
+        g.fillRect(wp[0], wp[1], 2, 3);
       }
     }
   });
+}
+
+/* ---- ONE SHAPE, WITH AN INSIDE ------------------------------------------
+   Every one of these was a single filled outline. What is added is the part
+   that reads as form rather than as a cut-out.
+   ------------------------------------------------------------------------- */
+function paintSkylineShape(g, h, b, face, flank, band){
+  g.fillStyle = face;
+  if(b.kind === 'peak'){
+    g.beginPath();
+    g.moveTo(b.x, h);
+    g.lineTo(b.x + b.bw*0.5, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.closePath(); g.fill();
+    g.save(); g.clip();
+    /* the sunward face, from the summit down the right shoulder */
+    g.fillStyle = flank;
+    g.beginPath();
+    g.moveTo(b.x + b.bw*0.5, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.lineTo(b.x + b.bw*0.5, h);
+    g.closePath(); g.fill();
+    /* a snow line, high up, and only on the ones tall enough to have one */
+    if(b.bh > 90 * band.tall){
+      g.fillStyle = 'rgba(232,240,250,' + (0.62 * (1 - band.haze)) + ')';
+      const sy = h - b.bh*0.74;
+      const half = b.bw*0.13;
+      g.beginPath();
+      g.moveTo(b.x + b.bw*0.5, h - b.bh);
+      g.lineTo(b.x + b.bw*0.5 + half, sy);
+      g.lineTo(b.x + b.bw*0.5 - half, sy);
+      g.closePath(); g.fill();
+    }
+    g.restore();
+  } else if(b.kind === 'tree'){
+    g.beginPath();
+    g.moveTo(b.x, h);
+    g.lineTo(b.x + b.bw*0.5, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.closePath(); g.fill();
+    g.fillRect(b.x + b.bw*0.42, h - b.bh*0.12, b.bw*0.16, b.bh*0.12);
+    g.save(); g.clip();
+    g.fillStyle = flank;
+    g.beginPath();
+    g.moveTo(b.x + b.bw*0.5, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.lineTo(b.x + b.bw*0.62, h);
+    g.closePath(); g.fill();
+    g.restore();
+  } else if(b.kind === 'mesa'){
+    g.beginPath();
+    g.moveTo(b.x, h);
+    g.lineTo(b.x + b.bw*0.14, h - b.bh);
+    g.lineTo(b.x + b.bw*0.86, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.closePath(); g.fill();
+    g.save(); g.clip();
+    /* the talus: the skirt of fallen rock a mesa always has */
+    g.fillStyle = flank;
+    g.beginPath();
+    g.moveTo(b.x + b.bw*0.60, h);
+    g.lineTo(b.x + b.bw*0.86, h - b.bh);
+    g.lineTo(b.x + b.bw, h);
+    g.closePath(); g.fill();
+    g.restore();
+  } else {
+    g.fillRect(b.x, h - b.bh, b.bw, b.bh);
+    /* a crown on the taller ones: a setback, and a mast on the wider of those */
+    if(b.bh > 110 * band.tall){
+      const sw = b.bw*0.52, sx = b.x + (b.bw - sw)/2, sh = b.bh*0.10;
+      g.fillRect(sx, h - b.bh - sh, sw, sh);
+      if(b.bw > 34)
+        g.fillRect(b.x + b.bw*0.47, h - b.bh - sh - b.bh*0.10,
+                   Math.max(1, b.bw*0.06), b.bh*0.10);
+    }
+    /* the lit face, a narrow strip down one side */
+    g.fillStyle = flank;
+    g.fillRect(b.x, h - b.bh, Math.max(1, b.bw*0.22), b.bh);
+  }
 }
 
 /* ---------- world spawning ---------- */
