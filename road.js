@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.91';
+window.ROAD_BUILD = '0.9.92';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2316,7 +2316,6 @@ function paintRigFront(kind, o){
         for(const lx of [0.10, 0.74]){
           gg.fillStyle = headOf(on);
           rr(gg, w*lx, cy-h*0.155, w*0.16, h*0.032, 2); gg.fill();
-          if(on) headGlow(gg, w*(lx+0.08), cy-h*0.139, w);
         }
       });
       decl(g, lamps, 'turn.l', turnBulb(w*0.055, cy-h*0.155, w*0.040, h*0.032, true));
@@ -2361,7 +2360,6 @@ function paintRigFront(kind, o){
         for(const lx of [0.07, 0.855]){
           gg.fillStyle = headOf(on);
           rr(gg, w*lx, bot-h*0.092, w*0.075, h*0.072, 2); gg.fill();
-          if(on) headGlow(gg, w*(lx+0.037), bot-h*0.056, w);
         }
       });
       decl(g, lamps, 'turn.l', (gg, on) => {
@@ -2428,8 +2426,6 @@ function paintRigFront(kind, o){
         rr(gg, w*(0.075+0.048), bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
         rr(gg, w*0.775, bedTop+h*0.075, w*(0.15-0.048), h*0.075, 3); gg.fill();
         if(on){
-          headGlow(gg, w*0.150, bedTop+h*0.112, w);
-          headGlow(gg, w*0.825, bedTop+h*0.112, w);
         }
       });
       decl(g, lamps, 'turn.l', turnBulb(w*0.075, bedTop+h*0.075, w*0.048, h*0.075, true));
@@ -2716,7 +2712,6 @@ function paintRigFront(kind, o){
           gg.fillStyle = headOf(on);
           gg.beginPath(); gg.arc(w*mOuter(lx), ly+lh*0.5, w*0.038, 0, 6.2832); gg.fill();
           gg.beginPath(); gg.arc(w*mInner(lx), ly+lh*0.5, w*0.026, 0, 6.2832); gg.fill();
-          if(on) headGlow(gg, w*(lx+0.127), ly+lh*0.5, w);
         }
       });
     } else if(kind === 'tuner'){
@@ -2731,7 +2726,6 @@ function paintRigFront(kind, o){
           gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.5, w*0.045, 0, 6.2832); gg.fill();
           gg.fillStyle = headHiOf(on);
           gg.beginPath(); gg.arc(w*(lx+k), ly+lh*0.38, w*0.024, 0, 6.2832); gg.fill();
-          if(on) headGlow(gg, w*(lx+k), ly+lh*0.5, w);
         }
       });
       decl(g, lamps, 'turn.l', turnBulb(w*0.062, ly+lh*0.20, w*0.036, lh*0.60, true));
@@ -2747,8 +2741,6 @@ function paintRigFront(kind, o){
         rr(gg, w*(FL+FT+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
         rr(gg, w*(FR+0.01), ly+lh*0.14, w*(FW-FT-0.02), lh*0.30, 2); gg.fill();
         if(on){
-          headGlow(gg, w*(FL+0.13), ly+lh*0.5, w);
-          headGlow(gg, w*(FR+0.13), ly+lh*0.5, w);
         }
       });
       decl(g, lamps, 'turn.l', turnBulb(w*FL, ly, w*FT, lh, true));
@@ -3300,6 +3292,18 @@ function paintRig(kind, o){
    that only a formula car has.
    =========================================================================== */
 /* a headlamp: a hot point with a modest halo, never a floodlight */
+/* ---- THE HEADLIGHT'S GLOW IS THE WRAPPER'S JOB NOW (RLG-053) -----------
+   Every front painter called this from inside its own lamp declaration, which
+   put the halo into the DRAWING - so `plain`, the thing "the lit lamp is the
+   unlit bulb" is a claim about, spilled a thousand pixels past the bulb, and
+   three painters called it unconditionally and baked a glow into the UNLIT
+   sprite. A parked car with a lit headlight.
+
+   The rears never did this: a lamp declares its LENS and `sprite()` blurs the
+   lit drawing into a halo behind it, once, at build time. The fronts do the
+   same now, and this function is kept because a beam thrown onto the road is a
+   different thing from a lamp's own bloom and will want it.
+   ------------------------------------------------------------------------ */
 function headGlow(g, x, y, w){
   g.save(); g.globalCompositeOperation='lighter';
   const lg = g.createRadialGradient(x, y, 0, x, y, w*0.12);
@@ -3706,7 +3710,6 @@ function paintFront(o){
           gg.lineTo(lx + sx*w*0.075, topY + h*0.102);
           gg.lineTo(lx - sx*w*0.115, topY + h*0.125);
           gg.closePath(); gg.fill();
-          if(on) headGlow(gg, lx, topY + h*0.093, w);
         }
       });
       /* ---- A VERTICAL STACK, AT THE LAMP'S OWN RAKE ---------------------
@@ -3790,8 +3793,6 @@ function paintFront(o){
         });
         if(on) for(const sx of [-1,1]){
           const lx = w*0.5 + sx*w*wid*0.60;
-          headGlow(gg, lx - sx*w*0.03, topY + h*0.088, w);
-          headGlow(gg, lx + sx*w*0.03, topY + h*0.102, w);
         }
       });
       /* the same stack as the STALLION, and here it is free: the housing is
@@ -3840,7 +3841,6 @@ function paintFront(o){
           gg.fillStyle = 'rgba(20,26,34,.55)';
           for(let k=1;k<3;k++)
             gg.fillRect(hx + (pW-seg)*(k/3) - w*0.004, by2, w*0.008, bh2);
-          if(on) headGlow(gg, hx + (pW-seg)*0.5, by2 + bh2*0.5, w);
         }
       });
       /* ---- THE OUTERMOST SEGMENT OF THE BAR IS THE INDICATOR --------------
@@ -5539,6 +5539,9 @@ function sceneryLitArt(key, i){
    and the mirror keeps its own pair because its loop is its own.
    ------------------------------------------------------------------------- */
 let sceneSides = { left:0, right:0, mLeft:0, mRight:0 };
+/* how many headlights the mirror actually lit on the last frame it drew (RLG-053).
+   A declaration nothing asks for is the fault this counts, not a rendering detail. */
+let headsLit = 0;
 /* what the far band under the horizon did on the last frame (RLG-059) */
 let farSea = { sea:false, drew:false };
 
@@ -13658,6 +13661,16 @@ function drawMirrorFull(mx, my, mw, mh){
     if(fs){
       const fh = sw * fs.height / fs.width;
       ctx.drawImage(fs, x0, p1.y - fh, sw, fh);
+      /* ---- AND THEIR HEADLIGHTS ARE ON AFTER DARK (RLG-053) ------------
+         Every front sprite declared a `head` lamp and NOTHING ever asked for
+         one, so the cars behind you drove at midnight with their lights off.
+         The declaration was there, the wiring was not - which is the half of
+         RLG-053 that the rears finished and the fronts never did.
+
+         Same clock as the street lamps and the player's own tail, so a mirror
+         at dusk lights up when the road does.
+         ---------------------------------------------------------------- */
+      if(lampsOn() > 0.30 && lampsHere(fs, x0, p1.y - fh, sw, fh, ['head'], 1, 2)) headsLit++;
       /* ---- THE WIPERS ARE DRAWN, NOT BAKED (RLG-053) --------------------
          The sprite no longer carries them, because a part that moves cannot be
          part of a still picture - anything sweeping them painted a second pair
@@ -15747,6 +15760,7 @@ requestAnimationFrame(frameLoop);
   /* what the far band decided this frame, for a harness that has to answer why
      the sea did or did not reach the horizon */
   API.farSea = function(){ return farSea; };
+  API.headsLit = function(){ const n = headsLit; headsLit = 0; return n; };
   API.scenerySides = function(){
     return { left:sceneSides.left, right:sceneSides.right,
              mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:seaSide };

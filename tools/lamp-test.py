@@ -202,8 +202,19 @@ with sync_playwright() as p:
             if (d[i+3] >= 40) { m[k] = 1; n++; }
           return { m: m, n: n, w: c.width, h: c.height };
         };
+        /* ---- BOTH FACES, NOT JUST THE BACK OF THE CAR (RLG-053) --------
+           Every REAR sprite was converted and checked here; the FRONTS were
+           not, and nothing noticed because nothing looked. A front declares
+           `head` the way a rear declares `tail`, and the same two questions
+           apply to it: does the lit lamp stay inside the unlit bulb, and does
+           it carry a glow past its own lens. */
+        const faces = [];
         for (const v of f) {
-          const spr = v.spr, name = v.name, L = spr.lamps || {}, ids = Object.keys(L);
+          if (v.spr) faces.push({ v: v, spr: v.spr, name: v.name, face: 'rear' });
+          if (v.front) faces.push({ v: v, spr: v.front, name: v.name, face: 'front' });
+        }
+        for (const fc of faces) {
+          const v = fc.v, spr = fc.spr, name = fc.name, L = spr.lamps || {}, ids = Object.keys(L);
           const rows = [];
           for (const id of ids) {
             const off = mask(spr, id, false), on = mask(spr, id, true);
@@ -235,13 +246,30 @@ with sync_playwright() as p:
             for(let i = 3; i < d2.length; i += 4) if(d2[i] >= 12) full++;
             if(full <= lens.n) glow = false;
           }
-          out.push({ name: name, cls: v.cls, ids: ids, rows: rows, glow: glow });
+          out.push({ name: name, cls: v.cls, ids: ids, rows: rows, glow: glow, face: fc.face });
         }
         return out;
     }""")
     ok(len(fleet) > 10, 'the engine reports a fleet', '%d vehicles' % len(fleet))
-    drifted, notail, noturn = [], [], []
+    drifted, notail, noturn, nohead = [], [], [], []
+    rears = [v for v in fleet if v.get('face') == 'rear']
+    fronts = [v for v in fleet if v.get('face') == 'front']
     for v in fleet:
+        if v.get('face') == 'front':
+            # A FRONT'S LAMP IS ITS HEADLIGHT. Indicators are checked on the rear below; a front
+            # that declares them too is welcome to, and RLG-052 will want them.
+            # AND A FORMULA CAR HAS NO HEADLIGHTS EITHER. The same exception the indicators
+            # already carry, read from the CLASS rather than from a name: a single-seater runs
+            # in daylight on a closed circuit and has never had them. It is what the car IS.
+            if v.get('cls') != 'formula' and 'head' not in v['ids']:
+                nohead.append(v['name'])
+            for r in v['rows']:
+                if not r['onN'] or not r['offN']:
+                    drifted.append('%s front %s (draws nothing)' % (v['name'], r['id']))
+                elif r['stray'] > r['onN'] * 0.02:
+                    drifted.append('%s front %s (%d of %d lit pixels off the bulb)'
+                                   % (v['name'], r['id'], r['stray'], r['onN']))
+            continue
         if 'tail' not in v['ids']:
             notail.append(v['name'])
         # A FORMULA CAR HAS NO INDICATORS. Owner's ruling, 2026-08-29: a single-seater has none,
@@ -257,7 +285,10 @@ with sync_playwright() as p:
                 drifted.append('%s %s (%d of %d lit pixels off the bulb)'
                                % (v['name'], r['id'], r['stray'], r['onN']))
     ok(not notail, 'every vehicle declares a tail lamp',
-       'missing on ' + ', '.join(notail) if notail else '%d vehicles' % len(fleet))
+       'missing on ' + ', '.join(notail) if notail else '%d rear sprites' % len(rears))
+    ok(not nohead, 'and every front outside the formula class declares a headlight',
+       'missing on ' + ', '.join(nohead[:6]) if nohead
+       else '%d front sprites, the formula class excepted by ruling' % len(fronts))
     ok(not noturn, 'every vehicle outside the formula class declares indicators',
        'missing on ' + ', '.join(noturn) if noturn else 'the formula class excepted by ruling')
     noglow = [v['name'] for v in fleet if not v.get('glow')]
@@ -293,6 +324,37 @@ with sync_playwright() as p:
     ok(onbulb > 0,
        'and asking for it changes the screen, right where that bulb is',
        '%d pixels lit up at the bulb' % onbulb)
+
+    # ---- AND THE FRONTS ARE WIRED, WHICH IS THE HALF THAT WAS MISSING -------
+    # Every front declared a headlight and nothing ever asked for one, so the cars behind you
+    # drove at midnight with their lights off. The counter is reset by reading it, so this
+    # measures frames rather than history.
+    def heads(ms=900):
+        pg.evaluate('() => window.__probe.road.headsLit()')
+        pg.wait_for_timeout(ms)
+        return pg.evaluate('() => window.__probe.road.headsLit()')
+
+    pg.evaluate("() => { const R = window.__probe.road;"
+                " R.setSpd(R.MAX_SPD*0.5); }")
+    pg.wait_for_timeout(2500)
+    pg.evaluate('() => window.__probe.road.setPhase(0.25)')   # midnight
+    pg.wait_for_timeout(500)
+    dark = heads()
+    # THE LAMPS FADE, THEY DO NOT FLIP. `lampsOn` ramps over seconds, so a reading taken
+    # straight after the clock moves is still measuring dusk - 351 lit "at midday" on the
+    # first run of this check, which is the lamps on their way out rather than a fault.
+    # AND IN CLEAR WEATHER, WHICH IS NOT PEDANTRY. `lampsOn` is the STRONGER of the hour and
+    # the weather, on the owner's ruling that a storm at noon puts the lights on - so a check
+    # for "off in daylight" that does not dry the road is measuring rain. It read 550 lit at
+    # midday until the weather was cleared, and that was the game being right.
+    pg.evaluate("() => { const R = window.__probe.road;"
+                " R.setPhase(0.75); R.setWet(0); R.setSnow(0); R.setPool(0); }")
+    pg.wait_for_timeout(4000)
+    light = heads()
+    print('  ..    headlights lit in the mirror: %d at midnight, %d at midday' % (dark, light))
+    ok(dark > 0, 'the cars behind you have their headlights on after dark',
+       '%d lit over a second' % dark)
+    ok(light == 0, 'and off in daylight', '%d lit at midday' % light)
 
     ok(errs == [], 'no page errors', errs[0][:100] if errs else '')
     b.close()

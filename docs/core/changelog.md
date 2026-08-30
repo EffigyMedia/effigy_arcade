@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-92"></a>
+## [0.9.92] - 2026-08-30
+- Fixed: **the cars behind you have their headlights on after dark.** Every front sprite declared a
+  `head` lamp and nothing in the game ever asked for one, so the mirror showed a road of cars driving
+  at midnight with their lights off. The declaration was there; the wiring was not, which is the half
+  of RLG-053 the rears finished and the fronts never did. Same clock as the street lamps
+  ([RLG-053](../fragments/RLG-053.md)).
+- Fixed: **a front lamp declared its own glow, so three of them baked one into the UNLIT sprite** - a
+  parked car with a lit headlight. Every rear declares its LENS and lets the sprite builder blur the
+  lit drawing into a halo behind it; the fronts do the same now. Measured: front headlights spilled
+  860 to 1,983 lit pixels outside their own bulb, and 178 lamps across 59 sprites now stay inside
+  ([RLG-053](../fragments/RLG-053.md)).
+- Added: **`lamp-test.py` checks both faces of every car**, where it only ever checked the back. 29
+  fronts, the formula class excepted by the same ruling that excuses it from indicators - a
+  single-seater runs in daylight on a closed circuit and has never had headlights
+  ([RLG-053](../fragments/RLG-053.md)).
+
 <a id="v0-9-91"></a>
 ## [0.9.91] - 2026-08-30
 - Fixed: **every harness finds its own root, so any of them can be run as evidence.** Seven served
