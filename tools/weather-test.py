@@ -101,6 +101,12 @@ class Results:
 
 FREEZE = """() => {
   const R = window.__probe.road;
+  /* THE BIOME IS PINNED, and to the DARKEST of them. It is picked fresh on every
+     load, and the rain darkening has least room to show on a dark ground - the
+     verge check went red on runs that landed in FOREST and passed on runs that
+     landed in DESERT, on one unchanged build. Pinning to the worst case means a
+     pass here is a pass everywhere, which a random biome could never promise. */
+  if(R.setBiomePair) R.setBiomePair('FOREST', 'FOREST');
   R.jumpTo(12000);
   R.setLane(0);
   R.setSpd(0);

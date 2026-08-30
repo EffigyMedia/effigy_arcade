@@ -85,6 +85,25 @@ class Results:
             self.fails.append(label)
 
 
+SET_SNOWY_TUNDRA = """() => {
+  const R = window.__probe.road;
+  R.setBiomePair('TUNDRA', 'TUNDRA');
+  R.setWet(0.9); R.setSnow(0.8);
+}"""
+
+# park the car just short of the band, so the crossing happens inside the run
+# rather than 150 segments of driving later
+PARK_AT_BAND = """() => {
+  const R = window.__probe.road, s = R.biomeSweep();
+  R.jumpTo((s.edge - s.band * 5) * 200);
+}"""
+
+READ_WEATHER = """() => {
+  const R = window.__probe.road, s = R.biomeSweep();
+  return { cross:s.atCar, wcross:s.atCarWeather, wet:R.wet(),
+           settle:R.settle(), inb:s.player };
+}"""
+
 def lum(css):
     """Perceived brightness of an 'rgb(r,g,b)' string."""
     r, g, b = [float(v) for v in css[css.index('(') + 1:css.index(')')].split(',')]
@@ -221,6 +240,60 @@ def main():
         crossed = [r for r in track if r['player'] == r['to']]
         if crossed:
             print('      the car arrived: player biome became %s' % crossed[0]['to'])
+
+        # ------------------------------------------------ the horizon leads the car
+        print()
+        print('  THE SKYLINE BELONGS TO THE HORIZON, NOT TO THE CAR')
+        res.check(page.evaluate("() => window.__probe.road.skySwap()") in ('move', 'fade'),
+                  'the swap mechanism is switchable, so both can be judged',
+                  page.evaluate("() => window.__probe.road.skySwap()"))
+        page.evaluate("() => window.__probe.road.setBiomePair('DESERT', 'DESERT')")
+        page.wait_for_timeout(200)
+        placed = page.evaluate("() => window.__probe.road.startBiomeChange('FOREST')")
+        # The horizon shows what the far segments show. At the moment a change is
+        # placed the far segments are already half into the new place while the car is
+        # not in it at all, so the skyline must be mid-swap while the player is still
+        # wholly in the old biome. Before this the skyline was rebuilt on ARRIVAL, so
+        # it would have read as the old place for the whole transition.
+        res.check(placed['atHorizon'] > 0.4,
+                  'the moment a change is placed, the skyline is already handing over',
+                  'horizon mix %.3f' % placed['atHorizon'])
+        res.check(placed['player'] == 'DESERT' and placed['atCar'] == 0,
+                  'while the car is still wholly in the old place',
+                  'player %s, mix at car %.3f' % (placed['player'], placed['atCar']))
+
+        # --------------------------------------------- the weather crosses with you
+        print()
+        print('  THE WEATHER TRANSITIONS AS YOU CROSS, rather than switching at a line')
+        # Snow falling, driving into a place that cannot hold it. The old behaviour
+        # zeroed the target and went to full melt the instant the car passed the
+        # boundary segment. It should thin out across the band instead.
+        page.evaluate(SET_SNOWY_TUNDRA)
+        page.wait_for_timeout(300)
+        page.evaluate("() => window.__probe.road.startBiomeChange('DESERT')")
+        page.evaluate(PARK_AT_BAND)
+        wx = []
+        for _ in range(22):
+            page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD * 0.35)")
+            page.wait_for_timeout(220)
+            wx.append(page.evaluate(READ_WEATHER))
+        crossing = [r for r in wx if 0 < r['wcross'] < 1]
+        for r in wx[::4]:
+            print('      ground %.2f  weather %.2f   wet %.3f   settle %.3f   in %s'
+                  % (r['cross'], r['wcross'], r['wet'], r['settle'], r['inb']))
+        res.check(len(crossing) >= 2,
+                  'the run actually spent time inside the band, so this measured something',
+                  '%d of %d samples were mid-crossing' % (len(crossing), len(wx)))
+        wets = [r['wet'] for r in wx]
+        res.check(wets[-1] < wets[0],
+                  'the snow thins out as the desert arrives',
+                  '%.3f -> %.3f' % (wets[0], wets[-1]))
+        # A SWITCH WOULD SHOW ONE STEP. A transition shows several intermediate
+        # values, and that is the difference being asserted.
+        mids = [w for w in wets if 0.05 < w < wets[0] * 0.95]
+        res.check(len(mids) >= 2,
+                  'and it passes through intermediate values rather than stepping off',
+                  '%d intermediate: %s' % (len(mids), ' '.join('%.2f' % w for w in mids[:6])))
 
         # ------------------------------------------- and the distinction can fail
         print()

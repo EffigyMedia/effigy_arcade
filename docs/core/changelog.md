@@ -14,6 +14,30 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-62"></a>
+## [0.9.62] - 2026-08-29
+- Fixed: **the skyline belongs to the horizon, not to the car.** The far-field ground already showed
+  the new biome the moment a boundary was placed, while the skyline was still rebuilt on ARRIVAL - so
+  for the whole transition you would have seen the new biome's ground sitting under the old biome's
+  sky. The horizon is the furthest segments and those are already the next place, so the skyline
+  inherits from them ([RLG-022](../fragments/RLG-022.md)).
+- Added: **both skyline swap mechanisms, switchable.** A crossfade is a degenerate case of the layer
+  move - two skylines drawn at once, blended by opacity instead of by position - so building the
+  layers gives both for one branch. `SKY_SWAP` defaults to `move`: the outgoing skyline sinks and
+  shrinks behind the horizon while the incoming one rises from it. The owner rules on which reads
+  better after seeing them ([RLG-022](../fragments/RLG-022.md)).
+- Added: **the weather transitions as you cross, over a longer run than the ground.** Weather the new
+  place cannot produce thins out in proportion to how far in you are, instead of being switched off
+  at a line, and settled snow starts melting at a rate that comes on with the crossing. The weather
+  band is 72 segments against the colour band's 18, because the ground underfoot changes at a line
+  and the sky above it does not - measured, the weather ramps 0.00, 0.35, 0.69, 1.00 while the ground
+  steps across its own ([RLG-022](../fragments/RLG-022.md)).
+- Fixed: **the weather harness pins the biome as well as the hour.** The verge check went red on runs
+  that landed in FOREST and green on runs that landed in DESERT, on one unchanged build, because a
+  dark ground leaves the rain darkening least room to show. It is pinned to the darkest biome, so a
+  pass is a pass everywhere - which a random biome could never promise
+  ([RLG-057](../fragments/RLG-057.md)).
+
 <a id="v0-9-61"></a>
 ## [0.9.61] - 2026-08-29
 - Added: **a biome change is a place you drive into.** The new biome's colour is taken by the road

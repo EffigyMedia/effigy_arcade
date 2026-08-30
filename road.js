@@ -926,6 +926,10 @@ function resize(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   horizon = Math.round(H*0.40);
   skyline = null;
+  /* every cached silhouette goes with it. Clearing only the live one left the
+     other four at the old canvas size, and a biome change would then hand back
+     a skyline built for a screen that no longer exists. */
+  for(const k in skylineCache) delete skylineCache[k];
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', ()=>setTimeout(resize,150));
@@ -4845,6 +4849,44 @@ let skyline = null;
    lights up at dusk and goes dark by mid-morning — which is the whole reason
    to have a cycle rather than a fade. */
 let skylineLit = null;
+/* 'move' or 'fade'. A tunable with a committed default, never a constant edited
+   in place - and the owner's ruling on which reads better lands here. */
+let SKY_SWAP = 'move';
+/* ---- THE HORIZON SHOWS WHAT THE FAR SEGMENTS SHOW (RLG-022) --------------
+   Owner, 2026-08-29: "The current biome is where the player car is, BUT the
+   horizon and skyline inherit the next biome per the segments approaching the
+   player car."
+
+   This was inconsistent and the owner caught it. The far-field GROUND already
+   shows the new biome the moment a boundary is placed, because the boundary is
+   placed at the furthest drawn slice. The skyline was still rebuilt on
+   ARRIVAL, so for the whole transition - the time it takes to drive the length
+   of the drawn road - you would see the new biome's ground sitting under the
+   old biome's sky.
+
+   The rule is simple once stated. The skyline is painted AT the horizon, the
+   horizon is the furthest segments, and those segments are already the next
+   place. So the skyline inherits from them. Only the things that are about
+   where the CAR is - weather, grip, and the scenery beside you - follow the
+   car.
+
+   SO THERE ARE TWO SKYLINES DURING A TRANSITION, an outgoing and an incoming,
+   and both are drawn. `skylineFor` builds and caches one per biome, because
+   rebuilding a silhouette every frame is a generator running 60 times a second
+   for a picture that does not change.
+   ------------------------------------------------------------------------- */
+const skylineCache = {};
+function skylineFor(key){
+  if(!skylineCache[key]){
+    const keep = biome;
+    biome = key;                 /* buildSkyline reads bio() */
+    buildSkyline();
+    skylineCache[key] = { body: skyline, lit: skylineLit };
+    biome = keep;
+  }
+  return skylineCache[key];
+}
+
 function buildSkyline(){
   /* ---- THE HORIZON BELONGS TO THE BIOME --------------------------------
      Biomes changed the ground and the weather and left the skyline alone, so
@@ -6125,10 +6167,15 @@ function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
    this is a small change rather than a rewrite of every `bio()` call.
    ------------------------------------------------------------------------- */
 let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
+/* the weather target from the moment a band reached the car, so the thinning
+   scales one value instead of multiplying the live one down every frame */
+let bandBase = -1;
 /* how many segments the blend spans. The owner's range was "several to a dozen
    or a couple dozen"; 18 sits in the middle of it. A tunable with a committed
    default, never a constant edited in place. */
 const BIOME_BAND = 18;
+/* the weather's own crossing width, four times the colour band. See stepBiome. */
+const WEATHER_BAND = 72;
 
 /* how far into the NEW biome segment `idx` is: 0 entirely the old one, 1
    entirely the new, and a ramp across the band in between */
@@ -6286,13 +6333,68 @@ function stepBiome(dt){
      Splitting the two is the whole feature. Firing them together is what made
      it a cut. */
   const here = Math.floor(pos/SEG);
-  if(biomeFrom !== biomeTo && here >= biomeEdge){
-    /* arrived. The old place is behind us and stops existing. */
-    biomeFrom = biomeTo;
-    biome = biomeTo;
-    buildSkyline();            /* the horizon is part of the place */
-    endImpossibleWeather();
-    flashWarn(bio().name);
+  /* ---- YOU INHERIT THE NEW PLACE AS YOU CROSS INTO IT (RLG-022) ---------
+     Owner, 2026-08-29: "you inherit the new biome AS YOU CROSS INTO THE
+     SEGMENTS THAT REPRESENT IT", and "that should include transitioning
+     weather effects."
+
+     `cross` is `bioMix` AT THE CAR - how far into the new place the car itself
+     is - and it ramps from 0 to 1 over the band rather than stepping at a line.
+     Three things happen at three different points along it, which is what makes
+     this a transition rather than a switch:
+
+       from the moment the band reaches the car, weather the new place cannot
+       produce begins to THIN OUT in proportion, instead of being switched off
+       when the car passes a particular segment. Driving out of a snowfield into
+       a desert now stops snowing over the width of the band.
+
+       halfway, the place is renamed. More than half in is in, and that is when
+       the flash reads and when `bio()` starts answering with the new record.
+
+       at the far side, the old place stops existing and anything still falling
+       that cannot fall here is ended outright.
+
+     `bandBase` holds the weather target from when the band arrived, because the
+     ramp has to scale ONE value rather than multiply the live one down every
+     frame - which would decay it in a fraction of a second rather than over the
+     band.
+     -------------------------------------------------------------------- */
+  const cross = bioMix(here);
+  /* ---- THE WEATHER CROSSES OVER A LONGER RUN THAN THE COLOUR -----------
+     The colour band is 18 segments, which the car covers in well under a
+     second. Ramping the weather over that same width is a switch with a ramp
+     painted on it, and it is not what happens in the world either: the ground
+     underfoot changes at a line, and the sky above it does not.
+
+     So the weather has its own width, centred on the same edge and four times
+     as wide. It begins thinning while the boundary is still ahead of you, which
+     is what driving out of a snowfield actually feels like.
+     -------------------------------------------------------------------- */
+  const crossW = clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1);
+  if(biomeFrom !== biomeTo){
+    const Bnew = BIOMES[biomeTo] || bio();
+    if(crossW > 0){
+      if(bandBase < 0) bandBase = wetTarget;
+      if(snowy ? Bnew.snow <= 0 : Bnew.rain <= 0){
+        wetTarget = bandBase * (1 - crossW);
+        /* and what has settled starts going, at a rate that comes on with the
+           crossing rather than at full melt the instant a line is passed */
+        if(snowy && Bnew.snow <= 0) settleMelt = Math.max(settleMelt, crossW);
+      }
+    }
+    if(cross >= 0.5 && biome !== biomeTo){
+      biome = biomeTo;
+      /* the skyline is NOT rebuilt here. It has been showing the new place
+         since the boundary was placed, because it belongs to the horizon
+         rather than to the car. */
+      flashWarn(bio().name);
+    }
+    if(cross >= 1){
+      biomeFrom = biomeTo;
+      biome = biomeTo;
+      bandBase = -1;
+      endImpossibleWeather();
+    }
   }
   biomeNext -= dt;
   if(biomeNext <= 0){
@@ -6449,8 +6551,14 @@ function stepWeather(dt){
      takes the cover away outright rather than unwinding it - driving out of a
      tundra into a desert should not leave the sand white behind you.
      ------------------------------------------------------------------- */
-  if(settleMelt){
-    settle = Math.max(0, settle - dt * 0.55);
+  if(settleMelt > 0){
+    /* A RATE, NOT A FLAG. It used to be 1 or 0, so the ground went from holding
+       snow to shedding it at full speed the instant a line was crossed. It is
+       now how far into the new place the car is, so the melt comes on with the
+       crossing (RLG-022). `endImpossibleWeather` still sets it to 1 outright,
+       for the case where the place changed under you rather than being driven
+       into. */
+    settle = Math.max(0, settle - dt * 0.55 * settleMelt);
     if(settle < 0.02){ settle = 0; settleMelt = 0; }
   } else if(snowy && wet > 0.04){
     /* about forty seconds of heavy snow to cover the ground completely, and
@@ -9729,8 +9837,15 @@ function drawSky(){
     ctx.restore();
   }
 
-  if(!skyline) buildSkyline();
-  const sw = skyline.width, sh = skyline.height;
+  /* ---- WHICH PLACE THE HORIZON IS IN, AND HOW FAR THROUGH (RLG-022) ----
+     `bioMix` at the far edge of the draw is what the furthest slices are
+     showing, so the skyline reads the same number the ground under it reads.
+     At 0 the outgoing skyline stands alone, at 1 the incoming one does, and in
+     between both are drawn and SKY_SWAP decides how they hand over. */
+  const farIdx = Math.floor(pos/SEG) + DRAW;
+  const skyT = bioMix(farIdx);
+  const outSky = skylineFor(biomeFrom), inSky = skylineFor(biomeTo);
+  const sw = inSky.body.width, sh = inSky.body.height;
   const scale = (H*0.13)/sh;
   const dw = sw*scale, dh = sh*scale;
   /* The skyline is miles off, so it should barely move. It was sliding at
@@ -9770,19 +9885,68 @@ function drawSky(){
      into the dark", which meant the sun and moon showed straight through them.
      A silhouette recedes by getting closer to the sky colour, not by turning
      into glass — so the fade happens as a wash painted over the top instead. */
-  for(let x=ox; x<W+dw; x+=dw) ctx.drawImage(skyline, x, horizon-dh+1, dw, dh);
+  /* ---- HOW ONE SKYLINE HANDS OVER TO THE NEXT (RLG-022) ----------------
+     The owner offered two mechanisms and did not choose: "either do an alpha
+     fade so take the old scenery faded out and then fade in the new scenery or
+     we can move the old scenery as its own layer behind the horizon and the
+     new scenery from behind the horizon."
+
+     Both are built, because a crossfade is a DEGENERATE CASE of the layer
+     move - two skylines drawn at once, blended by opacity instead of by
+     position - so having the second costs one branch once the first exists.
+     `SKY_SWAP` picks, and the owner rules on it after seeing both.
+
+     'move' is the default, for two reasons. It agrees with the ground: the
+     band reaches the horizon first and the bumper last, so a swap driven by
+     position can be tied to that travel and a dissolve happening at one moment
+     cannot. And a crossfade is a video transition - a dissolve reads as an
+     edit rather than as a place ending, where in life the mountains do not
+     dissolve, they sink away behind you as the desert is revealed.
+
+     The skyline is a silhouette band with no depth to recede through, so the
+     receding is faked: the outgoing one sinks and shrinks, the incoming one
+     rises from behind the horizon. Sideways would read as the world rotating.
+     -------------------------------------------------------------------- */
+  const paint = (art, lit, alpha, drop, sc) => {
+    if(alpha <= 0.002) return;
+    const w2 = dw * sc, h2 = dh * sc;
+    let o2 = ox;
+    if(w2 !== dw){ o2 = ox % w2; if(o2 > 0) o2 -= w2; }
+    const y2 = horizon - h2 + 1 + drop;
+    ctx.globalAlpha = alpha;
+    for(let x=o2; x<W+w2; x+=w2) ctx.drawImage(art, x, y2, w2, h2);
+    /* windows on: full at night, out by day */
+    if(lit && n > 0.04){
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, n * 1.25) * alpha;
+      for(let x=o2; x<W+w2; x+=w2) ctx.drawImage(lit, x, y2, w2, h2);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  };
+
+  if(skyT <= 0.002){
+    paint(outSky.body, outSky.lit, 1, 0, 1);
+  } else if(skyT >= 0.998){
+    paint(inSky.body, inSky.lit, 1, 0, 1);
+  } else if(SKY_SWAP === 'fade'){
+    paint(outSky.body, outSky.lit, 1 - skyT, 0, 1);
+    paint(inSky.body,  inSky.lit,  skyT,     0, 1);
+  } else {
+    /* the old place sinks behind the horizon and shrinks with distance; the new
+       one comes up from behind it. Alpha still carries some of the hand-over,
+       because a silhouette sliding under the horizon line would otherwise be
+       cut in half by it rather than fading into the haze. */
+    paint(outSky.body, outSky.lit, Math.max(0, 1 - skyT*1.35), dh * skyT * 0.85,
+          1 - skyT * 0.30);
+    paint(inSky.body,  inSky.lit,  Math.min(1, skyT * 1.35),   dh * (1 - skyT) * 0.85,
+          0.70 + skyT * 0.30);
+  }
   /* No tint pass. `source-atop` paints over every opaque pixel and the sky is
      opaque, so it washed a visible band across the sky as well as the
      buildings. The silhouette is dark enough to read against both a noon sky
      and a midnight one on its own. */
-  /* windows on: full at night, out by day */
-  if(skylineLit && n > 0.04){
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(1, n * 1.25);
-    for(let x=ox; x<W+dw; x+=dw) ctx.drawImage(skylineLit, x, horizon-dh+1, dw, dh);
-    ctx.restore();
-  }
   ctx.globalAlpha=1;
 }
 
@@ -13379,7 +13543,10 @@ requestAnimationFrame(frameLoop);
     const here = Math.floor(pos/SEG);
     return { from:biomeFrom, to:biomeTo, player:biome,
              edge:biomeEdge, here:here, band:BIOME_BAND,
-             atCar:+bioMix(here).toFixed(3), atHorizon:+bioMix(here + DRAW).toFixed(3) };
+             atCar:+bioMix(here).toFixed(3), atHorizon:+bioMix(here + DRAW).toFixed(3),
+             /* the weather crosses over its own, wider run - see stepBiome */
+             weatherBand:WEATHER_BAND,
+             atCarWeather:+clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1).toFixed(3) };
   };
   /* place one, so a harness does not wait 70 to 130 seconds for the timer */
   API.startBiomeChange = function(k){
@@ -13397,6 +13564,9 @@ requestAnimationFrame(frameLoop);
   API.groundToneAt = function(idx, dark, nAmt, gAmt){ return groundTone(idx, !!dark, nAmt, gAmt); };
   /* set both ends of the blend directly. Passing the same key twice is the OLD
      behaviour - one biome everywhere - which is what the falsification needs. */
+  /* 'move' or 'fade'. The owner rules on which reads better after seeing both,
+     so it is switchable at runtime rather than a rebuild away. */
+  API.skySwap = function(v){ if(v === 'move' || v === 'fade') SKY_SWAP = v; return SKY_SWAP; };
   API.setBiomePair = function(a, b){
     if(BIOMES[a]) biomeFrom = a;
     if(BIOMES[b]) biomeTo = b;
