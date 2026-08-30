@@ -68,7 +68,44 @@ let braking = false, gas = false;
 /* ---------- road constants ---------- */
 const SEG = 200;             // segment length
 const RUMBLE = 3;            // segments per stripe
-const ROAD = 1900;           // half-width of road
+/* ---- THE ROAD'S HALF-WIDTH, AND IT IS A TUNABLE (RLG-024) ---------------
+   RLG-024 is the owner's request to widen the road so the lanes are bigger.
+   `LANE_X` is in normalised units - the lanes are fractions of this - so they
+   widen with it automatically, and everything that moves sideways is written in
+   lane units for the same reason.
+
+   It is a `let` so the widening can be TRIED at runtime rather than rebuilt for.
+   That also makes the roadside's independence from it testable: a harness can
+   widen the road and measure whether the trees moved.
+   ------------------------------------------------------------------------- */
+let ROAD = 1900;             // half-width of road
+/* ---- WHAT THE ROADSIDE IS MEASURED IN (RLG-024, RLG-059) -----------------
+   RLG-024 will widen the road, and everything beside it was written in
+   MULTIPLES OF `ROAD` - the lamps at 1.15 of it, the trees at 1.35. Widening
+   would therefore have pushed the whole roadside outward and grown it, so a
+   wider road would have come with a wider verge and bigger trees, and the
+   forest would have thinned at exactly the moment the road got closer to it.
+   That is a silent regression: nothing breaks, the picture just quietly stops
+   being the picture.
+
+   So the roadside has its own unit. `SCENE_UNIT` is what scenery is sized and
+   spaced in, and the lateral position is measured from the road EDGE rather
+   than from its centre - `p.w + scale*SCENE_UNIT*...`. Widen `ROAD` and the
+   tarmac gets wider while the verge beside it stays the width it was.
+
+   IT STARTS EQUAL TO `ROAD` ON PURPOSE. The two are the same number today, so
+   this change moves nothing on screen; it only decides what happens when one
+   of them changes. A decoupling that also retunes is a decoupling nobody can
+   verify.
+   ------------------------------------------------------------------------- */
+const SCENE_UNIT = 1900;
+
+/* How far out from the ROAD EDGE something stands, in scenery units, returned
+   as a distance in pixels from the middle of the road.
+   Named `roadside`, not `verge`: `VERGE` already exists further down and means
+   something else - the edge of the drivable surface in LANE units. Two things
+   called verge in one file is how a later reader picks the wrong one. */
+function roadsideAt(p, out){ return p.w + p.scale * SCENE_UNIT * W/2 * out; }
 const LANES = 4;
 const DRAW = 150;   /* was 95 — the road stopped short of the horizon and
                        the ground base showed as a band under the skyline */             // segments drawn
@@ -4912,7 +4949,7 @@ function sceneRand(idx, salt){
    beyond the light posts".
    ------------------------------------------------------------------------ */
 const SCENERY = {
-  CITY:   { density:0.62, w:0.55, h:1.70, out:1.62, spread:0.75, kinds:4, lit:true,
+  CITY:   { density:0.62, w:1.10, h:3.40, out:2.24, spread:1.50, kinds:4, lit:true,
             build:(g,W2,H2,i)=>{
               /* ---- A BUILDING, AND ITS WINDOWS ARE A SECOND SHEET ---------
                  Owner, 2026-08-29: city buildings "will need to have their
@@ -4940,7 +4977,7 @@ const SCENERY = {
               g.fillStyle = '#12151f';
               CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh) => g.fillRect(wx, wy, ww, wh));
             } },
-  FOREST: { density:0.92, w:0.30, h:0.95, out:1.35, spread:0.55, kinds:3,
+  FOREST: { density:0.92, w:0.60, h:1.90, out:1.70, spread:1.10, kinds:3,
             build:(g,W2,H2,i)=>{
               /* a conifer: a dark stack of triangles on a short trunk */
               const lean = (i-1)*0.06;
@@ -4958,7 +4995,7 @@ const SCENERY = {
                 g.closePath(); g.fill();
               }
             } },
-  DESERT: { density:0.055, w:0.22, h:0.55, out:1.55, spread:0.9, kinds:3,
+  DESERT: { density:0.055, w:0.44, h:1.10, out:2.10, spread:1.80, kinds:3,
             build:(g,W2,H2,i)=>{
               /* a saguaro: a column and up to two arms. The owner asked for a
                  sparse quantity of them and "just" was the word used - the
@@ -5036,7 +5073,8 @@ function drawScenery(idx, p1, y1, z1, fade){
   const B = bioAt(idx);
   const spec = SCENERY[B.name];
   if(!spec) return;
-  const sc = p1.scale * ROAD * W;
+  /* sized in scenery units, so the road's width has no say in how big a tree is */
+  const sc = p1.scale * SCENE_UNIT * W/2;
   if(sc < 1) return;
   for(const side of [-1, 1]){
     const r0 = sceneRand(idx, side < 0 ? 11 : 23);
@@ -5051,8 +5089,9 @@ function drawScenery(idx, p1, y1, z1, fade){
     const w2 = sc * spec.w * grow;
     const h2 = w2 * (art.height / art.width);
     if(w2 < 0.8) continue;
+    /* MEASURED FROM THE EDGE OF THE TARMAC, not from the middle of it */
     const off = spec.out + r1 * spec.spread;
-    const x = p1.x + side * sc * off;
+    const x = p1.x + side * roadsideAt(p1, off);
     /* off the sides of the screen entirely - cheaper to skip than to clip */
     if(x + w2 < 0 || x - w2 > W) continue;
     const gate = crestGate(z1, y1, y1 - h2, 'scenery');
@@ -10754,8 +10793,10 @@ function drawRoad(){
        -------------------------------------------------------------------- */
     if(idx % 8 === 0 && bioAt(idx).name === 'CITY'){
       const side = ((idx/8)|0) % 2 ? 1 : -1;
-      const lx = p1.x + side * p1.scale * ROAD * W * 1.15;
-      const sc = p1.scale * ROAD * W;
+      /* also from the edge, and also in scenery units (RLG-024): a wider road
+         must not walk its own street lighting away from the kerb */
+      const lx = p1.x + side * roadsideAt(p1, 1.30);
+      const sc = p1.scale * SCENE_UNIT * W;
       const poleH = Math.max(4, sc * 1.05);
       const poleW = Math.max(1, sc * 0.045);
       const armL  = Math.max(2, sc * 0.30) * -side;
@@ -14013,6 +14054,21 @@ requestAnimationFrame(frameLoop);
      it, which is the thing the owner has reported twice. */
   API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
   API.mirrorHorizon = function(v){ if(v > 0) MIRROR_HORIZON = v; return MIRROR_HORIZON; };
+  /* ---- WHERE THE ROADSIDE SITS, IN PIXELS (RLG-024) ---------------------
+     For a harness that has to answer "does widening the road move the trees".
+     The road edge and the first scenery position at one distance, so the gap
+     between them can be measured before and after a change to `ROAD`. */
+  /* widen the road. RLG-024's change, as an experiment rather than a rebuild -
+     and the way a harness proves the roadside does not move with it. */
+  API.setRoadHalfWidth = function(v){ if(v > 0) ROAD = v; return ROAD; };
+  API.vergeGap = function(dz){
+    const p = proj(0, pos + (dz || 12000));
+    if(!p.ok) return null;
+    return { edge:+p.w.toFixed(2),
+             lamp:+(roadsideAt(p, 1.30) - p.w).toFixed(2),
+             scenery:+(roadsideAt(p, 1.70) - p.w).toFixed(2),
+             unit:+(p.scale * SCENE_UNIT * W/2).toFixed(2) };
+  };
   API.mirrorAt = function(dz){
     if(!(dz > 200)) return null;
     /* the same arithmetic `rproj` does, in fractions of the glass below its

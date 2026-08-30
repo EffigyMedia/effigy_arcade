@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-69"></a>
+## [0.9.69] - 2026-08-29
+- Changed: **the roadside is measured from the road EDGE, in its own unit, so widening the road
+  cannot move it.** Everything beside the road was written in multiples of `ROAD` - the lamps at 1.15
+  of it, the trees at 1.35 - so the coming wider road would have pushed the whole roadside outward
+  and grown it, thinning the forest at exactly the moment the tarmac got closer to it. Measured: with
+  `ROAD` at 1900, 2600 and 3400 the road edge moves 31.9, 43.6, 57.1 pixels while the lamp and tree
+  gaps hold at 41.5 and 54.2 ([RLG-024](../fragments/RLG-024.md), [RLG-059](../fragments/RLG-059.md)).
+- Changed: **`ROAD` is a tunable rather than a constant.** RLG-024 is going to change it, the lanes
+  are normalised fractions of it and so widen with it automatically, and making it settable turns
+  that change into a runtime experiment instead of a rebuild - which is also what makes the
+  independence above measurable at all ([RLG-024](../fragments/RLG-024.md)).
+
 <a id="v0-9-68"></a>
 ## [0.9.68] - 2026-08-29
 - Added: **the city has buildings, and their windows light up at night.** Four heights with setbacks
