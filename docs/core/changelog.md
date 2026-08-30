@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-93"></a>
+## [0.9.93] - 2026-08-30
+- Fixed: **the packer regenerates before it verifies.** `assets.js` is generated and takes its
+  version from `sw.js`, so in a build the two agree by construction the moment the generator has run
+  - but the agreement check ran BEFORE it, so bumping `sw.js` failed the very build that would have
+  fixed it, and `assets.js` was seeded by hand once to get past it. The check is not weakened, which
+  matters: the drift it catches is what shipped eighteen 404s behind a green build. What changed is
+  when it runs ([RLG-004](../fragments/RLG-004.md)).
+- Changed: **one definition of what agreement means, two callers.** `--check` has nothing to
+  regenerate, so it compares the files as they are; a build compares what it just wrote
+  ([RLG-004](../fragments/RLG-004.md)).
+
 <a id="v0-9-92"></a>
 ## [0.9.92] - 2026-08-30
 - Fixed: **the cars behind you have their headlights on after dark.** Every front sprite declared a

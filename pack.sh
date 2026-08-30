@@ -238,13 +238,34 @@ say "every cabinet meets the minimum standard"
 #    actually shipping. CORE went to v20 while RUNTIME stayed at v19
 #    once, and a device kept half of a broken build.
 # =====================================================================
+# ---- REGENERATE, THEN VERIFY (RLG-004) ------------------------------------
+# The agreement check used to run BEFORE the regeneration below, which is the
+# wrong way round for the one job a build has. `assets.js` is GENERATED, and it
+# takes its version from `sw.js` - so in a build the two agree by construction
+# the moment the generator has run. Checking first meant a bump to `sw.js`
+# failed the build that would have fixed it, and `assets.js` was seeded by hand
+# once to get past it.
+#
+# THE CHECK IS NOT WEAKENED, which matters: the drift it catches is the drift
+# that shipped eighteen 404s behind a green build. What changes is WHEN it runs.
+# In `--check` mode there is nothing to regenerate, so it stands exactly where
+# it was and compares the files as they are. In build mode it runs after
+# section 4 and compares what was just written.
 SW_CORE="$(grep -o "effigy-arcade-core-v[0-9]*" sw.js | head -1)"
 SW_RUN="$(grep -o "effigy-arcade-runtime-v[0-9]*" sw.js | head -1)"
-AS_CORE="$(grep -o "effigy-arcade-core-v[0-9]*" assets.js | head -1)"
 [ -n "$SW_CORE" ] || fail "sw.js has no cache version"
 [ "${SW_CORE##*-}" = "${SW_RUN##*-}" ] || fail "sw.js core is ${SW_CORE##*-} but runtime is ${SW_RUN##*-}"
-[ "$SW_CORE" = "$AS_CORE" ] || fail "assets.js says $AS_CORE, sw.js says $SW_CORE"
-say "cache version: ${SW_CORE##*-} (sw.js and assets.js agree)"
+
+# the one comparison, in a function, so there is one definition of what
+# agreement MEANS and two places that ask for it
+cache_agrees(){
+  local as_core
+  as_core="$(grep -o "effigy-arcade-core-v[0-9]*" assets.js | head -1)"
+  [ "$SW_CORE" = "$as_core" ] || fail "assets.js says $as_core, sw.js says $SW_CORE"
+  say "cache version: ${SW_CORE##*-} (sw.js and assets.js agree)"
+}
+
+if [ "$MODE" != "build" ] || [ -n "$STANDALONE" ]; then cache_agrees; fi
 
 if [ "$MODE" = "build" ] && [ -z "$STANDALONE" ]; then
   node -e '
@@ -279,6 +300,8 @@ if [ "$MODE" = "build" ] && [ -z "$STANDALONE" ]; then
   ' "$CATALOGUE_JSON"
   node --check assets.js && node --check sw.js || fail "regenerated cache lists do not parse"
   say "regenerated assets.js and sw.js ALL_FILES from what is shipping"
+  # and NOW they must agree, on what was just written rather than on what was there
+  cache_agrees
 fi
 
 # =====================================================================
