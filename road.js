@@ -12195,6 +12195,119 @@ function drawSpeedLines(){
   ctx.stroke();
 }
 
+/* ==== THE PLAYER'S HEADLIGHTS, ON THE ROAD (RLG-060) =====================
+   Owner, 2026-08-29: "would it be possible to render good looking headlights
+   beaming?"
+
+   THE BEAM IS BUILT FROM THE PROJECTION, NOT DRAWN AS A TRIANGLE. A fixed
+   triangle on the glass is what this would be if it were faked, and it would
+   sit dead straight while the road bent away underneath it - the same fault
+   the skyline had before its parallax was fixed. Instead the cone is walked in
+   WORLD space: at each step down the road, the beam's left and right edges are
+   projected like anything else, so it follows the bend, rides the crests and
+   narrows over a brow exactly as the tarmac does.
+
+   IT IS A SHAPE, NOT A WASH. Three full-screen overlays have been removed from
+   this engine in two days - two snow, one rain, one sheen - each of which
+   brightened the car, the sky and everything else along with the thing it was
+   meant to light. A beam is bounded by its own polygon and clipped to the
+   ground plane. It cannot touch the sky, and it does not touch the player's
+   own bodywork.
+
+   AND IT IS OFF BY DAY. `lampsOn()` is the same schedule the street lamps and
+   the tail lamps use, so the headlights come on when everything else does
+   rather than on a rule of their own.
+
+   THE COMFORT OPTION DOES NOT APPLY, and that is worth saying because it was
+   raised. RLG-060's comfort setting exists for the lightning FLASH, which is a
+   photosensitivity hazard. A headlight beam is steady light: it has no
+   transient, it does not strobe, and there is nothing here for that option to
+   protect anyone from. If oncoming traffic is ever added to the forward view,
+   its beams point at the camera and that judgement has to be made again.
+   ========================================================================= */
+function drawBeams(){
+  const lit = lampsOn();
+  if(lit < 0.04) return;
+  /* how far the light throws, and how wide the cone opens. In world units, so
+     a wider road (RLG-024) does not widen the headlights. */
+  /* ---- THE BEAM STARTS AT THE CAR, NOT AT THE CAMERA -------------------
+     `pos` is where the CAMERA is; the car sits `PLAYER_Z` ahead of it. Walking
+     the cone from `pos` put its first two steps behind the bumper, so the light
+     ran out from UNDER the car and down off the bottom of the screen - two thin
+     stripes rather than a pair of cones. Caught by looking at it with the
+     brightness turned up; at the intended level it was too faint to see the
+     shape was wrong at all, which is the argument for turning an effect UP
+     before tuning it down.
+     -------------------------------------------------------------------- */
+  const NEAR = PLAYER_Z * 0.55, FAR = 9000;
+  const HW0 = ROAD * 0.10, SPREAD = 0.058;
+  const STEP = 380;
+  const carX = playerX * ROAD;
+
+  ctx.save();
+  /* the ground plane only. A beam has no business above the horizon, and
+     clipping is cheaper than trusting the geometry never to go there. */
+  ctx.beginPath(); ctx.rect(0, horizon, W, H - horizon); ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+
+  for(const side of [-1, 1]){
+    /* the lamp's own offset from the middle of the car */
+    /* far enough apart to read as two lamps at the bumper, close enough to
+       merge into one throw further out - which is what a pair of headlights
+       actually does */
+    const off = side * ROAD * 0.17;
+    const left = [], right = [];
+    for(let z = NEAR; z <= FAR; z += STEP){
+      const p = proj(carX + off, pos + PLAYER_Z + z);
+      if(!p.ok) break;
+      const hw = (HW0 + (z - NEAR) * SPREAD) * p.scale * W/2;
+      left.push([p.x - hw, p.y]);
+      right.push([p.x + hw, p.y]);
+    }
+    if(left.length < 3) continue;
+    ctx.beginPath();
+    ctx.moveTo(left[0][0], left[0][1]);
+    for(let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+    for(let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    /* bright at the car, gone before the end of the throw. The gradient runs
+       between the two ends of the beam ON SCREEN, so it stays right over a
+       crest where the far end is higher than usual. */
+    const y0 = left[0][1], y1 = left[left.length-1][1];
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0,    'rgba(255,244,214,' + (0.26 * lit) + ')');
+    g.addColorStop(0.32, 'rgba(255,240,200,' + (0.13 * lit) + ')');
+    g.addColorStop(1,    'rgba(220,232,255,0)');
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+
+  /* ---- THE HOT SPOT AT THE CAR'S OWN FEET -----------------------------
+     Two cones alone read as searchlights: they are brightest where they are
+     WIDEST, because the gradient runs down the road rather than across it. A
+     real dipped beam puts most of its light in a short pool just ahead of the
+     bumper. This is that pool, and it is what makes the beams read as coming
+     from the car rather than from the camera.
+     ------------------------------------------------------------------- */
+  const pn = proj(carX, pos + PLAYER_Z + NEAR), pf = proj(carX, pos + PLAYER_Z + 2400);
+  if(pn.ok && pf.ok){
+    const cx = (pn.x + pf.x) / 2, cy = (pn.y + pf.y) / 2;
+    const rx = Math.abs(pn.x - proj(carX + ROAD*0.62, pos + PLAYER_Z + NEAR).x);
+    const ry = Math.max(6, (pn.y - pf.y) * 0.62);
+    const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
+    g2.addColorStop(0,   'rgba(255,246,220,' + (0.19 * lit) + ')');
+    g2.addColorStop(0.5, 'rgba(255,240,205,' + (0.075 * lit) + ')');
+    g2.addColorStop(1,   'rgba(255,240,205,0)');
+    ctx.save();
+    ctx.translate(cx, cy); ctx.scale(1, Math.max(0.18, ry / Math.max(rx, 1)));
+    ctx.translate(-cx, -cy);
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(rx, ry), 0, 6.2832); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 function drawPursuitWash(){
   // nearest cop that is still behind the camera: light spills over the scene
   let closest = 1e9;
@@ -12298,6 +12411,10 @@ function draw(){
   drawWorld();          /* buckets the sprites */
   drawRoad();           /* paints the road AND emits them, far to near */
   sweepUnemitted();     /* RLG-041: whatever the road never got to */
+  /* the headlights land on the road and on whatever is standing in them, so
+     they go after the road and its sprites and before the player's own car -
+     a car does not light its own paintwork */
+  drawBeams();
   drawPursuitWash();
   drawPlayer();
   drawRain();

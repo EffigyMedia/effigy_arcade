@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-73"></a>
+## [0.9.73] - 2026-08-30
+- Added: **the player's headlights beam down the road at night.** The cone is walked in WORLD space
+  and its edges projected like anything else, so it follows the bend, rides the crests and narrows
+  over a brow exactly as the tarmac does - a fixed triangle on the glass would sit dead straight
+  while the road bent away underneath it. It is a bounded shape clipped to the ground plane, not an
+  overlay: it cannot touch the sky and it does not light the player's own paintwork
+  ([RLG-060](../fragments/RLG-060.md)).
+- Added: **a hot pool just ahead of the bumper.** Two cones alone read as searchlights, because the
+  gradient runs down the road rather than across it and they are therefore brightest where they are
+  widest. A dipped beam puts most of its light in a short pool at the front of the car, and that pool
+  is what makes the light read as coming from the car rather than from the camera
+  ([RLG-060](../fragments/RLG-060.md)).
+- Note: **the comfort option does not apply and that is deliberate.** RLG-060's setting exists for
+  the lightning FLASH, which is a photosensitivity hazard. A headlight beam is steady light with no
+  transient. If oncoming traffic is ever added to the forward view its beams point at the camera and
+  that judgement has to be made again ([RLG-060](../fragments/RLG-060.md)).
+
 <a id="v0-9-72"></a>
 ## [0.9.72] - 2026-08-30
 - Added: **the skylines have depth.** Three bands are painted back to front into one strip, the far
