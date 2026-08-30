@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.56';
+window.ROAD_BUILD = '0.9.84';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5097,45 +5097,165 @@ function sceneRand(idx, salt){
    road widths - the lamps are at 1.15, and the owner asked for scenery "just
    beyond the light posts".
    ------------------------------------------------------------------------ */
+/* ---- WHERE A BEACH HOUSE'S WINDOWS ARE (RLG-059) ------------------------
+   The same two-walks shape the city's tower blocks use: one description of the
+   glass, walked once by the dark sheet that gives the wall its texture by day
+   and once by the lit sheet that glows at night. A lit window that does not
+   line up with its hole is the fault this shape exists to make impossible.
+
+   Two houses, because "random palm trees and beach houses" wants more than one
+   house. One stands up on piles with a deck, the way a house on a shoreline is
+   built; the other is low and long on the sand.
+   ------------------------------------------------------------------------- */
+function BEACH_BOX(W2, H2, v){
+  return v === 0
+    ? { x0:W2*0.11, y0:H2*0.50, bw:W2*0.78, bh:H2*0.26, rows:2, cols:3, piles:true }
+    : { x0:W2*0.06, y0:H2*0.60, bw:W2*0.88, bh:H2*0.40, rows:1, cols:4, piles:false };
+}
+function BEACH_WINDOWS(b, put){
+  const gw = b.bw/b.cols, gh = b.bh/b.rows;
+  for(let r = 0; r < b.rows; r++){
+    for(let c = 0; c < b.cols; c++){
+      put(b.x0 + c*gw + gw*0.24, b.y0 + r*gh + gh*0.26, gw*0.50, gh*0.44, r, c);
+    }
+  }
+}
+/* the house itself, dark: boards, a roof, and the holes the light comes out of */
+function BEACH_HOUSE(g, W2, H2, v){
+  const b = BEACH_BOX(W2, H2, v);
+  const wall = v === 0 ? '#9a8f7c' : '#b3ad9c';
+  const roof = v === 0 ? '#57606a' : '#6b6152';
+  if(b.piles){
+    /* the piles it stands on, and the deck they carry */
+    g.fillStyle = '#5b5145';
+    for(const f of [0.16, 0.36, 0.62, 0.82])
+      g.fillRect(W2*f, b.y0 + b.bh, Math.max(1, W2*0.035), H2 - (b.y0 + b.bh));
+    g.fillRect(b.x0 - W2*0.04, b.y0 + b.bh, b.bw + W2*0.08, Math.max(1, H2*0.030));
+  }
+  g.fillStyle = wall;
+  g.fillRect(b.x0, b.y0, b.bw, b.bh);
+  /* board lines, so a flat rectangle reads as timber at the size it is drawn */
+  g.fillStyle = 'rgba(0,0,0,.10)';
+  for(let l = 1; l < 4; l++) g.fillRect(b.x0, b.y0 + b.bh*l/4, b.bw, Math.max(0.5, H2*0.006));
+  /* the roof: a gable on the stilted one, a shallow overhang on the low one */
+  g.fillStyle = roof;
+  g.beginPath();
+  if(v === 0){
+    g.moveTo(b.x0 - W2*0.06, b.y0);
+    g.lineTo(W2*0.50, b.y0 - H2*0.13);
+    g.lineTo(b.x0 + b.bw + W2*0.06, b.y0);
+  } else {
+    g.moveTo(b.x0 - W2*0.04, b.y0);
+    g.lineTo(b.x0 + b.bw*0.16, b.y0 - H2*0.075);
+    g.lineTo(b.x0 + b.bw*0.84, b.y0 - H2*0.075);
+    g.lineTo(b.x0 + b.bw + W2*0.04, b.y0);
+  }
+  g.closePath(); g.fill();
+  /* the door, and on the low house the two posts that hold its porch up */
+  g.fillStyle = v === 0 ? '#3d4a4e' : '#2f5b5f';
+  g.fillRect(b.x0 + b.bw*0.46, b.y0 + b.bh*0.34, b.bw*0.09, b.bh*0.66);
+  if(!b.piles){
+    g.fillStyle = wall;
+    for(const f of [0.16, 0.84])
+      g.fillRect(b.x0 + b.bw*f, b.y0, Math.max(1, W2*0.028), b.bh*0.10);
+  }
+  /* the glass, dark, so the shape reads by day as well as by night */
+  g.fillStyle = '#2b3138';
+  BEACH_WINDOWS(b, (wx, wy, ww, wh) => g.fillRect(wx, wy, ww, wh));
+}
+
 const SCENERY = {
-  /* ---- A COAST ROAD (RLG-059) -----------------------------------------
+  /* ---- A COAST ROAD, ON ITS LANDWARD SIDE ONLY (RLG-059) ---------------
      Sparse, because a coast is open: what stands beside it is the occasional
-     palm and a lot of nothing. One row, like the desert, and for the same
-     reason - the emptiness is the subject.
+     palm, a low rock, and now and then a house facing the water. Everything
+     here is on ONE side of the road, because the other side is the sea - the
+     side loop in `drawScenery` skips it.
+
+     ONE SPEC, NOT A SPEC PER SIDE. The plan written before this was built gave
+     the record a second, landward-only spec. With the seaward side empty that
+     leaves the first spec with no side left to draw on: dead code dressed as
+     generality. So the coast has one set, and the skip decides where it goes.
+
+     THE CANVAS IS WIDER THAN A PALM NEEDS because a house is wider than a palm
+     and one spec is one sprite shape. The palm and the rock are drawn into the
+     narrow band down the middle that they used to have to themselves, at the
+     size they had before; the houses use the full width.
+
+     EIGHT KINDS AND NOT FOUR, because the kind is picked flat from the hash:
+     four palms, two rocks and two houses is how "random palm trees and beach
+     houses" gets a shoreline with more trees on it than buildings.
      ------------------------------------------------------------------ */
-  OCEAN:  { density:0.16, w:0.50, h:1.60, out:1.40, spread:2.20, kinds:3,
+  OCEAN:  { density:0.24, w:1.30, h:1.60, out:1.40, spread:2.40, kinds:8,
+            lit:true, litKinds:[6, 7],
             build:(g,W2,H2,i)=>{
-              /* a palm: a leaning trunk with a crown of fronds, or a low rock */
-              if(i === 2){
-                g.fillStyle = '#5c5a52';
+              if(i >= 6){ BEACH_HOUSE(g, W2, H2, i - 6); return; }
+              /* the narrow band the palms and the rocks stand in */
+              const PW = W2*0.385, PX = (W2-PW)/2, X = (f)=>PX + PW*f;
+              if(i >= 4){
+                /* a low rock, one of two profiles */
+                g.fillStyle = i === 4 ? '#5c5a52' : '#6a655a';
                 g.beginPath();
-                g.moveTo(W2*0.18, H2);
-                g.lineTo(W2*0.34, H2*0.74);
-                g.lineTo(W2*0.62, H2*0.70);
-                g.lineTo(W2*0.86, H2);
+                g.moveTo(X(0.18), H2);
+                g.lineTo(X(i === 4 ? 0.34 : 0.28), H2*0.74);
+                g.lineTo(X(i === 4 ? 0.62 : 0.70), H2*0.70);
+                g.lineTo(X(0.86), H2);
                 g.closePath(); g.fill();
                 return;
               }
-              const lean = i ? 0.10 : -0.08;
+              /* a palm: a leaning trunk with a crown of fronds */
+              const lean = (i % 2) ? 0.10 : -0.08;
+              const top = i < 2 ? 0.30 : 0.24;
               g.strokeStyle = '#5a4a33';
-              g.lineWidth = Math.max(1.5, W2*0.055);
+              g.lineWidth = Math.max(1.5, PW*0.055);
               g.beginPath();
-              g.moveTo(W2*0.5, H2);
-              g.quadraticCurveTo(W2*(0.5 + lean*1.6), H2*0.55,
-                                 W2*(0.5 + lean*2.4), H2*0.30);
+              g.moveTo(X(0.5), H2);
+              g.quadraticCurveTo(X(0.5 + lean*1.6), H2*0.55,
+                                 X(0.5 + lean*2.4), H2*top);
               g.stroke();
-              const cx = W2*(0.5 + lean*2.4), cy = H2*0.30;
+              /* ---- THE CROWN IS WHAT MAKES IT A PALM -------------------
+                 Seen against the beach houses at close range, the first crown
+                 read as a few leaves on a telephone pole: seven short fronds on
+                 a trunk ten times their length. A palm is recognised by a wide
+                 crown that arches up and droops at the tips, so the fronds are
+                 longer, there are more of them, and the outer ones fall below
+                 the horizontal.
+                 ------------------------------------------------------- */
+              const cx = X(0.5 + lean*2.4), cy = H2*top;
               g.fillStyle = '#2c5136';
-              for(let f = 0; f < 7; f++){
-                const a = Math.PI + (f/6) * Math.PI;
+              for(let f = 0; f < 9; f++){
+                const a = Math.PI + (f/8) * Math.PI;
+                /* the further out from the top of the arc, the more it droops */
+                const droop = H2 * (0.05 + Math.abs(Math.cos(a)) * 0.09);
                 g.beginPath();
                 g.moveTo(cx, cy);
-                g.quadraticCurveTo(cx + Math.cos(a)*W2*0.30, cy + Math.sin(a)*H2*0.10,
-                                   cx + Math.cos(a)*W2*0.46, cy + Math.sin(a)*H2*0.20 + H2*0.05);
-                g.quadraticCurveTo(cx + Math.cos(a)*W2*0.28, cy + Math.sin(a)*H2*0.10 + H2*0.03,
+                g.quadraticCurveTo(cx + Math.cos(a)*PW*0.38, cy + Math.sin(a)*H2*0.12,
+                                   cx + Math.cos(a)*PW*0.62, cy + Math.sin(a)*H2*0.20 + droop);
+                g.quadraticCurveTo(cx + Math.cos(a)*PW*0.34, cy + Math.sin(a)*H2*0.11 + H2*0.035,
                                    cx, cy);
                 g.fill();
               }
+            },
+            /* ---- AND THE HOUSES LIGHT UP (RLG-059) -------------------
+               They are man-made, so they are on the same clock as the city's
+               windows and the street lamps. A house with dark windows in a
+               place where everything else has lit up reads as abandoned.
+
+               Which windows are on is a function of the window's own position
+               and of which house it is, never of chance - a light that flickers
+               frame to frame is a fault, not a home.
+               ------------------------------------------------------- */
+            buildLit:(g,W2,H2,i)=>{
+              if(i < 6) return;
+              const v = i - 6, b = BEACH_BOX(W2, H2, v);
+              BEACH_WINDOWS(b, (wx, wy, ww, wh, r, c) => {
+                if(((r*5 + c*3 + v*7) % 5) < 2) return;
+                g.fillStyle = 'rgba(255,206,138,.94)';
+                g.fillRect(wx, wy, ww, wh);
+              });
+              /* a light over the door, which is the one a house always leaves on */
+              g.fillStyle = 'rgba(255,224,170,.80)';
+              g.fillRect(b.x0 + b.bw*0.44, b.y0 + b.bh*0.22,
+                         Math.max(1, b.bw*0.13), Math.max(1, b.bh*0.10));
             } },
   /* ---- A SWAMP (RLG-059) ----------------------------------------------
      Thick, like the forest, but the wrong shape for it: bare cypress with
@@ -5229,6 +5349,20 @@ const SCENERY = {
               /* the window grid, drawn dark so the shape reads by day too */
               g.fillStyle = '#12151f';
               CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh) => g.fillRect(wx, wy, ww, wh));
+            },
+            /* the same plan walked a second time with only the glass on it */
+            buildLit:(g,W2,H2,i)=>{
+              const tall = 0.42 + i*0.185;
+              const bw = W2*(0.60 - i*0.045), bh = H2*tall;
+              const x0 = (W2-bw)/2, y0 = H2-bh;
+              CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh, r, c) => {
+                /* not every office is occupied, and the pattern must not change
+                   frame to frame - so it is a function of the window's own
+                   position, not of chance */
+                if(((r*7 + c*13 + i*5) % 11) < 4) return;
+                g.fillStyle = ((r*3 + c*5) % 7) ? 'rgba(255,214,140,.92)' : 'rgba(190,224,255,.85)';
+                g.fillRect(wx, wy, ww, wh);
+              });
             } },
   FOREST: { density:0.92, rowDensity:0.66, rows:5, out:0.10, outFar:7.0,
             w:0.60, h:1.90, spread:1.10, kinds:3,
@@ -5361,9 +5495,19 @@ function applySceneryLight(g, w, h){
    skyline's windows already get, which is the consistency the owner asked for.
    A biome with no `lit` in its spec builds nothing here and pays nothing.
    ------------------------------------------------------------------------- */
+/* ---- AND THE PAINTER DECLARES ITS OWN GLASS (RLG-059) --------------------
+   This used to hold the CITY's window geometry inline, which was correct while
+   the city was the only place that lit up. A beach house lights up too, and it
+   is not a tower block: one storey, a porch and four windows.
+
+   So the spec carries `buildLit` beside `build`, the same shape the lamps on
+   the cars use - the thing that knows how an object is drawn is the thing that
+   says where its light comes out (RLG-053). `litKinds` narrows it to the kinds
+   that actually have windows, so a palm on the same spec pays nothing.
+   ------------------------------------------------------------------------- */
 function sceneryLitArt(key, i){
   const spec = SCENERY[key];
-  if(!spec || !spec.lit) return null;
+  if(!spec || !spec.lit || !spec.buildLit) return null;
   /* the lit windows carry the hour in their key too, so they are dropped with
      everything else when the bucket moves - but they are NOT tinted. A window is
      a light source; dimming it at night is the one thing that would be wrong. */
@@ -5372,21 +5516,19 @@ function sceneryLitArt(key, i){
     const pw = 96, ph = Math.round(96 * (spec.h / spec.w));
     sceneryCache[id] = sprite(pw, ph, (g)=>{
       g.clearRect(0,0,pw,ph);
-      const tall = 0.42 + i*0.185;
-      const bw = pw*(0.60 - i*0.045), bh = ph*tall;
-      const x0 = (pw-bw)/2, y0 = ph-bh;
-      CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh, r, c) => {
-        /* not every office is occupied, and the pattern must not change frame
-           to frame - so it is a function of the window's own position, not of
-           chance */
-        if(((r*7 + c*13 + i*5) % 11) < 4) return;
-        g.fillStyle = ((r*3 + c*5) % 7) ? 'rgba(255,214,140,.92)' : 'rgba(190,224,255,.85)';
-        g.fillRect(wx, wy, ww, wh);
-      });
+      spec.buildLit(g, pw, ph, i);
     });
   }
   return sceneryCache[id];
 }
+
+/* ---- WHICH SIDE THE ROADSIDE ACTUALLY DREW ON (RLG-059) ------------------
+   A counter at the point where an object is drawn, not a second copy of the
+   placement rules - so the check for "nothing stands in the sea" reads what the
+   pass DID. Cumulative with an explicit reset, the same shape `crestStats` has,
+   and the mirror keeps its own pair because its loop is its own.
+   ------------------------------------------------------------------------- */
+let sceneSides = { left:0, right:0, mLeft:0, mRight:0 };
 
 /* ---- one segment's worth, both sides ------------------------------------
    Called from the road pass with the same numbers the lamp uses. It draws
@@ -5420,7 +5562,23 @@ function drawScenery(idx, p1, y1, z1, fade){
      behind it rather than being painted over by it.
      -------------------------------------------------------------------- */
   const rows = spec.rows || 1;
+  /* ---- NOTHING STANDS IN THE SEA (RLG-059) ----------------------------
+     Owner, 2026-08-30: "we need to make sure that scenery objects aren't
+     generated in the side with the ocean".
+
+     The loop below places from one spec on BOTH sides, because until the coast
+     arrived no place had a reason to differ left from right. A coast does: the
+     ground on the seaward side stops being ground at the shoreline, and the
+     scenery pass had no idea. Palms and rocks stood in the water.
+
+     It is the SEGMENT's biome, not the car's, exactly as the rest of this
+     function is - during a crossing some slices are coast and some are not, and
+     the water begins where the ground colour changes rather than where the car
+     is.
+     -------------------------------------------------------------------- */
+  const water = B.sea ? seaSide : 0;
   for(const side of [-1, 1]){
+    if(water && side === water) continue;
     for(let row = rows - 1; row >= 0; row--){
       const salt = row * 101;
       const r0 = sceneRand(idx, (side < 0 ? 11 : 23) + salt);
@@ -5456,9 +5614,11 @@ function drawScenery(idx, p1, y1, z1, fade){
       /* the last stretch of the draw fades them in, so an object does not arrive
          whole at the edge of the world. The lamps do the same. */
       ctx.globalAlpha = Math.min(1, fade * 4);
+      sceneSides[side < 0 ? 'left' : 'right']++;
       ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
       /* the windows, on the same schedule as the street lamps */
-      const litArt = spec.lit ? sceneryLitArt(B.name, kind) : null;
+      const litArt = spec.lit && (!spec.litKinds || spec.litKinds.indexOf(kind) >= 0)
+                   ? sceneryLitArt(B.name, kind) : null;
       if(litArt && lampsOn() > 0.02){
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = Math.min(1, fade * 4) * lampsOn();
@@ -13137,6 +13297,30 @@ function drawMirrorFull(mx, my, mw, mh){
     if(!a || !b2) continue;
     const idx = Math.floor((pos - d2)/MSEG);
     const dark = !!(idx % 2);
+    /* `widx` is the WORLD segment index, not the mirror's own step. The mirror
+       walks in 900-unit steps and the world is in 200s, so everything that has
+       to agree with the road ahead - the biome, the sea's side, the placement
+       hash - asks for the world's index. */
+    const widx = Math.floor((pos - d2)/SEG);
+    const mB = bioAt(widx);
+    /* ---- AND THE WATER IS BEHIND YOU TOO (RLG-059) -------------------
+       The glass showed a coast with no coast in it: the mirror's ground is one
+       flat fill, so the sea simply was not there, and after the scenery pass
+       learned to leave the seaward side empty the glass would have shown a bare
+       strip where the water is.
+
+       Same shoreline, same side, same tone as the windscreen - a fixed distance
+       out from the tarmac, filled to the bottom of the pane. The loop walks far
+       to near like the road pass ahead does, so each nearer slice paints over
+       the last and the shoreline's shape falls out of the order rather than
+       being computed.
+       ---------------------------------------------------------------- */
+    if(mB.sea){
+      const msh = a.x + seaSide * roadsideAt(a, mB.beach, mw);
+      ctx.fillStyle = seaTone(mB);
+      if(seaSide < 0){ if(msh > mx) ctx.fillRect(mx, a.y, msh - mx, my + mh - a.y); }
+      else { if(msh < mx + mw) ctx.fillRect(msh, a.y, mx + mw - msh, my + mh - a.y); }
+    }
     ctx.fillStyle = mixRGB(mixRGB(dark ? '#1e232c' : '#191d25', mSnowRoad, mLight),
                            mRain * 0.55, WET_DARK);
     ctx.beginPath();
@@ -13176,8 +13360,6 @@ function drawMirrorFull(mx, my, mw, mh){
        Two rows, not five. This is a strip of glass 44 pixels tall and the far
        rows land inside a pixel of each other.
        -------------------------------------------------------------- */
-    const widx = Math.floor((pos - d2)/SEG);
-    const mB = bioAt(widx);
     const mSpec = SCENERY[mB.name];
     if(mSpec){
       const msc = a.scale * SCENE_UNIT * mw/2;
@@ -13188,6 +13370,9 @@ function drawMirrorFull(mx, my, mw, mh){
            second window. */
         const mrows = 1;
         for(const mside of [-1, 1]){
+          /* nothing stands in the sea in here either, or the glass shows palms
+             in the water while the windscreen shows an empty shore */
+          if(mB.sea && mside === seaSide) continue;
           for(let mrow = mrows - 1; mrow >= 0; mrow--){
             const ms = mrow * 101;
             if(sceneRand(widx, (mside < 0 ? 11 : 23) + ms) > (mSpec.rowDensity || mSpec.density)) continue;
@@ -13218,6 +13403,7 @@ function drawMirrorFull(mx, my, mw, mh){
             const mxi = a.x + mside * roadsideAt(a, moff, mw);
             const mxx = mxi + mside * mw2/2;
             if(mxx + mw2 < mx || mxx - mw2 > mx + mw) continue;
+            sceneSides[mside < 0 ? 'mLeft' : 'mRight']++;
             ctx.drawImage(mart, mxx - mw2/2, a.y - mh2, mw2, mh2);
           }
         }
@@ -15345,6 +15531,45 @@ requestAnimationFrame(frameLoop);
      the claim is that the lamps and the scenery use the CARS' system, and this
      is how a harness tells that apart from each of them merely working. */
   API.crestStats = function(){ return JSON.parse(JSON.stringify(crestStats)); };
+  /* ---- WHAT THE ROADSIDE DID, AND WHAT IT IS MADE OF (RLG-059) ---------
+     `scenerySides` counts objects actually drawn, per side, in the windscreen
+     and in the glass, beside the side the water is on. `sceneryProbe` builds
+     one kind through the REAL builders and reports how much ink is on it -
+     which is how a beach house is checked to exist and to have its windows lit
+     without a live frame in it. A live-frame diff is not a visual test
+     ([[RLG-053]]): the sky turns and the whole picture moves with it.
+     ------------------------------------------------------------------- */
+  API.scenerySides = function(){
+    return { left:sceneSides.left, right:sceneSides.right,
+             mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:seaSide };
+  };
+  API.resetScenerySides = function(){ sceneSides = { left:0, right:0, mLeft:0, mRight:0 }; };
+  API.sceneryProbe = function(name, kind){
+    const art = sceneryArt(name, kind), lit = sceneryLitArt(name, kind);
+    if(!art) return null;
+    const read = (im)=>{
+      if(!im) return { ink:0, x0:1, x1:0, y0:1, y1:0 };
+      const c = document.createElement('canvas');
+      c.width = im.width; c.height = im.height;
+      const g = c.getContext('2d');
+      g.drawImage(im, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let n = 0, x0 = c.width, x1 = -1, y0 = c.height, y1 = -1;
+      for(let y = 0; y < c.height; y++) for(let x = 0; x < c.width; x++){
+        if(d[(y*c.width + x)*4 + 3] > 24){
+          n++;
+          if(x < x0) x0 = x; if(x > x1) x1 = x;
+          if(y < y0) y0 = y; if(y > y1) y1 = y;
+        }
+      }
+      const px = c.width * c.height;
+      return { ink:+(n/px).toFixed(4),
+               x0:+(x0/c.width).toFixed(3), x1:+((x1+1)/c.width).toFixed(3),
+               y0:+(y0/c.height).toFixed(3), y1:+((y1+1)/c.height).toFixed(3) };
+    };
+    const a = read(art), l = read(lit);
+    return { w:art.width, h:art.height, body:a, lit:l, hasLit:!!lit };
+  };
   API.resetCrestStats = function(){ crestStats = {}; };
   API.spriteStats = function(){ return { drawn:spriteStats.drawn, culled:spriteStats.culled, clipped:spriteStats.clipped }; };
   API.spriteWidthAt = function(dz){

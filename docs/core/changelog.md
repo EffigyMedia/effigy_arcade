@@ -14,6 +14,34 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-84"></a>
+## [0.9.84] - 2026-08-30
+- Fixed: **nothing stands in the sea.** Owner: "we need to make sure that scenery objects aren't
+  generated in the side with the ocean." The roadside pass placed from one spec on both sides,
+  because until the coast arrived no place had a reason to differ left from right - so palms and
+  rocks stood in the water on whichever side the coast had rolled onto. The side the water is on is
+  skipped, using the segment's own biome rather than the car's, so the shore empties where the ground
+  colour changes ([RLG-059](../fragments/RLG-059.md)).
+- Added: **palms and beach houses on the landward side.** Owner: "we might want random palm trees and
+  beach houses on the opposing side." Four palms, two rocks and two houses, picked flat from the
+  placement hash, so a shoreline has more trees on it than buildings. One house stands on piles with
+  a deck, the other is low and long on the sand ([RLG-059](../fragments/RLG-059.md)).
+- Added: **a beach house lights up at night**, on the same clock as the city's windows and the street
+  lamps, with a light left on over the door. A house with dark windows in a place where everything
+  else has lit up reads as abandoned. The spec now carries its own `buildLit` beside `build`, the
+  same shape the lamps on the cars use - the thing that knows how an object is drawn is the thing
+  that says where its light comes out ([RLG-059](../fragments/RLG-059.md)).
+- Changed: **a palm has a crown.** Seen beside the houses at close range the first one read as a few
+  leaves on a telephone pole. Longer fronds, nine of them, drooping at the tips
+  ([RLG-059](../fragments/RLG-059.md)).
+- Added: **the water is behind you as well.** The mirror's ground is one flat fill, so the glass
+  showed a coast with no coast in it. Same shoreline, same side, same tone as the windscreen
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **the BUILD row has been saying MIXED since 0.9.56.** `road.js` stamps the version it was
+  written for so a device can tell a fresh shell from a cached engine, and that stamp had not moved
+  in twenty-seven versions - so the one diagnostic for a half-stale install cried wolf on every
+  install ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-83"></a>
 ## [0.9.83] - 2026-08-30
 - Changed: **the sea runs alongside the road, on one side, with beach between.** Owner: "I was kind
