@@ -54,7 +54,26 @@ var KEY = 'effigyarcade.' + A.scope + '.audio.v1';
 var SEED_KEY = 'effigyarcade.launcher.audio.v1';
 
 var ctx = null, master = null, sfxBus = null, musBus = null, uiBus = null;
-var verb = null, noiseBuf = null, hushed = false;
+/* ---- A REVERB PER BUS, NOT ONE FOR THE WHOLE ARCADE (RLG-078) -----------
+   Owner, 2026-08-29: "if I was to mute the music, the reverb bus still plays
+   so we want to make sure muting the music also mutes that bus."
+
+   There was one convolver and its return went straight to `master`, so a voice
+   was connected twice and only one of the two copies rode the mute: the dry
+   went to its bus and the wet went round it. Muting the music silenced the
+   music and left its tail ringing.
+
+   ONE RETURN COULD NOT HAVE FIXED IT. Muting the single return when MUSIC is
+   muted would take the sound effects' reverb with it, because one return
+   carries both. The tail has to ride the same gain its dry copy rides, and
+   that means a convolver per bus - each returning INTO its own bus rather than
+   into master, so `applyGains` mutes the tail without having to know it exists.
+
+   THEY ARE BUILT ON DEMAND. A convolution is not free and the arcade does not
+   use reverb on every bus; a bus gets one the first time a voice sends to it,
+   and buses that never do pay nothing.
+   ----------------------------------------------------------------------- */
+var verbs = {}, noiseBuf = null, hushed = false, outTap = null;
 /* Leaving the page has to silence us. A backgrounded tab still runs its
    scheduler, throttled to about a tick a second, so the bed keeps playing —
    late, dragging and out of time — long after you think you have closed it.
@@ -163,6 +182,19 @@ function buildVerb(){
   return cv;
 }
 
+/* The reverb for one bus, built the first time something asks for it. The
+   return lands on the BUS, which is the whole point: a tail rides the gain that
+   mutes its own dry signal, and nothing else has to know a reverb is there. */
+function verbFor(which){
+  var name = which === 'music' ? 'music' : which === 'ui' ? 'ui' : 'sfx';
+  if (verbs[name]) return verbs[name].conv;
+  var conv = buildVerb();
+  var ret = ctx.createGain(); ret.gain.value = 0.85;
+  conv.connect(ret); ret.connect(A.audio.bus(name));
+  verbs[name] = { conv: conv, ret: ret };
+  return conv;
+}
+
 /* ------------------------------------------------------------------ */
 A.audio = {
   ready:false,
@@ -202,9 +234,8 @@ A.audio = {
     musBus = ctx.createGain(); musBus.connect(master);
     uiBus  = ctx.createGain(); uiBus.connect(master);
 
-    verb = buildVerb();
-    var vg = ctx.createGain(); vg.gain.value = 0.85;
-    verb.connect(vg); vg.connect(master);
+    /* the reverbs are built on demand, one per bus - see verbFor */
+    verbs = {};
 
     var n = Math.floor(ctx.sampleRate * 2);
     noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -284,6 +315,25 @@ A.audio = {
   bus: function(which){
     return which === 'music' ? musBus : which === 'ui' ? uiBus : sfxBus;
   },
+  /* ---- A TAP ON THE OUTPUT, FOR A CHECK THAT HAS TO HEAR (RLG-078) -----
+     A check that reads a gain value off the Web Audio graph is not reading the
+     graph, and this project has paid three attempts to learn it (RLG-065): a
+     GainNode on a closed context reports a healthy value quite happily. A
+     ROUTING fault is worse than that - it changes no gain anywhere, so there is
+     no value to read that would be wrong.
+
+     What settles a routing question is the signal. This hangs an analyser off
+     `master` and hands it back, so a harness can mute a bus, play something on
+     it, and measure whether anything came out. The analyser is a sink and does
+     not connect onward, so it changes nothing about what is heard.
+     ------------------------------------------------------------------- */
+  tap: function(){
+    if (!ctx || !master) return null;
+    if (!outTap){ outTap = ctx.createAnalyser(); outTap.fftSize = 2048; master.connect(outTap); }
+    return outTap;
+  },
+  /* which buses have a reverb built, for a report that says what was measured */
+  verbBuses: function(){ var o = []; for (var k in verbs) o.push(k); return o.sort(); },
   now: function(){ return ctx ? ctx.currentTime : 0; }
 };
 
@@ -326,7 +376,7 @@ A.sfx = {
     }
     tail.connect(g);
     g.connect(A.audio.bus(o.bus || 'sfx'));
-    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verb); }
+    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
     osc.start(t0); osc.stop(t0 + dur + 0.06);
     return osc;
   },
@@ -353,7 +403,7 @@ A.sfx = {
 
     src.connect(f); f.connect(g);
     g.connect(A.audio.bus(o.bus || 'sfx'));
-    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verb); }
+    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
     src.start(t0); src.stop(t0 + dur + 0.06);
     return src;
   },
@@ -418,7 +468,7 @@ A.sfx = {
     } else {
       osc.connect(f); f.connect(g); g.connect(A.audio.bus(o.bus || 'sfx'));
     }
-    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verb); }
+    if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
     osc.start();
     return {
       osc:osc, filter:f, gain:g,
@@ -555,7 +605,7 @@ function startWatchdog(){
     /* after the opening scramble, back off so we are not polling forever */
     if (Date.now() > wdFast && ctx.state === 'running' && M.timer && !pending) return;
     if (ctx.state === 'closed'){
-      ctx = null; master = sfxBus = musBus = uiBus = verb = noiseBuf = null;
+      ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; outTap = null;
       A.audio.ctx = null; A.audio.ready = false;
       if (M.timer){ clearInterval(M.timer); M.timer = null; }
       /* `init` fires the subscribers itself now, for every engine after the
@@ -637,7 +687,7 @@ function teardown(){
   if (!ctx) return;
   try { if (master) master.disconnect(); } catch(e){}
   var dying = ctx;
-  ctx = null; master = sfxBus = musBus = uiBus = verb = noiseBuf = null;
+  ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; outTap = null;
   A.audio.ctx = null; A.audio.ready = false;
   try { if (dying.state !== 'closed') dying.close(); } catch(e){}
 }

@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-88"></a>
+## [0.9.88] - 2026-08-30
+- Fixed: **muting a bus mutes its reverb.** Owner: "if I was to mute the music, the reverb bus still
+  plays so we want to make sure muting the music also mutes that bus." There was one convolver and
+  its return went straight to master, so a voice was connected twice and only the dry copy rode the
+  mute - the music went quiet and its tail kept ringing. Each bus has its own reverb now, returning
+  into the bus, so a tail rides the same gain its dry copy rides
+  ([RLG-078](../fragments/RLG-078.md)).
+- Changed: **the reverbs are built on demand.** A convolution is not free and no bus needs one until
+  a voice sends to it. Measured in play: two get built, music and effects
+  ([RLG-078](../fragments/RLG-078.md)).
+- Added: **`tools/verb-test.py` listens rather than reads.** A routing fault changes no gain
+  anywhere, so there is no value on the graph that could be wrong - the only thing that answers it is
+  the signal. It taps the output through a new `Arcade.audio.tap()` and measures the tail. Falsified
+  by putting the shared return back: a muted bus then leaves its tail at 88% of full
+  ([RLG-078](../fragments/RLG-078.md)).
+
 <a id="v0-9-87"></a>
 ## [0.9.87] - 2026-08-30
 - Fixed: **the gate is the gears the car has.** A four-speed could be dragged onto a third rail it
