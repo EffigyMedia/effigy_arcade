@@ -492,13 +492,23 @@ body.hardware #paddles{ display:none }
   content:"";position:absolute;background:#05070a;border-radius:7px;
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9);
 }
-/* the cross rail, ending at the outer edge of the LAST rail rather than at the
-   edge of the plate - it is what the knob crosses between rails, so it has no
-   business running past the last one it can reach. The same 21 on both plates,
-   because both plates are their last rail plus the same padding. */
-#gate::before{ left:13px;right:21px;top:38px;height:10px }
+/* ---- THE PATTERN IS CENTRED IN THE PLATE (RLG-069) ----------------------
+   Owner, 2026-08-30: "The 4-speed needs to be centered in its housing."
+
+   It was not, and neither was the six-speed - the rails began at 13 and the
+   plate ran on past the last one, so every gate sat left of centre. The knob
+   was 4px out as well, which is the same fault seen from the other side: the
+   knob is 28 across and the rail 10, so a rail centred under its knob starts
+   9px to the right of it, and the knob positions were already 8, 31, 54.
+
+   One number does all of it. The rails begin at 8 + 9 = 17, the plate is the
+   knob's travel plus 8 of padding at each end, and the cross rail runs from
+   the first rail's left edge to the last one's right edge - which comes out as
+   the same 17 on both sides of both plates, because both plates are built the
+   same way. -------------------------------------------------------------- */
+#gate::before{ left:17px;right:17px;top:38px;height:10px }
 /* three rails, six slots */
-#gate::after{ left:13px;width:10px;top:11px;bottom:11px;
+#gate::after{ left:17px;width:10px;top:11px;bottom:11px;
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9),
              23px 0 0 #05070a,
              46px 0 0 #05070a }
@@ -508,16 +518,26 @@ body.hardware #paddles{ display:none }
    have. The rails are box-shadow copies offset 23px, so dropping one gives a
    five-speed and dropping two a four-speed, and the plate narrows to match.
    -------------------------------------------------------------------------- */
-/* A FIVE-SPEED HAS THE SAME THREE RAILS AS A SIX, which is why there is no
-   `gears5` rule here at all - the rules it used to carry were a copy of the
-   default and a cross rail that stopped short of a rail the car can reach. A
-   rail carries two gears, so five and six share the third one; what a
-   five-speed does not have is the slot BELOW fifth, and that is a fact about
-   the gears rather than about the plate. The engine reads it off `gears` and
-   leaves the knob in neutral there. */
-body.gears4 #gate::after{
+/* ---- AND A FIVE-SPEED SHOWS FIVE POSITIONS (RLG-069) -------------------
+   Owner, 2026-08-30: "We need to make sure that the 5-speed only shows the 5
+   positions."
+
+   It showed six and left the sixth reading NEUTRAL, which is a gearbox fact
+   dressed up as a picture: the player sees a slot and finds nothing in it. A
+   five-speed's third rail runs from fifth DOWN TO THE CROSS RAIL and stops.
+   So the shadow copies draw two full rails and the third is its own stub - a
+   different height, which is the one thing a box-shadow copy cannot be.
+   -------------------------------------------------------------------- */
+body.gears4 #gate::after,
+body.gears5 #gate::after{
   box-shadow:inset 0 2px 3px rgba(0,0,0,.9),
              23px 0 0 #05070a;
+}
+body.gears5 #shifter::after{
+  content:"";position:absolute;left:63px;top:11px;width:10px;height:37px;
+  background:#05070a;border-radius:7px;
+  box-shadow:inset 0 2px 3px rgba(0,0,0,.9);
+  pointer-events:none;
 }
 body.gears4 #shifter{ width:67px }
 
@@ -534,6 +554,23 @@ body.gears4 #shifter{ width:67px }
 }
 #knob.grab{ transition:none; cursor:grabbing; filter:brightness(1.2) }
 #knob b{ font-family:var(--disp);font-size:12px;font-weight:800;color:#1a1d22 }
+/* ---- A WORKING CAR HAS A BLACK KNOB (RLG-069) --------------------------
+   Owner, 2026-08-30: "I also want production and utility vehicles to have a
+   black leather or plastic shifter with white text on it."
+
+   The polished ball is what a sports car has. A saloon, a cab, a pickup, a van
+   and a lorry have a moulded black one with the pattern printed on it in white
+   - and it is the same shape and the same size, because it is the same control
+   with a different finish. The highlight is small and high, the way it is on
+   moulded plastic, rather than the broad specular sweep of chrome.
+   ---------------------------------------------------------------------- */
+body.workknob #knob{
+  background:radial-gradient(circle at 38% 26%, #56585c 0%, #303235 26%, #191a1d 62%, #0a0b0d 100%);
+  border:1px solid #2b2d31;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.16), inset 0 -6px 9px rgba(0,0,0,.7),
+             0 5px 12px -3px #000;
+}
+body.workknob #knob b{ color:#f2f4f8 }
 #gearNums{ position:absolute;inset:0;pointer-events:none }
 #gearNums span{
   position:absolute;font-family:var(--disp);font-size:9px;font-weight:800;

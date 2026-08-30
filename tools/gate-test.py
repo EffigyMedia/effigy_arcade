@@ -75,7 +75,7 @@ WALK = """(n) => {
     if(rail){ R.shift(0, 1); R.shift(0, -1); /* to the centre */ R.shift(1, 0); }
     R.shift(0, -1);  const up = R.gate();
     R.shift(0, 1); R.shift(0, 1); const dn = R.gate();
-    seen.push({ rail: up.rail, up: up.gear, down: dn.gear });
+    seen.push({ rail: up.rail, up: up.gear, down: dn.gear, downY: dn.y, midY: R.gate().y });
     R.shift(0, -1);  /* back to the centre for the next move across */
   }
   return seen;
@@ -187,6 +187,40 @@ def main():
         res.check(bool(last) and last[0]['up'] == 5 and last[0]['down'] == 0,
                   'a five-speed has fifth at the top of the third rail and neutral below it',
                   str(last))
+
+        # THE FIVE-SPEED'S THIRD RAIL STOPS AT THE CROSS RAIL. The owner asked for five
+        # positions shown, and a slot the knob can still be dragged into is a sixth position
+        # whatever the picture says - so this asserts the knob does not MOVE, rather than
+        # that it reads neutral when it gets there.
+        mids = page.evaluate('() => { const R = window.__probe.road; return R.gate(); }')
+        third = [s for s in seen5 if s['rail'] == 2]
+        res.check(bool(third) and third[0]['downY'] == 33,
+                  'a five-speed knob will not go below fifth at all',
+                  'y %s, where the middle is 33' % (third[0]['downY'] if third else '?'))
+        page.evaluate('() => window.__probe.road.setBody("SUPERCRUISER")')
+        page.wait_for_timeout(140)
+        seen6 = page.evaluate(WALK, None)
+        third6 = [s for s in seen6 if s['rail'] == 2]
+        res.check(bool(third6) and third6[0]['down'] == 6 and third6[0]['downY'] == 62,
+                  'a six-speed goes down the same rail into sixth', str(third6))
+
+        # the working cars carry a black knob and the rest do not
+        knobs = {}
+        for key in ['SALOON', 'CAB', 'LORRY', 'VAN', 'PICKUP', 'COUPE',
+                    'ROADSTER', 'MUSCLE', 'SUPERCRUISER']:
+            page.evaluate('(k) => window.__probe.road.setBody(k)', key)
+            page.wait_for_timeout(90)
+            knobs[key] = page.evaluate(
+                '() => ({ black: document.body.classList.contains("workknob"),'
+                ' text: getComputedStyle(document.querySelector("#knob b")).color })')
+        black = [k for k, v in knobs.items() if v['black']]
+        print('      black knob: %s' % ', '.join(sorted(black)))
+        res.check(sorted(black) == ['CAB', 'COUPE', 'LORRY', 'PICKUP', 'SALOON', 'VAN'],
+                  'the production and utility cars have the black knob, and only they',
+                  str(sorted(black)))
+        whites = {k: v['text'] for k, v in knobs.items() if v['black']}
+        res.check(all('255, 255, 255' in c or '242, 244, 248' in c for c in whites.values()),
+                  'and its text is white', str(whites))
 
         # a four-speed cannot get onto the third rail at all
         page.evaluate('() => window.__probe.road.setBody("MUSCLE")')

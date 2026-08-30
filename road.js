@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.88';
+window.ROAD_BUILD = '0.9.89';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6924,6 +6924,8 @@ function syncBoxClass(){
   const gn = gearCount();
   document.body.classList.toggle('gears4', gn <= 4);
   document.body.classList.toggle('gears5', gn === 5);
+  /* a working car's knob is moulded black with white text, not a polished ball */
+  document.body.classList.toggle('workknob', isWorkCar(optBody));
   /* ---- AND THE KNOB COMES BACK INSIDE THE GATE (RLG-069) ------------
      Change car in the garage and the knob keeps the position it had, so
      leaving a six-speed in sixth and taking out a four-speed left the knob
@@ -9340,6 +9342,20 @@ const SLOTS = [
    ------------------------------------------------------------------------ */
 function railCount(){ return gearCount() <= 4 ? 2 : 3; }
 function gateSlots(){ return SLOTS.filter(s => s.g <= gearCount()); }
+/* ---- THE WORKING CARS, WHICH ARE THE ONES NOBODY CHOSE FOR FUN ----------
+   Owner, 2026-08-30: production and utility vehicles get a black knob with
+   white text. These six are the fleet's road cars - the same bodies that fill
+   the traffic - as against the sports, super and formula classes, which keep
+   the polished ball.
+
+   THE POLICE CARS ARE NOT IN IT, and that is a decision rather than an
+   oversight: a cruiser is a production saloon underneath, but this game has
+   always treated the police as a class of their own, with their own liveries,
+   their own siren and their own place in the ladder. If the owner wants them
+   black too it is one entry.
+   ---------------------------------------------------------------------- */
+const WORK_BODIES = ['COUPE','SALOON','CAB','PICKUP','VAN','LORRY'];
+function isWorkCar(k){ return WORK_BODIES.indexOf(k) >= 0; }
 /* where the knob physically sits — a position in the gate, not a gear */
 let knobRail = 0, knobY = TOP_Y;
 /* Dropping into a lower gear cannot leave you doing more than that gear can
@@ -9365,7 +9381,17 @@ function placeKnob(){
 function shiftStep(dx, dy){
   const before = knobRail + ':' + knobY;
   if(dy < 0) knobY = knobY === BOT_Y ? MID_Y : TOP_Y;
-  else if(dy > 0) knobY = knobY === TOP_Y ? MID_Y : BOT_Y;
+  else if(dy > 0){
+    const to = knobY === TOP_Y ? MID_Y : BOT_Y;
+    /* ---- AND THERE IS NOTHING BELOW FIFTH (RLG-069) ----------------
+       A five-speed's third rail stops at the cross rail, so the knob cannot
+       go down it. Without this the gate would show five positions and hold
+       six, which is the same fault as before with the picture corrected -
+       and the picture is what the player is steering by. */
+    if(to === BOT_Y && !gateSlots().some(s => s.rail === knobRail && s.y === BOT_Y)){
+      /* nothing there: the knob stays where it is */
+    } else knobY = to;
+  }
   else if(dx && knobY === MID_Y)
     knobRail = clamp(knobRail + (dx > 0 ? 1 : -1), 0, railCount() - 1);
   if(before !== knobRail + ':' + knobY){ placeKnob(); snd.shift(); engineBrake(); }

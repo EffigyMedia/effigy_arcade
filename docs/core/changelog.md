@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-89"></a>
+## [0.9.89] - 2026-08-30
+- Fixed: **the pattern is centred in the plate.** Owner: "The 4-speed needs to be centered in its
+  housing." It was not, and neither was the six-speed - the rails began at 13 and the plate ran on
+  past the last one. The knob was 4px out as well, which is the same fault from the other side. One
+  number does both: a rail centred under its knob starts 9px right of it, and the cross rail then
+  ends the same distance from each edge on every plate ([RLG-069](../fragments/RLG-069.md)).
+- Fixed: **a five-speed shows five positions.** Owner: "We need to make sure that the 5-speed only
+  shows the 5 positions." It showed six with the sixth reading neutral, which is a gearbox fact
+  dressed up as a picture. Its third rail stops at the cross rail, and the knob will not go down it
+  ([RLG-069](../fragments/RLG-069.md)).
+- Added: **a black knob for the production and utility cars.** Owner: "I also want production and
+  utility vehicles to have a black leather or plastic shifter with white text on it." The saloon, the
+  cab, the coupe, the pickup, the van and the lorry get a moulded black one with the number in white;
+  the sports, super and formula classes keep the polished ball. The police cars are NOT in it, which
+  is a decision rather than an oversight - a cruiser is a production saloon underneath, but this game
+  treats the police as a class of their own ([RLG-069](../fragments/RLG-069.md)).
+
 <a id="v0-9-88"></a>
 ## [0.9.88] - 2026-08-30
 - Fixed: **muting a bus mutes its reverb.** Owner: "if I was to mute the music, the reverb bus still
