@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-67"></a>
+## [0.9.67] - 2026-08-29
+- Added: **roadside scenery, per biome, drawn toward the camera like the lamps.** FOREST puts thick
+  conifer on both sides; DESERT puts a sparse scatter of saguaro, and its emptiness is what makes the
+  other places read as full. CITY, MOUNTAIN and TUNDRA declare nothing yet and so draw nothing, with
+  no branch anywhere to say so ([RLG-059](../fragments/RLG-059.md)).
+- Added: **placement is a hash of the segment index, not a random number.** The segment index IS the
+  world position, so hashing it puts an object somewhere and leaves it there for as long as that
+  segment exists, without storing anything. `Math.random()` per frame would reshuffle the whole
+  roadside every frame and the forest would boil ([RLG-059](../fragments/RLG-059.md)).
+- Added: **the scenery goes through the cars' crest gate**, which is the whole of RLG-073 - a tree
+  behind a hill is hidden and one coming over a brow is cut off at the silhouette. Measured over
+  three roads: 5,763 clipped of 386,607 asked ([RLG-073](../fragments/RLG-073.md)).
+- Added: **an object belongs to its segment's biome, not to the car's**, so a transition changes the
+  roadside at the same place on the road where it changes the ground rather than switching under you
+  ([RLG-022](../fragments/RLG-022.md)).
+
 <a id="v0-9-66"></a>
 ## [0.9.66] - 2026-08-29
 - Fixed: **the mirror is framed like a mirror, and the eye height was never the fault.** It was

@@ -936,6 +936,7 @@ function resize(){
      other four at the old canvas size, and a biome change would then hand back
      a skyline built for a screen that no longer exists. */
   for(const k in skylineCache) delete skylineCache[k];
+  sceneryCache = {};
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', ()=>setTimeout(resize,150));
@@ -4846,6 +4847,150 @@ function buildSprites(){
     g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=2;
     g.strokeRect(w*0.06,h*0.30,w*0.88,h*0.42);
   });
+}
+
+
+/* ==== ROADSIDE SCENERY (RLG-059) =========================================
+   Owner, 2026-08-29: "each biome would have its own scenery objects that are
+   drawn towards the camera, just like the light posts."
+
+   THE SHAPE OF IT, and every part of this is load-bearing:
+
+   ONE SPRITE PER KIND, BUILT ONCE. A thick forest is a couple of hundred trees
+   in the frame. Painting each as a path every frame is a couple of hundred path
+   builds sixty times a second; drawing a cached bitmap is a scaled `drawImage`
+   the browser resolves in hardware. The skyline already works this way.
+
+   PLACEMENT IS A HASH OF THE SEGMENT, NOT A RANDOM NUMBER. `Math.random()` per
+   frame would reshuffle the whole roadside every frame - the forest would boil.
+   The segment index IS the world position, so hashing it gives an object that
+   stays where it was put, for as long as that segment exists, without storing
+   anything.
+
+   THEY GO THROUGH `crestGate`, which is the whole of RLG-073: the same clip and
+   cull the cars use, not a second implementation. A tree behind a hill is hidden
+   and one coming over a brow is cut off at the silhouette.
+
+   AND THEY BELONG TO THE SEGMENT'S BIOME, NOT THE CAR'S. `bioAt(idx)` - so
+   during a transition the trees stop and the cactus starts at the same place on
+   the road where the ground colour changes, rather than switching under you.
+   ========================================================================= */
+
+/* a stable pseudo-random in 0..1 from a segment index and a salt. Two calls with
+   the same pair always agree, which is what stops the roadside boiling. */
+function sceneRand(idx, salt){
+  let h = (idx * 374761393 + salt * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/* ---- WHAT EACH PLACE PUTS BESIDE ITS ROAD -------------------------------
+   `density` is the chance of an object on one side of one segment. `w` and `h`
+   are world sizes in the same units the road uses, so they scale with distance
+   exactly as a car does. `out` is how far beyond the road edge it stands, in
+   road widths - the lamps are at 1.15, and the owner asked for scenery "just
+   beyond the light posts".
+   ------------------------------------------------------------------------ */
+const SCENERY = {
+  FOREST: { density:0.92, w:0.30, h:0.95, out:1.35, spread:0.55, kinds:3,
+            build:(g,W2,H2,i)=>{
+              /* a conifer: a dark stack of triangles on a short trunk */
+              const lean = (i-1)*0.06;
+              g.fillStyle = '#241a12';
+              g.fillRect(W2*0.44, H2*0.86, W2*0.12, H2*0.14);
+              const tiers = 4;
+              for(let t=0;t<tiers;t++){
+                const f = t/tiers;
+                const cy = H2*(0.10 + f*0.72), hh = H2*0.30, hw = W2*(0.20 + f*0.30);
+                g.fillStyle = t%2 ? '#1b3a24' : '#16301d';
+                g.beginPath();
+                g.moveTo(W2*0.5 + lean*W2*(1-f), cy);
+                g.lineTo(W2*0.5 - hw, cy + hh);
+                g.lineTo(W2*0.5 + hw, cy + hh);
+                g.closePath(); g.fill();
+              }
+            } },
+  DESERT: { density:0.055, w:0.22, h:0.55, out:1.55, spread:0.9, kinds:3,
+            build:(g,W2,H2,i)=>{
+              /* a saguaro: a column and up to two arms. The owner asked for a
+                 sparse quantity of them and "just" was the word used - the
+                 desert is the empty one, and its emptiness is what makes the
+                 others read as full. */
+              g.fillStyle = '#2f4a2e';
+              const cw = W2*0.22;
+              g.fillRect(W2*0.5 - cw/2, H2*0.18, cw, H2*0.82);
+              g.beginPath(); g.arc(W2*0.5, H2*0.18, cw/2, Math.PI, 0); g.fill();
+              const arms = i === 0 ? 0 : i;
+              for(let a=0;a<arms;a++){
+                const side = a ? 1 : -1;
+                const ay = H2*(0.42 + a*0.14), aw = W2*0.17;
+                g.fillRect(W2*0.5 + side*cw*0.4 - (side<0?aw:0), ay, aw, cw*0.9);
+                g.fillRect(W2*0.5 + side*(cw*0.4 + aw) - (side<0?cw:0), ay - H2*0.20, cw*0.9, H2*0.22);
+                g.beginPath();
+                g.arc(W2*0.5 + side*(cw*0.4 + aw) + (side<0?-cw/2:cw/2), ay - H2*0.20, cw*0.45, Math.PI, 0);
+                g.fill();
+              }
+            } }
+};
+
+/* the built bitmaps, one per biome and kind. Cleared on resize with everything
+   else, because their pixel size follows the canvas. */
+let sceneryCache = {};
+function sceneryArt(key, i){
+  const spec = SCENERY[key];
+  if(!spec) return null;
+  const id = key + i;
+  if(!sceneryCache[id]){
+    /* generous pixels: these are drawn at anything from two pixels wide to a
+       third of the screen, and a bitmap that is too small reads as mush up close */
+    const pw = 96, ph = Math.round(96 * (spec.h / spec.w));
+    sceneryCache[id] = sprite(pw, ph, (g)=>{ g.clearRect(0,0,pw,ph); spec.build(g, pw, ph, i); });
+  }
+  return sceneryCache[id];
+}
+
+/* ---- one segment's worth, both sides ------------------------------------
+   Called from the road pass with the same numbers the lamp uses. It draws
+   nothing at all for a biome with no scenery declared, which is how CITY and
+   MOUNTAIN stay unbuilt without a branch anywhere else.
+   ------------------------------------------------------------------------ */
+function drawScenery(idx, p1, y1, z1, fade){
+  const B = bioAt(idx);
+  const spec = SCENERY[B.name];
+  if(!spec) return;
+  const sc = p1.scale * ROAD * W;
+  if(sc < 1) return;
+  for(const side of [-1, 1]){
+    const r0 = sceneRand(idx, side < 0 ? 11 : 23);
+    if(r0 > spec.density) continue;
+    const r1 = sceneRand(idx, side < 0 ? 37 : 41);
+    const r2 = sceneRand(idx, side < 0 ? 53 : 59);
+    const kind = Math.floor(r1 * spec.kinds) % spec.kinds;
+    const art = sceneryArt(B.name, kind);
+    if(!art) continue;
+    /* size varies with the object, not with the frame */
+    const grow = 0.72 + r2 * 0.56;
+    const w2 = sc * spec.w * grow;
+    const h2 = w2 * (art.height / art.width);
+    if(w2 < 0.8) continue;
+    const off = spec.out + r1 * spec.spread;
+    const x = p1.x + side * sc * off;
+    /* off the sides of the screen entirely - cheaper to skip than to clip */
+    if(x + w2 < 0 || x - w2 > W) continue;
+    const gate = crestGate(z1, y1, y1 - h2, 'scenery');
+    if(gate.hide){ crestDid('scenery', 'hidden'); continue; }
+    ctx.save();
+    if(gate.clip !== null){
+      crestDid('scenery', 'clipped');
+      ctx.beginPath(); ctx.rect(0, 0, W, gate.clip); ctx.clip();
+    } else crestDid('scenery', 'drawn');
+    /* the last stretch of the draw fades them in, so an object does not arrive
+       whole at the edge of the world. The lamps do the same. */
+    ctx.globalAlpha = Math.min(1, fade * 4);
+    ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
 }
 
 /* ---------- skyline ---------- */
@@ -10487,6 +10632,13 @@ function drawRoad(){
        -------------------------------------------------------------------- */
     emitBucket(n);
     if(!emitted[n+1]) emitBucket(n+1);
+
+    /* ---- WHAT STANDS BESIDE THE ROAD (RLG-059) ------------------------
+       Drawn BEFORE the lamps, because the road pass walks far to near and a
+       lamp post stands between you and the trees behind it. Its own biome
+       decides what it is, so a transition changes the roadside where it changes
+       the ground rather than under the car. */
+    drawScenery(idx, p1, y1, z1, fade);
 
     /* every eighth segment carries a lamp, alternating sides, throwing an
        ellipse of sodium light across the near lanes */

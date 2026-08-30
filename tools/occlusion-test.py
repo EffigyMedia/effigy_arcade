@@ -81,6 +81,11 @@ def stint(browser, secs):
         page.wait_for_timeout(1200)
         if not page.evaluate("() => !!(window.__road && window.__road.spriteStats)"):
             return None, 0, errs
+        # PINNED TO A BIOME THAT HAS SCENERY. The biome is picked fresh per load, and
+        # the crest ledger can only show what was drawn - a stint that landed in CITY
+        # would report no scenery and the check would read as a failure of the gate
+        # rather than of the tree supply.
+        page.evaluate("() => { window.__road.setBiomePair && window.__road.setBiomePair('FOREST','FOREST'); }")
         page.evaluate("() => { window.__road.setSpd && window.__road.setSpd(9000); }")
         page.evaluate("() => { window.__road.resetCrestStats && window.__road.resetCrestStats(); }")
         tot = {'drawn': 0, 'clipped': 0, 'culled': 0}
@@ -156,9 +161,13 @@ def main():
         for who, row in sorted(crest_tot.items()):
             print(f"  ..    crest gate, {who}: asked={row['asked']} hidden={row['hidden']} "
                   f"clipped={row['clipped']}")
-        ok('car' in crest_tot and 'lamp' in crest_tot,
-           'the cars AND the lamps go through one crest gate',
+        ok('car' in crest_tot and 'lamp' in crest_tot and 'scenery' in crest_tot,
+           'the cars, the lamps AND the roadside scenery go through one crest gate',
            f"kinds that asked: {sorted(crest_tot) or 'none'}")
+        scn = crest_tot.get('scenery', {})
+        ok(scn.get('clipped', 0) > 0,
+           'a tree coming over a brow is CUT OFF rather than popped in',
+           f"clipped={scn.get('clipped', 0)} of {scn.get('asked', 0)}")
         lamp = crest_tot.get('lamp', {})
         ok(lamp.get('asked', 0) > 0, 'the lamps ask it at all',
            f"asked={lamp.get('asked', 0)}")
