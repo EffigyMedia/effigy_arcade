@@ -153,6 +153,53 @@ def main():
                   'and they come from the sprite declaration, not from the title',
                   'stripped %s against %s lit' % (dark, lit))
 
+        # ---- A GARAGE TAP REBUILDS ONE CAR, NOT THE WHOLE ROAD (RLG-086) ----
+        # Owner, 2026-08-30, from the device: choosing a colour takes about half a second
+        # before the selection changes, and toggling is the same, and it is probably having
+        # to rebuild the vehicle. It was rebuilding all of them - the two player sprites,
+        # then the entire rival cache and every traffic sprite, none of which depend on the
+        # colour that was tapped. Measured at 215 to 335 ms a tap on a desktop.
+        #
+        # AND THIS IS NOT A STOPWATCH. A time is a number the machine decides, so a check
+        # written against one agrees with whatever machine ran it. A sprite is a canvas, so
+        # the exact question - was this rebuilt - is a question about IDENTITY. The harness
+        # writes a mark on two of them and looks for it afterwards.
+        page.click('[data-act="play"]')
+        page.wait_for_timeout(900)
+        swatches = page.query_selector_all('#veil [data-act^="paint:"]')
+        res.check(len(swatches) >= 2, 'the garage offers colours to tap',
+                  '%d swatch(es)' % len(swatches))
+        if len(swatches) >= 2:
+            marked = page.evaluate("""() => {
+                const R = window.__probe.road;
+                const t = R.fleetSprite('truck'), pl = R.playerSprite();
+                if(!t || !pl) return null;
+                t.__mark = 'before'; pl.__mark = 'before';
+                return true;
+            }""")
+            res.check(bool(marked), 'the engine hands over its sprites to be marked')
+            # tap a colour that is not the one already chosen
+            page.evaluate("""() => {
+                const b = document.querySelectorAll('#veil [data-act^="paint:"]');
+                b[b.length - 1].click();
+            }""")
+            page.wait_for_timeout(300)
+            after = page.evaluate("""() => {
+                const R = window.__probe.road;
+                const t = R.fleetSprite('truck'), pl = R.playerSprite();
+                return { truck: t ? t.__mark || null : 'missing',
+                         player: pl ? pl.__mark || null : 'missing' };
+            }""")
+            print('      after tapping a colour: the lorry is %s, the player %s'
+                  % ('the same object' if after['truck'] == 'before' else 'REBUILT',
+                     'the same object' if after['player'] == 'before' else 'rebuilt'))
+            res.check(after['truck'] == 'before',
+                      'a colour tap does not rebuild the traffic',
+                      'the lorry sprite was rebuilt as well (%r)' % after['truck'])
+            res.check(after['player'] != 'before',
+                      'and it does rebuild the car whose colour changed',
+                      'the player sprite was not rebuilt (%r)' % after['player'])
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()

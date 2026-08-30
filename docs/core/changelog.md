@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-5"></a>
+## [0.10.5] - 2026-08-30
+- Fixed: **the garage answers a tap at once.** Owner, from the device: choosing a colour takes about
+  half a second before the selection changes, and toggling is the same, and it is probably having to
+  rebuild the vehicle. It was rebuilding all of them. One sprite build painted the two player
+  sprites, then the ENTIRE rival cache - every rival body in every paint - and then every traffic
+  sprite, the patrol car and the super cruiser, none of which depend on the colour you tapped, on
+  the stripes, or on which car you are sitting in. The build is split at the seam that was already
+  there: the player's car, and everything the road brings with it. Measured on this desktop, a
+  colour tap went from 215-335 ms to 3.9-6.2 ms and the stripes toggle from 209-405 ms to 3.8-4.2 ms
+  ([RLG-086](../fragments/RLG-086.md)).
+
 <a id="v0-10-4"></a>
 ## [0.10.4] - 2026-08-30
 - Fixed: **a biome is a distance you drive, not a wait you sit through.** Owner, from the device:

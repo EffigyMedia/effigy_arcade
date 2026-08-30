@@ -4761,7 +4761,29 @@ function rigBox(rig){
        : [206,150];
 }
 
-function buildSprites(){
+/* ---- THE GARAGE REBUILDS ONE CAR, NOT THE WHOLE ROAD (RLG-086) --------
+   Owner, 2026-08-30, from the device: choosing a colour takes about half a
+   second before the selection changes, and toggling is the same. The owner's
+   own reading was that it must be rebuilding the vehicle, and that is exactly
+   what it was doing - all of them.
+
+   MEASURED FIRST: the click handler took 215 to 335 ms on a desktop, and the
+   sprite build alone took 219 to 240 ms of it. Everything else in the handler,
+   the menu redraw included, was noise. On a phone that is the half second.
+
+   AND ALMOST NONE OF THAT WORK WAS THE PLAYER'S CAR. One build painted the two
+   player sprites, then the entire rival cache - every rival body in every paint
+   - and then every traffic sprite, the patrol car and the super cruiser. Not
+   one of those depends on the colour you just tapped, on the stripes, or on
+   which car you are sitting in. They were rebuilt on every tap because they
+   lived in the same function.
+
+   So the function is split at the seam that was already there. `buildPlayer`
+   is what a garage choice changes; `buildFleet` is everything the road brings
+   with it, which is built at boot and left alone. `buildSprites` still does
+   both, so a caller that genuinely wants everything is unchanged.
+   ------------------------------------------------------------------- */
+function buildPlayer(){
   const shape = BODY[optBody] || BODY['MATADOR'];
   /* a `rig` body is a road car and uses the traffic painter, at that shape's
      own sprite size; everything else is a supercar and uses paintCar */
@@ -4824,6 +4846,13 @@ function buildSprites(){
       lamp:'#d61b3c', lamp2:'#ff7a86'
     }, pt)));
   }
+}
+
+/* Everything that is NOT the player's car: the rival cache and every vehicle
+   the road puts on itself. None of it reads `optPaint`, `optBody` or
+   `optStripes`, which is why it does not belong on the path a garage tap
+   takes (RLG-086). */
+function buildFleet(){
   /* Every rival is the SAME sports car as yours, in a different paint. They
      used to be a tinted saloon, which is why the grid never looked like a
      field of equals. Built once per colour and cached. */
@@ -4993,6 +5022,11 @@ function buildSprites(){
     g.strokeRect(w*0.06,h*0.30,w*0.88,h*0.42);
   });
 }
+
+/* Both halves. Kept so a caller that genuinely wants every sprite - the boot,
+   and anything that has changed what the ROAD is carrying - reads the same as
+   it always did. A garage tap is not one of those and calls `buildPlayer`. */
+function buildSprites(){ buildPlayer(); buildFleet(); }
 
 
 /* ==== ROADSIDE SCENERY (RLG-059) =========================================
@@ -14403,7 +14437,7 @@ function openVeil(html, go){
         freePaint = optPaint;
         if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { paint:optPaint });
       }
-      buildSprites();
+      buildPlayer();
       showGarage();
     }));
   veilBody.querySelectorAll('[data-act]').forEach(b => {
@@ -14662,7 +14696,7 @@ function showGarage(){
                     showGarage(); },
       /* three states in one control: TEST DRIVE, SINGLE RACE, TOURNAMENT */
       stripes: () => { if(stripesAllowed()) optStripes = !optStripes;
-                       buildSprites();
+                       buildPlayer();
                        if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { stripes:optStripes });
                        showGarage(); },
       mode:  () => {
@@ -14745,7 +14779,7 @@ function cycleBody(d){
   optBody = ks[i];
   syncPaintForBody();
   syncPaintForBody();
-  buildSprites();
+  buildPlayer();
   syncBoxClass();
   if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { body:optBody });
   showGarage();
@@ -15377,7 +15411,7 @@ function drawTrophyArt(){
    -------------------------------------------------------------------------- */
 function showUnlock(key){
   const was = optBody;
-  optBody = key; buildSprites();
+  optBody = key; buildPlayer();
   const B = BODY[key];
   document.body.classList.remove('trophying');
   openVeil(
@@ -15409,7 +15443,7 @@ function showUnlock(key){
       '<button class="go ghost" data-act="keep">KEEP MY CAR</button>' +
     '</div>',
     { drive: () => { tourOn = false; showGarage(); },
-      keep:  () => { optBody = was; buildSprites(); tourOn = false; showGarage(); } });
+      keep:  () => { optBody = was; buildPlayer(); tourOn = false; showGarage(); } });
   drawGarageCar();
 }
 
@@ -16158,6 +16192,11 @@ requestAnimationFrame(frameLoop);
     return (w2 < 1.2 || w2 > W*3.4) ? null : w2;
   };
   API.rivalSprite = function(k){ return RIVAL_SP[k]; };
+  /* the road's own vehicles, by name - `truck`, `van`, `cop` and so on. It
+     exists so a harness can ask whether a garage tap REBUILT one, by marking
+     the object and looking for the mark afterwards. A sprite is a canvas, so
+     identity is the exact question and no pixel has to be compared (RLG-086). */
+  API.fleetSprite = function(k){ return SP[k]; };
   /* ---- WHAT THE MIRROR WOULD DRAW FOR THIS VEHICLE ----------------------
      The same lookup `drawMirrorFull` makes, exposed so a harness can ask it
      about every vehicle in the game rather than about the two somebody
