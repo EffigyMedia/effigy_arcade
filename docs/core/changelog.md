@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-97"></a>
+## [0.9.97] - 2026-08-30
+- Fixed: **a slope measured over half a pixel is not a slope.** The sea's fill carries its edge down
+  to the bottom of the screen so the nearest slice ends on the shoreline's own angle rather than
+  dropping vertically - and that angle came from the slice's own two ends. A slice at the far end of
+  the draw is a third of a pixel tall, so dividing by its height turned a rounding error into a line
+  across the frame, wherever a nearer slice then failed to paint over the tail. A slice must be
+  taller than two pixels to have an angle worth reading ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **the audit's AUD-002 was four faults in the check and one in the game.** The check took
+  the largest change in x between neighbouring rows, which is only meaningful while the edge is
+  steeper than 45 degrees - a straight shoreline running shallow reported a 121 px "staircase". It
+  compared across rows that do not touch, so an edge leaving the screen and returning read as a
+  119 px kink. A second difference is large on a real bend. And a local line fit cannot tell a
+  staircase from a CREST, where the brow legitimately hides the slices between two shorelines and
+  the edge steps once. What a staircase is, without reference to angle, is an edge whose steps are
+  mostly nothing and occasionally a jump - so the test is now outliers against the edge's OWN median
+  step ([AUD-001](../fragments/AUD-001.md), [RLG-059](../fragments/RLG-059.md)).
+- Changed: **the horizon check counts water rather than a fraction of the band.** How much of the
+  strip is sea depends on where the shoreline crosses it: 23, 40, 45 and 67 per cent were all
+  correct pictures ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-96"></a>
 ## [0.9.96] - 2026-08-30
 - Fixed: **the driving HUD's readouts are anchored in the same space as its controls.** Owner: "fix

@@ -201,7 +201,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.96';
+window.ROAD_BUILD = '0.9.97';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -11695,8 +11695,24 @@ function drawRoad(){
            ---------------------------------------------------------- */
         const shF = p2.x + seaSide * roadsideAt(p2, sB.beach);
         const shN = p1.x + seaSide * roadsideAt(p1, sB.beach);
-        const shB = clamp(shN + (shN - shF) * ((H - y1) / ((y1 - y2) || 1)),
-                          -4*W, 5*W);
+        /* ---- A SLOPE MEASURED OVER HALF A PIXEL IS NOT A SLOPE -----
+           The fill carries its edge on down to the bottom of the screen so the
+           NEAREST slice, which nothing paints over, ends on the shoreline's own
+           angle rather than dropping vertically. That slope comes from the
+           slice's own two ends - and a slice at the far end of the draw is a
+           third of a pixel tall, so dividing by its height turns a rounding
+           error into a line that shoots across the frame. It showed as a kink
+           of 34 to 70 pixels in a shoreline whose ordinary step is 3, about one
+           frame in three, wherever a nearer slice then failed to paint over the
+           tail.
+
+           A slice has to be tall enough to have an angle worth reading. Below
+           that the edge simply drops, which is invisible: it is only ever the
+           nearest slice's tail that survives, and that slice is always tall.
+           -------------------------------------------------------- */
+        const dyS = y1 - y2;
+        const shB = dyS > 2 ? clamp(shN + (shN - shF) * ((H - y1) / dyS), -4*W, 5*W)
+                            : shN;
         if(seaSide < 0 ? (shF > 0 || shN > 0) : (shF < W || shN < W)){
           const edge = seaSide < 0 ? 0 : W;
           ctx.fillStyle = seaTone(sB);

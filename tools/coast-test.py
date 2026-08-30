@@ -306,7 +306,13 @@ def main():
         far_wet = fb['left'] if s['sea'] < 0 else fb['right']
         far_dry = fb['right'] if s['sea'] < 0 else fb['left']
         print('      far band decision: %s' % gap)
-        res.check(far_wet > fb['area'] * 0.20, 'the sea reaches the horizon', str(fb))
+        # A COUNT, NOT A FRACTION OF THE BAND. How much of the strip is water depends on
+        # where the shoreline happens to cross it - on a bend the sea is a narrow wedge and
+        # 18 per cent is a correct picture. Measured across runs: 23, 40, 45 and 67 per
+        # cent, all of them right. What separates "the sea reaches the horizon" from "it
+        # does not" is whether there is water up there at all, and with the far band removed
+        # this reads 0 to 40 pixels against thousands.
+        res.check(far_wet > 500, 'the sea reaches the horizon', str(fb))
         res.check(far_wet > far_dry * 6, 'and none of it on the landward side of the shore', str(fb))
 
         # ------------------------------------- and its edge is a line, not a staircase
@@ -314,15 +320,66 @@ def main():
         # all: near the vanishing point a slice is a pixel high and the two shapes agree.
         edge = page.evaluate('([a, b, sd]) => window.__probe.shoreEdge(a, b, sd)',
                              [hz + 40, hz + 130, s['sea']])
-        run = [x for x in edge if x is not None]
-        steps = [abs(run[i+1] - run[i]) for i in range(len(run)-1)] if len(run) > 20 else []
-        mean_step = (sum(steps)/len(steps)) if steps else 0
-        big = max(steps) if steps else 0
-        print('      shore edge over %d rows: mean step %.2f px, largest %.2f px'
-              % (len(run), mean_step, big))
-        res.check(len(run) > 20, "the water's edge was found on the screen", str(len(run)))
-        res.check(big <= mean_step * 3 + 2, "the water's edge is a line, not a staircase",
-                  'largest step %.2f against a mean of %.2f' % (big, mean_step))
+        # ---- CURVATURE, NOT STEP, AND THE DIFFERENCE MATTERS ---------------------
+        # The first version took the largest change in x between two neighbouring rows. That
+        # is only meaningful while the edge is STEEPER than 45 degrees. Where the shoreline
+        # runs shallow across the screen - which is exactly what a steeply falling road does
+        # to it - one row spans a hundred pixels of x on a perfectly straight edge, and the
+        # check reported a 57px "staircase" on a picture that is a clean diagonal. It failed
+        # about one run in four and an audit wrote it up as a defect in the game.
+        #
+        # What separates a line from a staircase is not how fast it moves, it is whether it
+        # BENDS. A straight edge at any angle has near-zero second difference; a staircase
+        # has a spike at every step. Rows where the edge has left the frame are dropped
+        # first, because a clamped value is not a measurement.
+        wide = page.evaluate('() => document.querySelector("canvas").getBoundingClientRect().width')
+        # AND ONLY BETWEEN ROWS THAT ACTUALLY TOUCH. Dropping the rows where the edge has
+        # left the frame leaves GAPS, and comparing across a gap treats two rows thirty
+        # apart as neighbours - which reported a 119px "bend" where the shoreline had simply
+        # gone off the right of the screen and come back. The profile is cut into contiguous
+        # runs first, and each run is measured on its own.
+        kept = [(i, x) for i, x in enumerate(edge) if x is not None and 3 < x < wide - 3]
+        runs, cur = [], []
+        for i, x in kept:
+            if cur and i != cur[-1][0] + 1:
+                runs.append([v for _, v in cur]); cur = []
+            cur.append((i, x))
+        if cur: runs.append([v for _, v in cur])
+        runs = [r for r in runs if len(r) >= 6]
+        run = max(runs, key=len) if runs else []
+        # ---- AN OUTLIER AGAINST THE EDGE'S OWN TYPICAL STEP ----------------------
+        # Four metrics were tried here and three of them were wrong in the same way: they
+        # assumed something about the edge's ANGLE. The largest step between rows is only
+        # meaningful while the edge is steeper than 45 degrees - a straight shoreline running
+        # shallow reported a 121px "staircase" and an audit wrote it up as a defect in the
+        # game. A second difference is large on any shallow edge and on a real bend. A local
+        # line fit handles both but cannot separate a staircase from a CREST, where the brow
+        # legitimately hides the slices between two shorelines and the edge steps once.
+        #
+        # What a staircase is, stated without reference to angle: an edge whose steps are
+        # mostly nothing and occasionally a jump. So the test is against the edge's OWN
+        # typical step - the median - and what it counts is outliers. A smooth edge at any
+        # angle has near-constant steps and no outliers; a crest has one; a staircase has one
+        # every few rows, for ever.
+        steps_all = []
+        for r in runs:
+            steps_all.append([abs(r[i+1] - r[i]) for i in range(len(r)-1)])
+        flat = sorted(v for st in steps_all for v in st)
+        median = flat[len(flat)//2] if flat else 0
+        limit = max(6.0, 4.0 * median)
+        outliers = sum(1 for st in steps_all for v in st if v > limit)
+        total = len(flat)
+        mean_step = (sum(flat)/total) if total else 0
+        worst_bend = max(flat) if flat else 0
+        print('      shore edge: %d rows in %d unbroken runs, median step %.2f px, '
+              'largest %.2f px, %d outliers past %.1f'
+              % (sum(len(r) for r in runs), len(runs), median, worst_bend, outliers, limit))
+        res.check(sum(len(r) for r in runs) > 22, "the water's edge was found on the screen",
+                  '%d rows in %d unbroken runs' % (sum(len(r) for r in runs), len(runs)))
+        # one outlier is a crest, which the ground hides and only the water's edge can show
+        res.check(outliers <= 2, "the water's edge is a line, not a staircase",
+                  '%d of %d steps are outliers past %.1f px, largest %.2f, median %.2f'
+                  % (outliers, total, limit, worst_bend, median))
 
         # ------------------------------------------------ what the coast is made of
         kinds = [page.evaluate('(k) => window.__probe.road.sceneryProbe("OCEAN", k)', k)
