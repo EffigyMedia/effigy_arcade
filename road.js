@@ -76,7 +76,9 @@ const CAM_H = 1050;
 /* how far above the driving eye the mirror sits, as a multiple of it. See the
    note in `drawMirrorFull`: this has moved three times and is the number that
    keeps needing to. */
-let MIRROR_EYE = 3.00;
+let MIRROR_EYE = 2.20;
+/* where the mirror's horizon sits in the glass, as a fraction from the top */
+let MIRROR_HORIZON = 0.45;
 const FOV = 100;
 const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
@@ -11829,7 +11831,14 @@ function drawMirrorFull(mx, my, mw, mh){
      bottom, exactly as it does out of the back window, and a car 20,000 units
      behind is the same size in here as one 20,000 ahead is out there.
      -------------------------------------------------------------------------- */
-  const vpy = my + mh*0.16;            /* the horizon, near the top */
+  /* ---- WHERE THE HORIZON SITS IN THE GLASS (RLG-079) -------------------
+     At 0.16 the horizon was near the TOP, so 84% of the pane was road surface
+     and the view read as looking DOWN at the tarmac rather than back along it.
+     That is the owner's report - "it looks at the ground and cars bumpers" -
+     and no amount of eye height fixes it, because the eye height only decides
+     how fast the road falls away BELOW this line.
+     -------------------------------------------------------------------- */
+  const vpy = my + mh*MIRROR_HORIZON;
   const H_M = mh - (vpy - my);         /* usable depth below it */
   /* ---- THE MIRROR SITS HIGHER THAN THE ROAD ---------------------------
      It used the forward view's `CAM_H` unchanged, which puts the eye at the
@@ -11849,11 +11858,24 @@ function drawMirrorFull(mx, my, mw, mh){
      Fixed at the same height for every vehicle, which is high enough to see
      OVER whatever is following you rather than at its bumper.
      ------------------------------------------------------------------- */
-  /* ---- AND IT HAS BEEN RAISED THREE TIMES NOW -------------------------
-     1.55x, then 2.15x, and the owner still reported it "shows too low to the
-     ground" from the device. So it is a named tunable rather than a number
-     buried in an expression: the value is the one thing about this view that
-     keeps needing to move, and the next session should be able to find it.
+  /* ---- AND THE EYE HEIGHT WAS NEVER THE FAULT -------------------------
+     It was raised three times - 1.55x, 2.15x, 3.00x - each time from a written
+     description, and each time the owner reported it still wrong. The fourth
+     report said what none of the earlier ones had: "if it was IRL, I wouldn't
+     be able to look drivers behind me in their eyes... it looks at the ground
+     and cars bumpers/grill."
+
+     A PICTURE SETTLED IT IN ONE LOOK. `tools/mirror-shot.py` renders the pane
+     enlarged, and at 3.00x it is almost entirely tarmac plunging away with the
+     car behind a speck at the top. The fault was never the eye height: it was
+     `MIRROR_HORIZON` at 0.16, which put the horizon near the TOP of the glass
+     so 84 per cent of it was road surface. That is a view looking DOWN at the
+     tarmac, and no eye height fixes it, because the eye only decides how fast
+     the road falls away BELOW that line. Raising it three times made it worse
+     each time.
+
+     The horizon is at 0.45 now, near the middle where a real mirror puts it,
+     and the eye came back DOWN to 2.20x.
 
      Higher here means the eye looks further DOWN on the road, so the ground
      plane falls away faster in the glass and you see over what is behind you
@@ -13735,6 +13757,7 @@ requestAnimationFrame(frameLoop);
      It is the number that says whether the view looks DOWN on the road or along
      it, which is the thing the owner has reported twice. */
   API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
+  API.mirrorHorizon = function(v){ if(v > 0) MIRROR_HORIZON = v; return MIRROR_HORIZON; };
   API.mirrorAt = function(dz){
     if(!(dz > 200)) return null;
     /* the same arithmetic `rproj` does, in fractions of the glass below its

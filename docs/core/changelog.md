@@ -14,6 +14,20 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-66"></a>
+## [0.9.66] - 2026-08-29
+- Fixed: **the mirror is framed like a mirror, and the eye height was never the fault.** It was
+  raised three times from written descriptions - 1.55x, 2.15x, 3.00x - and reported still wrong after
+  every one. The horizon sat at 0.16 of the glass, near the TOP, so 84% of the pane was road surface
+  and the view read as looking DOWN at the tarmac. No eye height fixes that, because the eye only
+  decides how fast the road falls away below that line: raising it three times made it worse each
+  time. The horizon is at 0.45 now and the eye came back down to 2.20x
+  ([RLG-079](../fragments/RLG-079.md)).
+- Added: **`tools/mirror-shot.py`** - it renders the mirror pane on its own, enlarged, at any eye
+  height, horizon, weather and hour. One look at it settled in seconds what three rounds of reasoning
+  from the projection had got backwards. It asserts nothing; it is an instrument, not a gate
+  ([RLG-079](../fragments/RLG-079.md)).
+
 <a id="v0-9-65"></a>
 ## [0.9.65] - 2026-08-29
 - Fixed: **the mirror shows the world it is in.** It never had. The sky was two fixed blues, the
