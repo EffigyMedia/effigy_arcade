@@ -130,6 +130,43 @@ window.__probe.inkOf = function(id){
            padBelow:+(((c.height - 1 - bot) * sy)).toFixed(1) };
 };
 
+/* ---- AND WHERE THE INK IS SIDEWAYS ---------------------------------------------------
+   The same lesson as `inkOf`, turned through ninety degrees. The bottle's VALVE and its
+   NOZZLE are pseudo-elements hanging off the left of the button, outside the box the
+   button occupies, so a bottle whose BOX is centred over the pads is drawn left of them.
+   The owner saw exactly that. This hands the harness a strip of the screen to photograph
+   and the two numbers to judge it against; the reading itself is done on the picture.
+   ------------------------------------------------------------------------------------- */
+window.__probe.hideRoad = function(){
+  var s = document.createElement('style');
+  s.id = '__inkbg';
+  /* the road behind, and the wheel beside, are both ink that is not the bottle */
+  s.textContent = 'canvas{visibility:hidden !important}'
+                + '#wheel,#horn,#shifter,#paddles,#gas,#brake{visibility:hidden !important}';
+  document.head.appendChild(s);
+};
+window.__probe.showRoad = function(){
+  var s = document.getElementById('__inkbg');
+  if(s) s.remove();
+};
+window.__probe.bottleBand = function(){
+  var nz = document.getElementById('nitro');
+  var g = document.getElementById('gas'), br = document.getElementById('brake');
+  if(!nz || !g || !br) return null;
+  var r = nz.getBoundingClientRect(),
+      rg = g.getBoundingClientRect(), rb = br.getBoundingClientRect();
+  /* the strip is the bottle's own rows, widened well past both ends of the button so
+     anything hanging off it is inside the picture rather than cropped out of it */
+  var pad = 48;
+  return {
+    clip: { x:Math.round(r.left - pad), y:Math.round(r.top),
+            width:Math.round(r.width + pad * 2), height:Math.round(r.height) },
+    padsMid: +(((rg.left + rg.right) + (rb.left + rb.right)) / 4).toFixed(2),
+    boxLeft: +r.left.toFixed(2), boxRight: +r.right.toFixed(2),
+    boxMid: +((r.left + r.right) / 2).toFixed(2)
+  };
+};
+
 window.__probe.cluster = function(){
   var h = document.documentElement.clientHeight;
   var out = {};
@@ -159,6 +196,33 @@ def serve(root):
     httpd.allow_reuse_address = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, httpd.socket.getsockname()[1]
+
+
+def ink_span_x(page, clip):
+    """The leftmost and rightmost COLUMN of the strip that has anything painted in it.
+
+    A column counts as ink when some pixel in it is far enough from the strip's own corner
+    colour to be something a person would see. The bottle's drop shadow is deliberately not
+    ink: it is a soft gradient a few shades off the background, and centring a picture on its
+    shadow is not what the owner asked for.
+    """
+    from PIL import Image
+    import io
+    shot = page.screenshot(clip=clip)
+    im = Image.open(io.BytesIO(shot)).convert('RGB')
+    w, h = im.size
+    px = im.load()
+    bg = px[0, h // 2]                       # the strip is padded well past the bottle
+    left, right = None, None
+    for x in range(w):
+        for y in range(h):
+            r, g, b = px[x, y]
+            if max(abs(r - bg[0]), abs(g - bg[1]), abs(b - bg[2])) > 40:
+                if left is None:
+                    left = x
+                right = x
+                break
+    return left, right, w, h
 
 
 class Results:
@@ -279,6 +343,35 @@ def main():
             res.check(abs(below - above) <= 2.0,
                       'the bottle has equal padding above the pads and below the gauges',
                       '%.1f below against %.1f above' % (below, above))
+
+        # ---- AND IT IS CENTRED BY ITS INK, NOZZLE INCLUDED (RLG-082) -----------
+        # Owner, 2026-08-30: the bottle still is not laterally centred, because the
+        # measurement did not include its NOZZLE - the valve and the tapered outlet are
+        # pseudo-elements that hang off the LEFT of the button, outside the box that was
+        # being centred. The same lesson the gauges taught vertically: centre the picture,
+        # not the container it is drawn in.
+        band = page.evaluate('() => window.__probe.bottleBand()')
+        if band:
+            page.evaluate('() => window.__probe.hideRoad()')
+            page.wait_for_timeout(120)
+            l, r, sw, sh = ink_span_x(page, band['clip'])
+            page.evaluate('() => window.__probe.showRoad()')
+            if l is None:
+                res.check(False, 'the bottle paints something in its own band', 'no ink found')
+            else:
+                ink_l = band['clip']['x'] + l
+                ink_r = band['clip']['x'] + r + 1
+                ink_mid = (ink_l + ink_r) / 2
+                print('      the bottle: box %.1f to %.1f (mid %.1f), INK %.1f to %.1f'
+                      ' (mid %.1f), the pads centre on %.1f'
+                      % (band['boxLeft'], band['boxRight'], band['boxMid'],
+                         ink_l, ink_r, ink_mid, band['padsMid']))
+                print('      the nozzle and valve hang %.1f px off the left of the button'
+                      % (band['boxLeft'] - ink_l))
+                res.check(abs(ink_mid - band['padsMid']) <= 1.5,
+                          'the bottle is centred over the pads by its INK, nozzle included',
+                          'the ink centres on %.1f where the pads centre on %.1f, off by %.1f'
+                          % (ink_mid, band['padsMid'], ink_mid - band['padsMid']))
 
         # ---- AND THE TOP ROW CLEARS THE GLASS, WHATEVER SIZE THE GLASS IS -------
         # The clearance used to be a hardcoded 58 in a different file from the two numbers

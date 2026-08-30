@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-1"></a>
+## [0.10.1] - 2026-08-30
+- Fixed: **the bottle is centred by its ink, and the nozzle is part of the ink.** The owner saw that
+  the NOS bottle still sat left of centre over the pedals, and named the cause: the measurement did
+  not include the NOZZLE. The valve and the tapered outlet are drawn outside the button's own box
+  and hang 20 px off its left, so a button centred on the pads drew a picture 12.5 px left of them.
+  How far the ink reaches past the button is now written once, and both the outlet and the button's
+  offset are measured from it, so the two cannot disagree. `hud-test.py` photographs the strip the
+  bottle occupies and reads the leftmost and rightmost painted column, because a check that measured
+  the box would have agreed with the build the owner was complaining about
+  ([RLG-082](../fragments/RLG-082.md)).
+
 <a id="v0-10-0"></a>
 ## [0.10.0] - 2026-08-30
 - Fixed: **the gap the eye sees, not the gap the boxes have.** The owner saw more space above the
