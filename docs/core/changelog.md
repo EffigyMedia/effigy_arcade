@@ -14,6 +14,20 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-91"></a>
+## [0.9.91] - 2026-08-30
+- Fixed: **every harness finds its own root, so any of them can be run as evidence.** Seven served
+  the folder from `.` and imported from `tools`, which only works from the project directory - and
+  `step.py` runs a command with the environment's root as its working directory. So each one 404'd or
+  raised there and recorded a FALSE FAILURE, twice in one session before it was worth fixing
+  ([RLG-039](../fragments/RLG-039.md)).
+- Fixed: **`scene-test.py` waited thirty seconds for a screen that must never exist.** It clicked
+  CONTROLS to check the attract animation stops when a menu takes over, and this project ruled a
+  controls page out of existence - `menu-test.py` asserts its absence. It uses OPTIONS, which every
+  title has ([RLG-039](../fragments/RLG-039.md), [RLG-002](../fragments/RLG-002.md)).
+- Fixed: **`scene-test.py` needed its output directory as an argument**, so running it the way every
+  other harness is run raised before it opened a browser ([RLG-039](../fragments/RLG-039.md)).
+
 <a id="v0-9-90"></a>
 ## [0.9.90] - 2026-08-30
 - Fixed: **the title card wears the car's own tail lights.** Owner: the title menu shows the wrong

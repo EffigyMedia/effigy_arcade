@@ -35,13 +35,20 @@ SKIPS rather than passes when the chosen body has not been converted.
 
 import sys, threading, http.server, socketserver, functools, importlib.util
 from pathlib import Path
-sys.path.insert(0, 'tools')
+# ---- IT FINDS ITS OWN ROOT (RLG-039) --------------------------------------------------
+# This served the folder from '.' and imported from 'tools', so it only ran from the project
+# directory. `step.py` runs a command with the ENVIRONMENT's root as its working directory, so
+# every one of these harnesses 404'd or raised there and recorded a FALSE FAILURE as evidence -
+# twice in one session before it was worth fixing. The root is the file's own parent.
+from pathlib import Path as _P
+ROOT = _P(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tools'))
 from harness import launch_chromium, console_utf8
 from playwright.sync_api import sync_playwright
-spec = importlib.util.spec_from_file_location('dt', Path('tools/drive-test.py'))
+spec = importlib.util.spec_from_file_location('dt', ROOT / 'tools' / 'drive-test.py')
 dt = importlib.util.module_from_spec(spec); spec.loader.exec_module(dt)
 console_utf8()
-h = functools.partial(http.server.SimpleHTTPRequestHandler, directory='.')
+h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT))
 srv = socketserver.TCPServer(('127.0.0.1', 0), h); PORT = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 

@@ -21,13 +21,20 @@ player must never round a bend into a wall.
 """
 import sys, threading, http.server, socketserver, functools
 
-sys.path.insert(0, 'tools')
+# ---- IT FINDS ITS OWN ROOT (RLG-039) --------------------------------------------------
+# This served the folder from '.' and imported from 'tools', so it only ran from the project
+# directory. `step.py` runs a command with the ENVIRONMENT's root as its working directory, so
+# every one of these harnesses 404'd or raised there and recorded a FALSE FAILURE as evidence -
+# twice in one session before it was worth fixing. The root is the file's own parent.
+from pathlib import Path as _P
+ROOT = _P(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tools'))
 from harness import launch_chromium, console_utf8
 from playwright.sync_api import sync_playwright
 
 console_utf8()
 
-handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory='.')
+handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT))
 srv = socketserver.TCPServer(('127.0.0.1', 0), handler)
 PORT = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
