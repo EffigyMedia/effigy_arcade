@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-4"></a>
+## [0.10.4] - 2026-08-30
+- Fixed: **a biome is a distance you drive, not a wait you sit through.** Owner, from the device:
+  park at the side of the road and the biome changes anyway, without the car having moved. It did -
+  the countdown ran in SECONDS, so a place lasted seventy to a hundred and thirty seconds of sitting
+  still as readily as of driving. The comment above it has said "changes biome every few miles"
+  since the day it was written, so the intent was distance all along and only the arithmetic was
+  time. It counts down in world units now, spent by the same quantity the road position advances
+  by, so it stops when you do. The range is the old one converted rather than replaced: seventy to
+  a hundred and thirty seconds at the speed the interstate is actually driven is six and a half to
+  twelve miles, so the pacing at a normal pace is unchanged
+  ([RLG-022](../fragments/RLG-022.md)).
+- Fixed: **a new run starts a new map.** Neither the countdown nor the flag that says a run has
+  chosen its opening place was ever cleared, so only the FIRST run of a page load chose one
+  outright. A second run inherited the last one and whatever was left of its countdown, which could
+  be a few hundred units - a place that ended before the car had left the starting line
+  ([RLG-022](../fragments/RLG-022.md)).
+
 <a id="v0-10-3"></a>
 ## [0.10.3] - 2026-08-30
 - Added: **every other vehicle throws its own headlight beam.** Owner: would it be too much if all

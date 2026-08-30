@@ -6514,6 +6514,15 @@ function reset(){
      previous run ended at 3am is not a setting. The continuity is worth less
      than the control, so the run starts where the player said. */
   dayClock = TIMES[optTime].p * DAY_SECONDS;
+  /* ---- AND THE MAP STARTS AGAIN WITH IT (RLG-022) --------------------
+     Neither of these was ever cleared, so only the FIRST run of a page load
+     chose its opening place outright. A second run inherited the last one and
+     the leftover countdown with it, which could be a few hundred units - a
+     place that ended before the car had left the starting line. The same
+     reasoning as the sky one line above: continuity across runs is worth less
+     than a run that starts where it says it does.
+     ---------------------------------------------------------------- */
+  biomeStarted = 0; biomeNext = 0;
   traffic=[]; cops=[]; blocks=[]; crates=[]; fx=[];
   shake=0; hitFlash=0; sirenPhase=0; lastKmh=0; iframe=0;
   acc=0;
@@ -7372,6 +7381,26 @@ let wet = 0, wetTarget = 0, wetNext = 0, snowy = 0, settle = 0;
    few miles — and the weather changes with it, which is why a desert stretch
    feels different from a mountain one without anything else being said.
    ---------------------------------------------------------------------- */
+/* ---- AND IT IS A DISTANCE, NOT A CLOCK (RLG-022) ---------------------
+   Owner, 2026-08-30, from the device: park at the side of the road and the
+   biome changes anyway, without the car having moved.
+
+   It did. This counted DOWN IN SECONDS - `biomeNext -= dt` - so a place lasted
+   between seventy and a hundred and thirty seconds of sitting still as readily
+   as of driving. The comment four lines above has said "changes biome every few
+   miles" since the day it was written, so the intent was distance all along and
+   only the arithmetic was time.
+
+   It counts down in WORLD UNITS now and is decremented by `spd*dt`, which is
+   exactly the quantity `pos` advances by. Stop, and it stops with you.
+
+   THE RANGE IS THE OLD ONE, CONVERTED RATHER THAN REPLACED. Seventy to a
+   hundred and thirty seconds at the speed the interstate is actually driven -
+   drive-test measures a mean of 156 mph over eight runs - is six and a half to
+   twelve miles, which is what "every few miles" meant. So the pacing a player
+   feels at a normal pace is unchanged, and what changes is that crawling no
+   longer shortens a place and parking no longer ends one.
+   ------------------------------------------------------------------- */
 let biomeNext = 0;
 /* whether this run has chosen its opening biome yet. A fact about the run, not
    something to infer from the length of a frame - see stepBiome. */
@@ -7554,7 +7583,8 @@ function stepBiome(dt){
       endImpossibleWeather();
     }
   }
-  biomeNext -= dt;
+  /* the distance travelled this frame, which is zero when the car is parked */
+  biomeNext -= spd * dt;
   if(biomeNext <= 0){
     /* ---- THE FIRST CALL PICKS A PLACE. IT DOES NOT CHANGE ONE (RLG-022) --
        Owner, 2026-08-30, from the device: "my first test run started with a
@@ -7597,7 +7627,7 @@ function stepBiome(dt){
          put the water on the same side */
       rollSeaSide();
     }
-    biomeNext = rnd(70, 130);
+    biomeNext = rnd(6.5, 12) * MILE;
   }
 }
 
@@ -15621,6 +15651,18 @@ requestAnimationFrame(frameLoop);
              atCarWeather:+clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1).toFixed(3) };
   };
   /* place one, so a harness does not wait 70 to 130 seconds for the timer */
+  /* ---- HOW FAR TO THE NEXT PLACE, AND SETTING IT (RLG-022) ------------
+     Debug only. The countdown runs to between six and a half and twelve miles,
+     so a harness cannot wait it out: the defect it has to catch is a place
+     ending while the car is PARKED, and proving that honestly means putting the
+     boundary a few hundred units away and then not moving. With the countdown
+     in distance, parking holds it there for ever; with the old one in seconds,
+     it fires in under a second. Two seconds of harness either way.
+     ------------------------------------------------------------------ */
+  API.biomeCountdown = function(v){
+    if(v !== undefined) biomeNext = v;
+    return biomeNext;
+  };
   API.startBiomeChange = function(k){
     let want = k;
     if(!want || !BIOMES[want] || want === biome){

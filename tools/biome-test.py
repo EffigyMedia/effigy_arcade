@@ -677,6 +677,48 @@ def main():
                   'with the flip back, the car and the horizon agree - which the check above forbids',
                   'car %.3f, horizon %.3f' % (flip['atCar'], flip['atHorizon']))
 
+        # ---------------------------------- and a place is a DISTANCE, not a wait
+        # Owner, 2026-08-30, from the device: park at the side of the road and the biome
+        # changes anyway, without the car having moved. It did - the countdown was
+        # `biomeNext -= dt`, so a place lasted seventy to a hundred and thirty SECONDS of
+        # sitting still as readily as of driving.
+        #
+        # THE COUNTDOWN IS PUT WITHIN REACH RATHER THAN WAITED OUT. It runs to between six
+        # and a half and twelve miles, so a harness cannot drive or sit through one. The
+        # boundary is placed a few hundred units ahead instead, which is under a tenth of a
+        # second at speed and for ever at a standstill. That is the whole distinction.
+        page.evaluate("""() => { const R = window.__probe.road;
+            R.setBiomePair('DESERT', 'DESERT'); R.setSpd(0); R.biomeCountdown(600); }""")
+        page.wait_for_timeout(2500)
+        parked = page.evaluate("""() => { const R = window.__probe.road;
+            const s = R.biomeSweep();
+            return { left: R.biomeCountdown(), from: s.from, to: s.to }; }""")
+        print('      parked for 2.5s with 600 units to run: %.0f left, from=%s to=%s'
+              % (parked['left'], parked['from'], parked['to']))
+        res.check(parked['from'] == parked['to'],
+                  'parking at the side of the road does not change the biome',
+                  'it went from %s to %s without the car moving'
+                  % (parked['from'], parked['to']))
+        res.check(abs(parked['left'] - 600) < 1.0,
+                  'and the distance to the next place does not run down while stopped',
+                  '%.1f units left of 600 after two and a half seconds parked'
+                  % parked['left'])
+
+        # AND DRIVING SPENDS IT. Without this the check above passes on a build where the
+        # countdown never moves at all, which is a different bug wearing the same result.
+        page.evaluate("""() => { const R = window.__probe.road;
+            R.setSpd(R.MAX_SPD * 0.8); }""")
+        page.wait_for_timeout(900)
+        drove = page.evaluate("""() => { const R = window.__probe.road;
+            const s = R.biomeSweep();
+            return { left: R.biomeCountdown(), from: s.from, to: s.to }; }""")
+        print('      then driving for 0.9s: %.0f left, from=%s to=%s'
+              % (drove['left'], drove['from'], drove['to']))
+        res.check(drove['from'] != drove['to'],
+                  'and driving into one does',
+                  'still %s to %s after driving through the boundary'
+                  % (drove['from'], drove['to']))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors during the run', '; '.join(errs[:3]))
         browser.close()
