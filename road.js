@@ -5050,9 +5050,11 @@ const SCENERY = {
      placement hash, so a near buttress and a far ridge can stand on the same
      segment without either knowing about the other.
      ------------------------------------------------------------------- */
-  MOUNTAIN: { density:0.85, w:1.60, h:2.30, out:1.05, spread:2.60, kinds:6,
+  MOUNTAIN: { density:0.85, rowDensity:0.46, rows:3, out:0.35, outFar:8.0,
+              w:1.60, h:2.30, spread:2.60, kinds:6,
               build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, false) },
-  TUNDRA:   { density:0.85, w:1.60, h:2.30, out:1.05, spread:2.60, kinds:6,
+  TUNDRA:   { density:0.85, rowDensity:0.46, rows:3, out:0.35, outFar:8.0,
+              w:1.60, h:2.30, spread:2.60, kinds:6,
               /* ---- THE SAME ROCK, PAINTED WHITE (RLG-059) --------------
                  Owner: the tundra's "mountains will be white and the scenery
                  rock faces cliff faces and mountain sides would also be white
@@ -5089,7 +5091,8 @@ const SCENERY = {
               g.fillStyle = '#12151f';
               CITY_WINDOWS(bw, bh, x0, y0, (wx, wy, ww, wh) => g.fillRect(wx, wy, ww, wh));
             } },
-  FOREST: { density:0.92, w:0.60, h:1.90, out:1.70, spread:1.10, kinds:3,
+  FOREST: { density:0.92, rowDensity:0.66, rows:5, out:0.10, outFar:7.0,
+            w:0.60, h:1.90, spread:1.10, kinds:3,
             build:(g,W2,H2,i)=>{
               /* a conifer: a dark stack of triangles on a short trunk */
               const lean = (i-1)*0.06;
@@ -5188,45 +5191,74 @@ function drawScenery(idx, p1, y1, z1, fade){
   /* sized in scenery units, so the road's width has no say in how big a tree is */
   const sc = p1.scale * SCENE_UNIT * W/2;
   if(sc < 1) return;
+  /* ---- A THICK PLACE FILLS, IT DOES NOT LINE (RLG-059) -----------------
+     Owner, 2026-08-30: "heavily populated biome scenery should be replaced from
+     the road edge to out beyond the edge of the screen like forests and
+     mountains tundra."
+
+     One object per segment per side is a HEDGE - a single row at one distance,
+     which is why the first version read as a band near the horizon with nothing
+     close. A forest is not a row of trees, it is trees all the way out until
+     you cannot see any more of them.
+
+     So a spec can ask for several ROWS, walking outward from the road edge to
+     past the side of the screen. Each row carries its own hash salts, so the
+     rows are independent of each other and an object still stays where it was
+     put. The sparse places - desert, city - keep one row, because sparseness is
+     the point of them.
+
+     THE ROWS ARE DRAWN OUTSIDE IN, so a near trunk stands in front of what is
+     behind it rather than being painted over by it.
+     -------------------------------------------------------------------- */
+  const rows = spec.rows || 1;
   for(const side of [-1, 1]){
-    const r0 = sceneRand(idx, side < 0 ? 11 : 23);
-    if(r0 > spec.density) continue;
-    const r1 = sceneRand(idx, side < 0 ? 37 : 41);
-    const r2 = sceneRand(idx, side < 0 ? 53 : 59);
-    const kind = Math.floor(r1 * spec.kinds) % spec.kinds;
-    const art = sceneryArt(B.name, kind);
-    if(!art) continue;
-    /* size varies with the object, not with the frame */
-    const grow = 0.72 + r2 * 0.56;
-    const w2 = sc * spec.w * grow;
-    const h2 = w2 * (art.height / art.width);
-    if(w2 < 0.8) continue;
-    /* MEASURED FROM THE EDGE OF THE TARMAC, not from the middle of it */
-    const off = spec.out + r1 * spec.spread;
-    const x = p1.x + side * roadsideAt(p1, off);
-    /* off the sides of the screen entirely - cheaper to skip than to clip */
-    if(x + w2 < 0 || x - w2 > W) continue;
-    const gate = crestGate(z1, y1, y1 - h2, 'scenery');
-    if(gate.hide){ crestDid('scenery', 'hidden'); continue; }
-    ctx.save();
-    if(gate.clip !== null){
-      crestDid('scenery', 'clipped');
-      ctx.beginPath(); ctx.rect(0, 0, W, gate.clip); ctx.clip();
-    } else crestDid('scenery', 'drawn');
-    /* the last stretch of the draw fades them in, so an object does not arrive
-       whole at the edge of the world. The lamps do the same. */
-    ctx.globalAlpha = Math.min(1, fade * 4);
-    ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
-    /* the windows, on the same schedule as the street lamps */
-    const litArt = spec.lit ? sceneryLitArt(B.name, kind) : null;
-    if(litArt && lampsOn() > 0.02){
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = Math.min(1, fade * 4) * lampsOn();
-      ctx.drawImage(litArt, x - w2/2, y1 - h2, w2, h2);
-      ctx.globalCompositeOperation = 'source-over';
+    for(let row = rows - 1; row >= 0; row--){
+      const salt = row * 101;
+      const r0 = sceneRand(idx, (side < 0 ? 11 : 23) + salt);
+      if(r0 > (spec.rowDensity || spec.density)) continue;
+      const r1 = sceneRand(idx, (side < 0 ? 37 : 41) + salt);
+      const r2 = sceneRand(idx, (side < 0 ? 53 : 59) + salt);
+      const kind = Math.floor(r1 * spec.kinds) % spec.kinds;
+      const art = sceneryArt(B.name, kind);
+      if(!art) continue;
+      /* size varies with the object, not with the frame */
+      const grow = 0.72 + r2 * 0.56;
+      const w2 = sc * spec.w * grow;
+      const h2 = w2 * (art.height / art.width);
+      if(w2 < 0.8) continue;
+      /* MEASURED FROM THE EDGE OF THE TARMAC, not from the middle of it. The
+         row walks outward; `spread` jitters within the row so the rows do not
+         read as ranks. */
+      const band = rows > 1 ? (spec.outFar - spec.out) / rows : 0;
+      const off = spec.out + band * (row + r1) + (rows > 1 ? 0 : r1 * spec.spread);
+      /* the INNER edge of the object sits at the placement point, so a tree at
+         the kerb stands beside the tarmac rather than half over it */
+      const xi = p1.x + side * roadsideAt(p1, off);
+      const x = xi + side * w2/2;
+      /* off the sides of the screen entirely - cheaper to skip than to clip */
+      if(x + w2 < 0 || x - w2 > W) continue;
+      const gate = crestGate(z1, y1, y1 - h2, 'scenery');
+      if(gate.hide){ crestDid('scenery', 'hidden'); continue; }
+      ctx.save();
+      if(gate.clip !== null){
+        crestDid('scenery', 'clipped');
+        ctx.beginPath(); ctx.rect(0, 0, W, gate.clip); ctx.clip();
+      } else crestDid('scenery', 'drawn');
+      /* the last stretch of the draw fades them in, so an object does not arrive
+         whole at the edge of the world. The lamps do the same. */
+      ctx.globalAlpha = Math.min(1, fade * 4);
+      ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
+      /* the windows, on the same schedule as the street lamps */
+      const litArt = spec.lit ? sceneryLitArt(B.name, kind) : null;
+      if(litArt && lampsOn() > 0.02){
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, fade * 4) * lampsOn();
+        ctx.drawImage(litArt, x - w2/2, y1 - h2, w2, h2);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
-    ctx.restore();
   }
 }
 

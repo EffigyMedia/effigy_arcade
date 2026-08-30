@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-71"></a>
+## [0.9.71] - 2026-08-30
+- Fixed: **a thick biome fills from the road edge out past the side of the screen.** One object per
+  segment per side is a hedge - a single row at one distance - which is why the first version read as
+  a band near the horizon with nothing close. Forest, mountain and tundra now walk several rows
+  outward from the tarmac edge to beyond the frame, drawn outside in so a near trunk stands in front
+  of what is behind it. The sparse places keep one row, because sparseness is the point of them
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **an object's inner edge sits at its placement point**, so a tree at the kerb stands beside
+  the tarmac rather than half over it ([RLG-059](../fragments/RLG-059.md)).
+- Changed: **the mountain rows were cut from four to three**, and the row density with them. Filling
+  cost frames where the objects are largest: measured 54.5 fps against 60 everywhere else, on a
+  desktop, which is a warning rather than a verdict for a phone. At three rows it is 60 and it still
+  reads as a valley ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-70"></a>
 ## [0.9.70] - 2026-08-30
 - Added: **mountain draws rock faces in three layers, and the road cuts through them.** "Various
