@@ -629,6 +629,39 @@ def main():
                   'mountain %.2f, city %.2f' % (gen['MOUNTAIN']['bend'], gen['CITY']['bend']))
 
 
+        # ------------------------------- the sea is beside the road, one side
+        print()
+        print('  THE OCEAN IS ON ONE SIDE, AND WHICH SIDE IS ROLLED')
+        seaB = page.evaluate("() => window.__probe.road.roadShape('OCEAN')")
+        sides = []
+        for _ in range(40):
+            page.evaluate("() => window.__probe.road.startBiomeChange('OCEAN')")
+            sides.append(page.evaluate('() => window.__probe.road.seaSide()'))
+        left = sides.count(-1)
+        print('      over 40 placements: %d left, %d right' % (left, len(sides) - left))
+        res.check(all(v in (-1, 1) for v in sides),
+                  'the water is on a side, never both and never neither', str(set(sides)))
+        res.check(3 < left < 37,
+                  'and the side is genuinely rolled rather than fixed',
+                  '%d left of 40' % left)
+        page.evaluate("() => window.__probe.road.setBiomePair('FOREST','FOREST')")
+
+        # ------------------------- swamp and coast are the flattest of all
+        flat = {}
+        for k in ('SWAMP', 'OCEAN', 'CITY', 'MOUNTAIN'):
+            flat[k] = page.evaluate('(k) => window.__probe.road.roadShape(k)', k)
+        print('      climb: swamp %.2f  ocean %.2f  city %.2f  mountain %.2f'
+              % (flat['SWAMP']['hill'], flat['OCEAN']['hill'],
+                 flat['CITY']['hill'], flat['MOUNTAIN']['hill']))
+        res.check(flat['SWAMP']['hill'] < flat['CITY']['hill']
+                  and flat['OCEAN']['hill'] < flat['CITY']['hill'],
+                  'swamp and coast are flatter than the city - both are at sea level',
+                  'swamp %.2f, ocean %.2f, city %.2f'
+                  % (flat['SWAMP']['hill'], flat['OCEAN']['hill'], flat['CITY']['hill']))
+        res.check(flat['SWAMP']['hill'] > 0 and flat['OCEAN']['hill'] > 0,
+                  'and still never completely flat',
+                  '%.2f and %.2f' % (flat['SWAMP']['hill'], flat['OCEAN']['hill']))
+
         # ------------------------------------------- and the distinction can fail
         print()
         print('  NOT VACUOUS - the old flip goes back and the sweep check must catch it')

@@ -6890,27 +6890,43 @@ const BIOMES = {
      the road climbs and turns. Nothing needed a new branch to accept them.
 
      OCEAN is a coast road. It rains often and never snows, the ground is pale
-     sand rather than grass, and it is nearly flat but winds along the water -
-     so `bend` is well above `hill`, the only place besides forest where that
-     is true.
+     sand rather than grass, and it winds along the water - so `bend` is well
+     above `hill`, the only place besides forest where that is true.
 
      SWAMP is the wettest place on the board at 0.62, which is the same number
-     tundra snows at - the two are opposites made of the same figure. Flatter
-     than anything but a city, and it turns a lot, because a road through
-     standing water goes round what it cannot cross.
+     tundra snows at - the two are opposites made of the same figure. It turns a
+     lot, because a road through standing water goes round what it cannot cross.
+
+     AND THESE TWO ARE THE FLATTEST OF ALL. Owner, 2026-08-30: "swamp and beach
+     are the flattest of all biomes I suspect." They are, and for a reason a
+     player will feel without being told: both are places at sea level. A city
+     is graded flat by people and still runs over whatever hills were there; a
+     swamp and a shoreline have no hills to run over. So they sit at 0.15 and
+     0.18 against the city's 0.30 - still not zero, because the owner has twice
+     said never completely flat.
      ------------------------------------------------------------------ */
-  OCEAN:    { name:'OCEAN',    rain:0.34, snow:0.00, hill:0.30, bend:0.60,
+  OCEAN:    { name:'OCEAN',    rain:0.34, snow:0.00, hill:0.18, bend:0.60,
               grassLo:'#7d7458', grassHi:'#9c9370',
-              /* ---- THE BAND UNDER THE HORIZON IS THE SEA -----------------
-                 Without this an ocean is a beach: pale sand either side, palms,
-                 and no water anywhere. `farGround` is what the land BECOMES at
-                 the far end of the draw, which for a coast is not land at all.
-                 Every other biome leaves it out and the band stays the ground's
-                 own colour, as it always has.
+              /* ---- THE SEA IS ON ONE SIDE OF THE ROAD ------------------
+                 Owner, 2026-08-30: "I was kind of wanting the ocean to be either
+                 on the left side or right side (randomly rolled each time the
+                 biome is generated) of the road, with some beach between it and
+                 the road."
+
+                 The first attempt made it a band across the whole horizon, which
+                 is a different thing: it reads as a road running INTO the sea
+                 rather than ALONG it. `sea` is the water's colour and `beach` is
+                 how far the sand runs before it, measured from the road edge in
+                 the same units the roadside scenery uses - so the shoreline
+                 converges with the road instead of sitting flat.
                  ------------------------------------------------------- */
-              farGround:'#1d4a63',
+              /* 1.3, not 2.6. At 2.6 the water only appeared in the far third of the
+                 frame - correct perspective and a poor picture, because anything
+                 at a fixed offset leaves the screen as it comes near. A narrower
+                 beach keeps the coast in shot for most of the draw. */
+              sea:'#1d4a63', beach:1.3,
               sky:'#2f4a63', city:0.08, trees:0.20 },
-  SWAMP:    { name:'SWAMP',    rain:0.62, snow:0.00, hill:0.25, bend:0.70,
+  SWAMP:    { name:'SWAMP',    rain:0.62, snow:0.00, hill:0.15, bend:0.70,
               grassLo:'#22301f', grassHi:'#33422a',
               sky:'#2c3a2e', city:0.06, trees:0.70 },
   FOREST:   { name:'FOREST',   rain:0.42, snow:0.06, hill:0.70, bend:0.85,
@@ -7123,6 +7139,19 @@ let biomeNext = 0;
 /* whether this run has chosen its opening biome yet. A fact about the run, not
    something to infer from the length of a frame - see stepBiome. */
 let biomeStarted = 0;
+/* ---- WHICH SIDE THE WATER IS ON (RLG-059) --------------------------------
+   Rolled when a place is chosen, not when it is drawn: the coast has to be on
+   the same side for the whole stretch, and a value rolled per frame would put
+   the sea on alternating sides sixty times a second.
+   ------------------------------------------------------------------------- */
+let seaSide = 1;
+/* ONE PLACE ROLLS IT, and that is not tidiness. The harness hook that places a
+   biome change was written to set the from/to pair directly, so it never rolled
+   the side - and the check for "the side is rolled" came back 40 out of 40 on
+   one side while the GAME was rolling it correctly. A hook that takes a
+   different path from the thing it is standing in for proves less than it looks
+   like it proves. Both call this. */
+function rollSeaSide(){ seaSide = Math.random() < 0.5 ? -1 : 1; return seaSide; }
 
 /* ---- WEATHER BELONGS TO A PLACE, SO IT HAS TO LEAVE WITH IT ---------------
    The biome decided what MIGHT fall, and then nothing checked it again. A front
@@ -7315,6 +7344,7 @@ function stepBiome(dt){
     if(!biomeStarted){
       biomeStarted = 1;
       biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+      rollSeaSide();
       biomeFrom = biomeTo = biome;
       biomeEdge = -1e9;
       buildSkyline();
@@ -7326,6 +7356,9 @@ function stepBiome(dt){
       biomeFrom = biome;
       biomeTo = k;
       biomeEdge = here + DRAW;
+      /* a fresh coin for every new place, so two oceans in one run need not
+         put the water on the same side */
+      rollSeaSide();
     }
     biomeNext = rnd(70, 130);
   }
@@ -10664,17 +10697,26 @@ function hazeRGB(){
    The un-strobed tone is asked for - `dark` false - because the band has no
    segments to alternate between and a strobe needs two.
    ------------------------------------------------------------------------- */
+/* ---- THE WATER, UNDER THE SAME SKY AS EVERYTHING ELSE (RLG-059) ---------
+   The sea is not exempt from the hour or the weather. It goes through the same
+   night and golden mixes the ground does, and rain darkens it - a grey sea under
+   a grey sky is most of what makes a wet coast read as one.
+   ------------------------------------------------------------------------- */
+function seaTone(B){
+  const n = nightFall(), g = goldenHour();
+  let c = B.sea;
+  if(n > 0.5)      c = mixRGB(c, 0.66, NIGHT_GROUND);
+  else if(g > 0.25) c = mixRGB(c, 0.26, GOLD_GROUND);
+  const rain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
+  return rain > 0 ? mixRGB(c, rain * 0.30, WET_DARK) : c;
+}
+
 function groundBase(mix, atIdx){
-  /* a place whose distance is water paints the band from that instead. It still
-     goes through the same darkening, weather and haze below, so the sea takes
-     the hour and the rain exactly as the land does. */
   /* `atIdx` is for the MIRROR, which looks the other way: the band under ITS
      horizon is the land BEHIND you, and during a biome change that is still the
      place you came from. Absent, it is the far edge of the road ahead. */
   const far = atIdx === undefined ? Math.floor(pos/SEG) + DRAW : atIdx;
-  const farB = bioAt(far);
-  const c = hexRGB(farB.farGround ? mixRGB(farB.farGround, settle * 0.85, SNOW_DAY)
-                                  : groundTone(far, false));
+  const c = hexRGB(groundTone(far, false));
   let r = c[0], g2 = c[1], b2 = c[2];
   const want = LUM(r, g2, b2);
   /* the far field gets the same weather the drawn slices get, or the band under
@@ -11359,6 +11401,24 @@ function drawRoad(){
     if(drawWatch && y2 <= groundMax) skipBy[n] = +(groundMax - y2).toFixed(2);
     if(y2 > groundMax){
       ctx.fillRect(0, y2, W, H - y2);
+      /* ---- AND THE SEA, IF THIS PLACE HAS ONE (RLG-059) ----------------
+         Painted with the ground and on ONE side of it, from a shoreline that
+         is a fixed distance out from the tarmac - so the sand between the road
+         and the water converges exactly as the road does, and the coast runs
+         ALONGSIDE you rather than across the horizon in front of you.
+
+         It is filled to the bottom of the screen like the ground itself,
+         because the road pass walks far to near and each nearer slice paints
+         over the last: that is what builds the shoreline's shape over crests
+         and round bends without any of it being computed.
+         -------------------------------------------------------------- */
+      const sB = bioAt(idx);
+      if(sB.sea){
+        const shore = p1.x + seaSide * roadsideAt(p1, sB.beach);
+        if(seaSide < 0){ if(shore > 0) { ctx.fillStyle = seaTone(sB); ctx.fillRect(0, y2, shore, H - y2); } }
+        else { if(shore < W){ ctx.fillStyle = seaTone(sB); ctx.fillRect(shore, y2, W - shore, H - y2); } }
+        ctx.fillStyle = groundCol;   /* the next slice expects the ground colour */
+      }
       groundMax = y2;
       roadY[n] = y1;
     }
@@ -14893,6 +14953,7 @@ requestAnimationFrame(frameLoop);
     }
     biomeFrom = biome; biomeTo = want;
     biomeEdge = Math.floor(pos/SEG) + DRAW;
+    rollSeaSide();          /* the same roll the real placement makes */
     return API.biomeSweep();
   };
   /* the hour is an argument so a harness can ask what a biome looks like at
@@ -14999,6 +15060,9 @@ requestAnimationFrame(frameLoop);
     }
     return { name:B.name, bend:+(cb/n).toFixed(3), hill:+(hb/n).toFixed(3), n:n };
   };
+  /* which side the water is on for the stretch now in view, and the shoreline's
+     distance from the tarmac. -1 left, 1 right (RLG-059). */
+  API.seaSide = function(){ return seaSide; };
   API.roadShape = function(k){
     const B = BIOMES[k || biome] || BIOMES.FOREST;
     return { name:B.name, hill:B.hill, bend:B.bend };

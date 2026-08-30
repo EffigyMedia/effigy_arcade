@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-83"></a>
+## [0.9.83] - 2026-08-30
+- Changed: **the sea runs alongside the road, on one side, with beach between.** Owner: "I was kind
+  of wanting the ocean to be either on the left side or right side (randomly rolled each time the
+  biome is generated) of the road, with some beach between it and the road." The first version put it
+  across the whole horizon, which reads as a road running INTO the sea rather than along it. The
+  shoreline is a fixed distance out from the tarmac in the same units the roadside uses, so it
+  converges with the road and rides the crests ([RLG-059](../fragments/RLG-059.md)).
+- Added: **the side is rolled when the place is generated**, not when it is drawn - a value rolled
+  per frame would put the water on alternating sides sixty times a second. Measured over 40
+  placements: 17 left, 23 right ([RLG-059](../fragments/RLG-059.md)).
+- Changed: **swamp and coast are the flattest of all.** Owner: "swamp and beach are the flattest of
+  all biomes I suspect." They are, and for a reason a player feels without being told - both are
+  places at sea level, where a city is graded flat by people and still runs over whatever hills were
+  there. 0.15 and 0.18 against the city's 0.30, and still never zero
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **a test hook took a different path from the game.** `startBiomeChange` set the biome pair
+  directly and never rolled the sea's side, so the check for "the side is rolled" came back 40 out of
+  40 on one side while the game was rolling it correctly. One function rolls it now and both callers
+  use it ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-9-82"></a>
 ## [0.9.82] - 2026-08-30
 - Added: **two more places, an OCEAN coast and a SWAMP.** Seven biomes now. They are a table entry
