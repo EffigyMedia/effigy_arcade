@@ -174,7 +174,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.9.89';
+window.ROAD_BUILD = '0.9.90';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1868,19 +1868,29 @@ function turnBulb(x, y, bw, bh, flat){
    space onto the drawn size and re-runs the declaration, so the lit lamp lands
    on the unlit bulb by construction rather than by agreement. */
 function lampsHere(spr, x, y, w, h, ids, alpha, lvl){
-  if(!spr || !spr.lamps) return false;
+  return lampsInto(ctx, spr, x, y, w, h, ids, alpha, lvl);
+}
+/* ---- AND THE SAME LAMPS ON ANY CANVAS (RLG-077) -------------------------
+   `lampsHere` painted into the module's own `ctx`, which is the road. The
+   title card draws the same car onto a different canvas, and having no way to
+   say so is why it grew its own hand-placed rectangles - two red bars at
+   guessed coordinates over a sprite that already knew where its lamps were.
+   One argument, and the declaration reaches every surface that draws a car.
+   ------------------------------------------------------------------------ */
+function lampsInto(into, spr, x, y, w, h, ids, alpha, lvl){
+  if(!into || !spr || !spr.lamps) return false;
   let any = false;
   for(const id of ids) if(spr.lamps[id]) any = true;
   if(!any) return false;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(w / spr.width, h / spr.height);
+  into.save();
+  into.translate(x, y);
+  into.scale(w / spr.width, h / spr.height);
   /* NOT `lighter` any more. A lamp carries its own halo and paints its own
      lens opaquely, so adding the whole thing to what is underneath is what
      turned a bright red brake light white. */
-  if(alpha !== undefined) ctx.globalAlpha = alpha;
-  for(const id of ids){ const f = spr.lamps[id]; if(f) f(ctx, lvl === undefined ? 2 : lvl); }
-  ctx.restore();
+  if(alpha !== undefined) into.globalAlpha = alpha;
+  for(const id of ids){ const f = spr.lamps[id]; if(f) f(into, lvl === undefined ? 2 : lvl); }
+  into.restore();
   return true;
 }
 
@@ -14501,6 +14511,7 @@ function drawLogo(g, cx, cy, size){
   });
 }
 
+let titleCar = null;
 function drawTitleArt(){
   if(!titleCv) titleCv = document.getElementById('titleArt');
   if(!titleCv) return;
@@ -14667,34 +14678,36 @@ function drawTitleArt(){
     /* what it is standing on */
     g.fillStyle = 'rgba(0,0,0,.45)';
     g.beginPath(); g.ellipse(cxp, cyp-2, cw*0.42, ch*0.07, 0, 0, 6.2832); g.fill();
+    /* ---- THE LAMPS ARE THE SPRITE'S OWN (RLG-077, RLG-053) -------------
+       Owner, 2026-08-29: the title menu shows the wrong tail lights, and it may
+       be that the title is not using the right renderer.
+
+       IT WAS USING THE RIGHT RENDERER AND THEN PAINTING OVER IT. The car here
+       has always been the engine's own sprite - what was wrong is what came
+       next: two red rectangles at hand-written coordinates, and a halo at two
+       more, over a sprite that already knew where its lamps were and what they
+       look like. That is the exact shape RLG-053 exists to remove: a lit lamp
+       is the unlit bulb DRAWN AGAIN, never a rectangle with its own numbers.
+
+       So the lamps run inside the same transform the car is drawn in, from the
+       same declaration the road uses. They lean with it, they are the right
+       size and shape and colour for whichever car you are in, and a reskin
+       moves both because there is only one of them.
+
+       The pulse stays, because a car idling on a title card with a dead tail
+       reads as parked - but it is the lamp's own brightness pulsing rather
+       than a smudge fading in and out behind it.
+       ---------------------------------------------------------------- */
+    const pulse = 0.55 + 0.25*Math.sin(T*2.0);
     g.save();
     g.translate(cxp, cyp - ch*0.5);
     g.rotate(roll);
     g.drawImage(img, -cw/2, -ch*0.5, cw, ch);
+    lampsInto(g, img, -cw/2, -ch*0.5, cw, ch, ['tail'], 0.72 + pulse*0.28, 1);
     g.restore();
-    /* ---- THE LAMPS THEMSELVES ARE LIT -------------------------------------
-       There was a halo but nothing under it, so the car had a red smudge
-       floating behind a dark tail. The lamps are painted ON the sprite's own
-       lamp positions first, then the halo sits over them. */
-    const pulse = 0.55 + 0.25*Math.sin(T*2.0);
-    const lampW = cw*0.265, lampH = ch*0.10, lampY = cyp - ch*0.335;
-    for(const lx of [cxp - cw/2 + cw*0.135, cxp - cw/2 + cw*0.60]){
-      g.fillStyle = 'rgba(255,64,74,' + (0.75 + pulse*0.25) + ')';
-      g.fillRect(lx, lampY, lampW, lampH);
-      g.fillStyle = 'rgba(255,190,190,.55)';
-      g.fillRect(lx, lampY, lampW, Math.max(1, lampH*0.28));
-    }
-    g.save();
-    g.globalCompositeOperation = 'lighter';
-    for(const ox of [-0.082, 0.082]){
-      const gl = g.createRadialGradient(cxp+ox*w, cyp-ch*0.34, 0,
-                                        cxp+ox*w, cyp-ch*0.34, cw*0.26);
-      gl.addColorStop(0,'rgba(255,58,84,'+pulse+')');
-      gl.addColorStop(1,'rgba(255,58,84,0)');
-      g.fillStyle = gl;
-      g.beginPath(); g.arc(cxp+ox*w, cyp-ch*0.34, cw*0.26, 0, 6.2832); g.fill();
-    }
-    g.restore();
+    /* where it ended up, for a harness that has to find it in a moving picture */
+    titleCar = { x:+cxp.toFixed(1), y:+(cyp - ch).toFixed(1),
+                 w:+cw.toFixed(1), h:+ch.toFixed(1) };
   }
 
   /* ---- air over the lot --------------------------------------------------- */
@@ -15822,6 +15835,9 @@ requestAnimationFrame(frameLoop);
     return curvatureAt(z === undefined ? pos + PLAYER_Z : z);
   };
   API.playerSprite = function(){ return SP.player; };
+  /* where the title card's car was last drawn, in CSS pixels of that canvas. The
+     car sways, so a check cannot know where it is without asking (RLG-077). */
+  API.titleCar = function(){ return titleCar; };
   API.hasNos = function(){ return hasNos(); };
   API.roundRim = function(){
     const MK = (BODY[optBody]||{}).rear || "GENERIC";

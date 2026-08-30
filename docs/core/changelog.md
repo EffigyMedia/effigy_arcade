@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-9-90"></a>
+## [0.9.90] - 2026-08-30
+- Fixed: **the title card wears the car's own tail lights.** Owner: the title menu shows the wrong
+  tail lights, and it may be that the title is not using the right renderer. It was using the right
+  renderer and then painting over it - two red rectangles at hand-written coordinates and a halo at
+  two more, on a sprite that already knew where its lamps were and what they look like. The lamps run
+  from the same declaration the road uses, inside the same transform the car is drawn in, so they
+  lean with it and a reskin moves both ([RLG-077](../fragments/RLG-077.md)).
+- Changed: **the lamp declaration can paint onto any canvas.** It painted into the road's own context
+  and had no way to be told otherwise, which is why the title grew its own rectangles in the first
+  place. One argument, and every surface that draws a car can light it the same way
+  ([RLG-077](../fragments/RLG-077.md), [RLG-053](../fragments/RLG-053.md)).
+- Added: **`tools/title-test.py` strips the declaration and looks again.** If the lamps come from the
+  declaration they go out; if the title paints its own, nothing changes - which is what the old code
+  did. Measured: 550 red pixels lit, 0 stripped; with the rectangles put back, 1,253 stripped against
+  1,331 lit ([RLG-077](../fragments/RLG-077.md)).
+
 <a id="v0-9-89"></a>
 ## [0.9.89] - 2026-08-30
 - Fixed: **the pattern is centred in the plate.** Owner: "The 4-speed needs to be centered in its
