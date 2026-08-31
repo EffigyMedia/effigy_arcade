@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-23"></a>
+## [0.10.23] - 2026-08-31
+- Fixed: **standing water survived a reset, and took a quarter of the grip with it.** `freshWorld`
+  reset settled snow and not standing water - the same idea, read by the same two functions, two lines
+  apart in the source. A run that ended in a downpour handed the next one a soaked road: `worldState`
+  reported wet 0 and settle 0 while `wetGrip()` read 0.740 against 1.000 on a genuinely dry start.
+  That is RLG-090's own complaint in a variable it did not name. The deposition rates go with them, or
+  a new run melts its snow at the previous run's speed ([RLG-111](../fragments/RLG-111.md)).
+- Fixed: **a clap of thunder could outlive its own run.** `thunderIn` is a scheduled sound - a strike
+  sets it to between 250ms and 5 seconds and the stepper plays the clap when it runs out - and nothing
+  reset it, so a bolt in the last second of a run made its noise in the next one, over a road that may
+  have no weather at all. `boltNext` is armed to a full interval rather than zero, because a run that
+  has just started is not one that is due to be struck ([RLG-111](../fragments/RLG-111.md)).
+- Changed: **`worldState` now reports more than `freshWorld` resets.** That is the finding behind both
+  fixes. `retry-test` asserts a fresh run inherits nothing by reading `worldState`, which reported
+  exactly the fields the reset owned - so the field list was both the reset AND the definition of
+  clean, and anything missing from one was invisible to the other by construction. `pool`, `grip`,
+  `thunderIn` and `boltIn` are published whether or not they are reset, and each new assertion is its
+  own line rather than folded into an existing one ([RLG-111](../fragments/RLG-111.md)).
+
 <a id="tooling-260831"></a>
 ## [tooling, on 0.10.22] - 2026-08-31
 *No product file changed, so there is no version and no cache bump: a device running 0.10.22 is

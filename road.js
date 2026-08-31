@@ -7888,6 +7888,11 @@ let settleMelt = 0;
    it back.
    -------------------------------------------------------------------------- */
 let pool = 0, poolFall = 0, poolDry = 0;
+/* debug only, and it exists to REINTRODUCE the defect. True makes `freshWorld` skip
+   the two resets added by RLG-111, which is what it did before them. Reverting the
+   engine cannot falsify the checks - `worldState` did not report `pool` or
+   `thunderIn` on that build, so the assertions read `undefined` and cannot fail. */
+let leakOn = false;
 /* the rate the last fall was depositing at, kept so the thaw can run back down
    the same slope. See the accumulation block for why `wet` cannot answer this. */
 let settleFall = 0;
@@ -7917,8 +7922,36 @@ function freshWorld(){
   /* the weather: what is falling, how wet the road is, and what has settled */
   wet = 0; wetTarget = 0; wetNext = 0; snowy = 0;
   settle = 0; settleMelt = 0;
+  /* ---- AND WHAT WAS LYING ON THE ROAD (RLG-111) ---------------------
+     `settle` was reset here and `pool` was not. They are the same idea - what
+     the weather has LEFT on the surface, as opposed to what is falling - and
+     they are read by the same two functions. So a run that ended in a downpour
+     handed the next one a soaked road: `worldState` reported wet 0 and settle
+     0, and `wetGrip()` read 0.740 against 1.000 on a genuinely dry start,
+     because standing water takes 0.26 of the grip on its own.
+
+     THAT IS RLG-090's FAULT IN A VARIABLE IT DID NOT NAME. The owner's report
+     then was "you start in a dry biome with snow slipperiness still applied",
+     and this is the same sentence with rain in it. The rates go with them -
+     `poolFall` and `settleFall` are how fast the last fall was depositing, and
+     the thaw runs back down the same slope, so a rate left behind melts the
+     next run's snow at the previous run's speed.
+     ---------------------------------------------------------------- */
+  if(!leakOn){ pool = 0; poolFall = 0; poolDry = 0; settleFall = 0; }
   /* the sky above it */
   cloud = 0.15; cloudTarget = 0.15; cloudNext = 0; storm = 0;
+  /* ---- AND THE STORM, WHICH COULD OUTLIVE ITS OWN RUN (RLG-111) -----
+     `thunderIn` is a SCHEDULED SOUND: a strike sets it to between 250ms and 5
+     seconds, and the stepper plays the clap when it runs out. Nothing reset it,
+     so a bolt that struck in the last second of a run made its noise in the
+     next one - thunder from a storm the player never saw, over a road that may
+     not even have weather.
+
+     And `boltNext` is a counter, so the RLG-090 rule applies to it too: it is
+     armed to a full interval rather than to zero, because a run that has just
+     started is not a run that is due to be struck by lightning.
+     ---------------------------------------------------------------- */
+  if(!leakOn){ boltT = 0; boltMag = 0; boltFar = 0; thunderIn = -1; boltNext = rnd(6, 18); }
   /* and the place, which chooses itself outright rather than transitioning */
   biomeStarted = 0; biomeNext = 0;
   openBiome();
@@ -16997,6 +17030,7 @@ requestAnimationFrame(frameLoop);
      its own because `wet` is what is falling and `pool` is what is lying. */
   API.pool = function(){ return +pool.toFixed(3); };
   API.setPool = function(v){ pool = clamp(v, 0, 1); poolDry = 0; };
+  API.leakOn = function(on){ leakOn = !!on; return leakOn; };
   API.strike = function(m){ boltMag = m === undefined ? 0.9 : m; boltT = 0.42; return boltT; };
   /* one roll of the distance, the same one the storm makes. It is exposed because
      a harness cannot wait out `boltNext`, which is 5 to 22 seconds between strikes,
@@ -17101,13 +17135,22 @@ requestAnimationFrame(frameLoop);
     return { wet:+wet.toFixed(3), wetTarget:+wetTarget.toFixed(3),
              snowy:snowy, settle:+settle.toFixed(3),
              cloud:+cloud.toFixed(3), storm:storm,
+             /* WHAT IS LYING ON THE ROAD, not only what is falling. `pool` was
+                absent from this list, which is why every check for "a fresh run
+                inherits nothing" passed while a quarter of the grip came
+                across - the field list WAS the check's definition of clean
+                (RLG-111). */
+             pool:+pool.toFixed(3), grip:+wetGrip().toFixed(3),
              biome:biome, from:biomeFrom, to:biomeTo,
              /* HOW LONG UNTIL EACH OF THESE CHANGES AGAIN. A counter at zero
                 means a roll is DUE, which is what saved a change up to happen
                 on GO - so this is the field that answers the question directly
                 rather than by comparing pictures (RLG-090). */
              wetIn:+wetNext.toFixed(2), cloudIn:+cloudNext.toFixed(2),
-             biomeIn:Math.round(biomeNext) };
+             biomeIn:Math.round(biomeNext),
+             /* and the storm's own two: how long until the next strike, and
+                whether a clap is still scheduled from one already made */
+             boltIn:+boltNext.toFixed(2), thunderIn:+thunderIn.toFixed(2) };
   };
   /* what the start line is doing: how much of the count is left, which number
      has been sounded, and whether GO is still on the glass (RLG-088) */

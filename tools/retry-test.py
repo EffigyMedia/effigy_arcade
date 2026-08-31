@@ -118,14 +118,22 @@ def main():
 
         # ---- DIRTY THE WORLD ON PURPOSE --------------------------------------
         # A run that happened to be dry would start a clean run and prove nothing.
+        # SOAK IT AS WELL AS SNOW IT. Standing water is the second thing a run leaves on the
+        # road, and it was the one nothing reset: `settle` was in this list and `pool` was not,
+        # so every assertion below passed while a quarter of the car's grip came across
+        # (RLG-111). `setPool` fills it outright rather than waiting the eighteen seconds it
+        # takes to fill by driving.
         page.evaluate("""() => { const R = window.__probe.road;
-            R.setSnow(0.9); R.setWet(0.8); R.setSky(0.95, 1); }""")
+            R.setSnow(0.9); R.setWet(0.8); R.setSky(0.95, 1); R.setPool(1); }""")
         page.wait_for_timeout(400)
         dirty = page.evaluate('() => window.__probe.road.worldState()')
         print('      the world was dirtied to: %s' % dirty)
         res.check(dirty['snowy'] == 1 and dirty['settle'] > 0.2 and dirty['storm'] == 1,
                   'the world really is snowy and stormy before the retry',
                   str(dirty))
+        res.check(float(dirty.get('pool', 0)) > 0.9 and float(dirty.get('grip', 1)) < 0.75,
+                  'and the road really is soaked, with the grip to show for it',
+                  'pool %s, grip %s' % (dirty.get('pool'), dirty.get('grip')))
 
         # ---- THEN START THE NEXT RUN ----------------------------------------
         # `start` is the path RETRY and DRIVE both take, so this is the same reset a
@@ -142,6 +150,22 @@ def main():
                   'settle is %s after a run that ended at %s'
                   % (fresh.get('settle'), dirty.get('settle')))
 
+        # 1b. AND NEITHER DOES STANDING WATER, which is the same idea as settled snow and was
+        #     the one nothing reset. It is asserted separately from `settle` rather than folded
+        #     in with it, because the whole reason this was missed is that a list of fields WAS
+        #     the definition of clean - so a new leak has to arrive as a new line here.
+        res.check(abs(float(fresh.get('pool', 1))) <= 1e-6,
+                  'and with nothing standing on it either',
+                  'pool is %s after a run that ended at %s'
+                  % (fresh.get('pool'), dirty.get('pool')))
+
+        # 1c. AND NO CLAP OF THUNDER IS STILL SCHEDULED. `thunderIn` counts down to a sound
+        #     from a strike already made, so a bolt in the last second of a run made its noise
+        #     in the next one - over a road that may have no weather at all. -1 means none due.
+        res.check(float(fresh.get('thunderIn', 0)) < 0,
+                  'and no thunder is left over from the run before',
+                  'thunderIn is %s' % fresh.get('thunderIn'))
+
         # 2. AND WHAT IS FALLING IS THIS RUN'S OWN ROLL, not the last one's value being
         #    chased away from. A freshly rolled run starts AT its target rather than
         #    easing toward it over the first seconds of the drive.
@@ -150,12 +174,15 @@ def main():
                   'wet %s against a target of %s' % (fresh.get('wet'), fresh.get('wetTarget')))
 
         # 3. AND NOTHING IS LEFT SITTING DUE, which is what put a change on GO.
-        due = [k for k in ('wetIn', 'cloudIn', 'biomeIn') if float(fresh.get(k, 1)) <= 0]
+        # `boltIn` is in this list now: it is a counter with the same shape as the other three,
+        # and a run that has just started is not a run that is due to be struck by lightning.
+        due = [k for k in ('wetIn', 'cloudIn', 'biomeIn', 'boltIn')
+               if float(fresh.get(k, 1)) <= 0]
         res.check(not due, 'and nothing is due the moment it starts', ', '.join(due))
 
         # 4. THE LAST RUN'S SPECIFIC STATE IS GONE. Dirtied to deep snow and a storm sky;
         #    a new run that reproduced those exact numbers would be continuing, not starting.
-        carried = [k for k in ('settle', 'storm')
+        carried = [k for k in ('settle', 'storm', 'pool')
                    if abs(float(fresh.get(k, 0)) - float(dirty.get(k, 0))) <= 1e-6
                    and abs(float(dirty.get(k, 0))) > 0.1]
         res.check(not carried,
@@ -168,6 +195,27 @@ def main():
                   'and it starts in one place rather than part-way between two',
                   'biome %s, from %s, to %s'
                   % (fresh['biome'], fresh['from'], fresh['to']))
+
+        errs = page.evaluate('() => window.__probe.errors')
+        # ---- AND THE SAME CHECKS, WITH THE RESETS TAKEN BACK OUT -----------------------
+        # Reverting the engine cannot falsify these: `worldState` did not report `pool` or
+        # `thunderIn` before this work, so the assertions would read a missing key and their
+        # defaults would make them pass. `leakOn` makes `freshWorld` skip exactly the two lines
+        # RLG-111 added, which is what it did before them.
+        print()
+        print('      the same checks, with the two resets taken back out')
+        page.evaluate('() => window.__probe.road.leakOn(true)')
+        page.evaluate("""() => { const R = window.__probe.road;
+            R.setSnow(0); R.setWet(1); R.setPool(1); }""")
+        page.wait_for_timeout(400)
+        page.evaluate('() => window.__probe.road.restart()')
+        page.wait_for_timeout(500)
+        leaked = page.evaluate('() => window.__probe.road.worldState()')
+        page.evaluate('() => window.__probe.road.leakOn(false)')
+        print('      it starts at: pool %s, grip %s' % (leaked.get('pool'), leaked.get('grip')))
+        res.check(float(leaked.get('pool', 0)) > 0.9,
+                  'without the reset the water comes across, so the check was measuring it',
+                  'pool is %s even with the reset removed' % leaked.get('pool'))
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
