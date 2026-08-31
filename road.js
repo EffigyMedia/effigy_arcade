@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.33';
+window.ROAD_BUILD = '0.10.34';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -12268,30 +12268,59 @@ function step(dt){
     /* held: a crate cannot be collected by a car nobody is driving */
     if(!held && Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < carW(0.30)){
       c.got = true;
-      /* ---- IT PAYS WHATEVER THIS CAR CAN ACTUALLY USE (RLG-107) ---------
+      /* ---- WHY THERE IS ANYTHING HERE AT ALL (RLG-107) ------------------
          The crate healed and nothing else, and the bottle top-up was added
          because on a clean run driving over one did literally nothing - a
          reward that is invisible most of the time is not a reward. That fix
          never reached the cars with no bottle, which is the owner's report:
-         they were told "+0 NOS".
+         they were told "+0 NOS". So each award is taken in turn and the label
+         is built from what was GIVEN rather than from what was offered.
 
-         So each award is taken in turn and the label is built from what was
-         GIVEN rather than from what was offered. If neither was worth
-         anything - no damage to repair and no bottle to fill, which is a
-         production car on a clean run - it is paid in seconds instead, and
-         that is the owner's decision of 2026-08-31.
+         RLG-107 ALSO PAID SECONDS AS A FALLBACK, only when nothing else was
+         worth anything, and that lasted a few hours. It was wrong in the mode
+         it mattered most - see below.
+         ---------------------------------------------------------------- */
+      /* ---- IT GIVES EVERYTHING THIS CAR CAN USE (RLG-125) --------------
+         Owner, 2026-08-31: "it seems like the simplest solution is just to
+         make the crate always just give you what you need. If timed mode is
+         on, they will always give you 10 seconds. If you're damaged, they
+         repair you up to 25%. If your NOS isn't full, you always get up to
+         25%." Three separate crates were considered and rejected - see
+         [[RLG-125]] for why, and the reason is worth knowing before anybody
+         proposes them again.
+
+         EACH AWARD IS INDEPENDENT AND ALL OF THEM APPLY. It is not a
+         fallback: a damaged supercar on a timed run with a half-empty bottle
+         gets all three, and the label is built from the ones that were worth
+         something.
+
+         AND TIME IS ONLY WORTH SOMETHING WHEN THE CLOCK IS RUNNING, which is
+         the owner's other point and a hole in the version this replaces.
+         `clockRuns()` is `mode === 'race' || timedRun`, so on a TEST DRIVE
+         with TIMED off the clock does not count at all - and the old code paid
+         seconds into it anyway, as the reward for a car that had nothing else
+         to gain. A reward paid in a currency the mode does not use is exactly
+         the invisible reward the whole of RLG-107 was about.
          ---------------------------------------------------------------- */
       const before = dmg;
       dmg = Math.max(0, dmg - 25);
       const healed = Math.round(before - dmg);
       const gained = awardNos(25);
       let secs = 0;
-      if(!healed && !gained){ clock += (secs = CRATE_SECS); lastBeep = -1; }
-      snd.threaded();
+      if(clockRuns()){ clock += (secs = CRATE_SECS); lastBeep = -1; }
       const won = [];
       if(healed) won.push('REPAIRED \u2212' + healed + '%');
       if(gained) won.push('NOS +' + gained + '%');
       if(secs)   won.push(timeAward(secs));
+      /* ---- AND A CRATE WITH NOTHING TO GIVE IS LEFT WHERE IT IS ---------
+         Untimed, undamaged, and either no bottle or a full one: there is
+         genuinely nothing to hand over. Consuming it silently would be the
+         invisible reward again AND would destroy something the player might
+         want later, so it is not taken. The box stays on the shoulder, which
+         is at least legible - it is still a crate.
+         ---------------------------------------------------------------- */
+      if(!won.length){ c.got = false; continue; }
+      snd.threaded();
       fx.push({txt: won.join('  '),
                x:W/2, y:H*0.62, vy:-60, age:0, life:1.2});
       burst(c, '#3ddc84');
@@ -18169,6 +18198,15 @@ requestAnimationFrame(frameLoop);
       cpGantries.push({ z: pos - (dz === undefined ? 4000 : dz), hit:true, n:1 });
     return cpGantries.length;
   };
+  /* ---- A TEST CAN TURN THE CLOCK OFF (RLG-125) --------------------------
+     TIMED is a garage toggle, and reaching it from a harness means leaving the
+     run, tapping a button and starting again - which measures the menu. The
+     whole of RLG-125 is that a crate must not pay seconds into a mode that
+     does not count them, so a check that cannot turn the clock off cannot ask
+     the question at all. It sits with `setWet`, `setSpd` and `setBody`.
+     ------------------------------------------------------------------- */
+  API.setTimed = function(v){ timedRun = !!v; return timedRun; };
+  API.clockRuns = function(){ return clockRuns(); };
   API.parkCrate = function(dz){
     crates.length = 0;
     crates.push({ z: pos + PLAYER_Z + (dz === undefined ? 900 : dz),

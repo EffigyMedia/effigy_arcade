@@ -90,7 +90,7 @@ class Results:
             self.fails.append(label)
 
 
-def take_crate(page, body, dmg):
+def take_crate(page, body, dmg, timed=True):
     """Set the car up, park a crate in front of it, drive over it, and report what happened.
 
     The speed is held every frame while it closes on the crate: the pickup is a distance test and a
@@ -98,8 +98,9 @@ def take_crate(page, body, dmg):
     """
     page.evaluate("""(a) => { const R = window.__probe.road;
         R.setBody(a.body); R.setLane(0); R.setTarget(0); R.setDmg(a.dmg);
-        R.setWet(0); R.setSnow(0); R.setPool(0);
-        R.clearTraffic(); R.parkCrate(900); }""", {'body': body, 'dmg': dmg})
+        R.setWet(0); R.setSnow(0); R.setPool(0); R.setTimed(a.timed);
+        R.clearTraffic(); R.parkCrate(900); }""",
+                  {'body': body, 'dmg': dmg, 'timed': timed})
     before = page.evaluate("""() => { const R = window.__probe.road;
         return { nos: R.nos(), clock: R.clock, dmg: R.dmg, has: R.hasNos() }; }""")
     for _ in range(40):
@@ -197,10 +198,40 @@ def main():
                   'a damaged car with no bottle is repaired',
                   'dmg went %d to %d' % (before['dmg'], after['dmg']))
         res.check('REPAIRED' in after['fx'] and 'NOS' not in after['fx'],
-                  'and told about the repair and nothing else', after['fx'])
-        res.check(abs(after['clock'] - before['clock']) < 1.5,
-                  'and not paid in seconds as well, because the crate was already worth something',
+                  'and told about the repair, and not about a bottle it has not got',
+                  after['fx'])
+        # AND IT IS PAID IN SECONDS TOO, because the clock is running and RLG-125 makes each
+        # award independent rather than a fallback. RLG-107 paid seconds ONLY when nothing else
+        # applied, and this check asserted the opposite of what it now asserts - kept and turned
+        # around rather than deleted, because the change of mind is the interesting part.
+        res.check(after['clock'] - before['clock'] > 1,
+                  'and paid in seconds as well, because every award is its own',
                   'the clock went %.2f to %.2f' % (before['clock'], after['clock']))
+        res.check('SEC' in after['fx'] and 'REPAIRED' in after['fx'],
+                  'and told about both', after['fx'])
+
+        # ---- 4b. AND NO SECONDS IN A MODE THAT DOES NOT COUNT THEM (RLG-125) ----
+        # Owner, 2026-08-31: "time isn't even always needed - if we're not in time mode, time
+        # is worthless." `clockRuns()` is `mode === 'race' || timedRun`, so on a TEST DRIVE
+        # with TIMED off the clock does not count at all - and RLG-107 paid seconds into it
+        # anyway, as the reward for a car with nothing else to gain. A reward paid in a
+        # currency the mode does not use is the invisible reward that ruling was about.
+        page.evaluate("() => window.__probe.road.setTimed(false)")
+        runs = page.evaluate("() => window.__probe.road.clockRuns()")
+        res.check(runs is False, 'the clock can be turned off for the check',
+                  'clockRuns() still says %r' % runs)
+        before, after = take_crate(page, WITH_BOTTLE, 60, timed=False)
+        print('      %-8s untimed:     %r   clock %.1f -> %.1f'
+              % (WITH_BOTTLE, after['fx'], before['clock'], after['clock']))
+        res.check(abs(after['clock'] - before['clock']) < 0.5,
+                  'a crate pays no seconds when the clock is not running',
+                  'the clock moved %.2f in a mode that does not count it'
+                  % (after['clock'] - before['clock']))
+        res.check('SEC' not in after['fx'],
+                  'and does not claim to have paid any', after['fx'])
+        res.check('REPAIRED' in after['fx'],
+                  'while still paying what the mode does use', after['fx'])
+        page.evaluate("() => window.__probe.road.setTimed(true)")
 
         # ---- 5. AND THE BOTTLE DOES NOT TRICKLE INTO A CAR THAT HAS NOT GOT ONE --
         # The deepest instance of the same fault, and the one no pickup would ever show: the
