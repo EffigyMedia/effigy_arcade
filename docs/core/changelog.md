@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-15"></a>
+## [0.10.15] - 2026-08-30
+- Fixed: **the mirror walks the world, not the car.** Owner: scenery in the rear-view absolutely
+  ZOOMS away at many times the speed it approaches in the forward view. It was not receding at all.
+  The glass walked fixed distances BEHIND THE CAR, and the mirror's projection takes distance as
+  `pos - worldZ`, so every slice sat at a constant distance back for ever. The mirror was a ladder
+  of rungs that never moved; what changed as you drove was which object got drawn on each rung. A
+  tree did not glide away - it sat still and was replaced by the next tree every time the world
+  index ticked over. **Measured, the frame-to-frame size change of a mirror object was exactly
+  0.00%**, against a median of 0.55% out of the windscreen. It is 0.52% now. This is the fault
+  `hillClip` had, and the note there says the same thing: anything pinned to the segment behind the
+  player shifts by one every time the player crosses one ([RLG-073](../fragments/RLG-073.md)).
+- Added: **scenery eases into the mirror instead of appearing.** Anything over a fifth of the pane
+  is left out, which is a cut rather than a fade, so an object arrived abruptly at its largest
+  allowed size. It fades in over the largest fifth of what is allowed, the way the forward view has
+  always done ([RLG-073](../fragments/RLG-073.md)).
+
 <a id="v0-10-14"></a>
 ## [0.10.14] - 2026-08-30
 - Measured, and **nothing about the road changed**: the scenery's approach obeys perspective

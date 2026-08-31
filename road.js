@@ -5775,7 +5775,7 @@ function drawScenery(idx, p1, y1, z1, fade){
          frame: a frame of skew between the two is up to ninety world units, which
          at the near end of an approach is a couple of per cent of the distance and
          reads as the geometry drifting when it is the instrument that moved. */
-      if(sceneTrace) sceneTrace.push({ idx:idx, side:side, row:row,
+      if(sceneTrace) sceneTrace.push({ view:'ahead', idx:idx, side:side, row:row,
                                        x:+x.toFixed(4), y:+y1.toFixed(4),
                                        w:+w2.toFixed(4), h:+h2.toFixed(4),
                                        z:z1, pos:+pos.toFixed(2),
@@ -14191,16 +14191,40 @@ function drawMirrorFull(mx, my, mw, mh){
   /* a covered road takes its markings under with it, exactly as it does ahead */
   const mPaint = 1 - settle * 0.85;
   let prev = null;
-  for(let d2 = 34000; d2 > 200; d2 -= MSEG){
-    const a = rproj(0, pos - d2), b2 = rproj(0, pos - d2 + MSEG);
+  /* ---- THE GLASS WALKS THE WORLD, NOT THE CAR (RLG-073) --------------
+     Owner, 2026-08-30: scenery in the rear-view absolutely ZOOMS away at many
+     times the speed it approaches in the forward view.
+
+     IT WAS NOT RECEDING AT ALL. This walked `d2` from 34,000 down to 200 in
+     fixed steps BEHIND THE CAR, so every slice was drawn at a constant distance
+     back - `rproj` computes `dz = pos - worldZ`, and with `worldZ = pos - d2`
+     that is exactly `d2`, a constant. The mirror was a ladder of fixed rungs
+     that never moved. What changed as you drove was `widx`, which decides WHICH
+     object is drawn on each rung: so a tree did not glide away, it sat still
+     and was replaced by the next tree every time the world index ticked over.
+
+     Measured, the frame-to-frame size change of a mirror object was exactly
+     0.00 per cent - it never changed at all between frames, and then jumped.
+     Out of the windscreen the same measurement reads a median of 0.55 per cent
+     and moves every frame. That difference is the whole report.
+
+     The slices sit on an ABSOLUTE world grid now, the same way the road ahead
+     does, so `dz` varies continuously as the car moves and a tree keeps its
+     identity while it recedes. This is the fault `hillClip` had and the note
+     there says the same thing: anything pinned to the segment behind the player
+     shifts by one every time the player crosses one.
+     ---------------------------------------------------------------- */
+  const mFar = Math.floor((pos - 34000) / MSEG) * MSEG;
+  for(let wz = mFar; wz < pos - 200; wz += MSEG){
+    const a = rproj(0, wz), b2 = rproj(0, wz + MSEG);
     if(!a || !b2) continue;
-    const idx = Math.floor((pos - d2)/MSEG);
+    const idx = Math.floor(wz/MSEG);
     const dark = !!(idx % 2);
     /* `widx` is the WORLD segment index, not the mirror's own step. The mirror
        walks in 900-unit steps and the world is in 200s, so everything that has
        to agree with the road ahead - the biome, the sea's side, the placement
        hash - asks for the world's index. */
-    const widx = Math.floor((pos - d2)/SEG);
+    const widx = Math.floor(wz/SEG);
     const mB = bioAt(widx);
     /* ---- AND THE WATER IS BEHIND YOU TOO (RLG-059) -------------------
        The glass showed a coast with no coast in it: the mirror's ground is one
@@ -14290,11 +14314,21 @@ function drawMirrorFull(mx, my, mw, mh){
                of the road's width here as it is out of the windscreen - but the
                windscreen is 900 pixels tall and this is 44. The nearest trees
                filled the glass and buried the road and the cars on it, which is
-               the one thing the mirror is for. Anything that would take more
-               than a fifth of the width is left out; it is a foot from the
-               bumper and out of the mirror's useful field anyway.
+               the one thing the mirror is for.
+
+               THE FIFTH IS THE RULED NUMBER AND IT STAYS. It was tightened to
+               a tenth on the way to fixing the zoom, on a theory that the near
+               field was setting the rate - it was not, and the walk above was.
+               The speculative half is put back rather than kept because it
+               happened to be in the tree at the time.
+
+               WHAT IS NEW IS THE FADE. A cut is not a fade: an object over the
+               limit was not drawn at all, so it appeared abruptly at a fifth of
+               the glass. Out of the windscreen the same tree eases in. It now
+               eases in here too, over the largest fifth of what is allowed.
                ------------------------------------------------------- */
-            if(mw2 > mw * 0.20) continue;
+            const mCap = mw * 0.20;
+            if(mw2 > mCap) continue;
             const mh2 = mw2 * (mart.height / mart.width);
             const mband = (mSpec.rows || 1) > 1 ? (mSpec.outFar - mSpec.out) / mSpec.rows : 0;
             const moff = mSpec.out + mband * (mrow + q1)
@@ -14302,8 +14336,22 @@ function drawMirrorFull(mx, my, mw, mh){
             const mxi = a.x + mside * roadsideAt(a, moff, mw);
             const mxx = mxi + mside * mw2/2;
             if(mxx + mw2 < mx || mxx - mw2 > mx + mw) continue;
+            /* eased in over the biggest fifth of what is allowed, so an object
+               arrives rather than appearing (RLG-073) */
+            const mFade = Math.min(1, Math.max(0, (mCap - mw2) / (mCap * 0.20)));
+            if(mFade <= 0.02) continue;
             sceneSides[mside < 0 ? 'mLeft' : 'mRight']++;
+            /* the same trace the forward pass writes, marked as the mirror, so
+               the two views can be compared on one timeline (RLG-073) */
+            if(sceneTrace) sceneTrace.push({ view:'mirror', idx:widx, side:mside,
+                                             row:mrow, x:+mxx.toFixed(4),
+                                             y:+a.y.toFixed(4), w:+mw2.toFixed(4),
+                                             h:+mh2.toFixed(4), z:widx*SEG,
+                                             pos:+pos.toFixed(2) });
+            const mWas = ctx.globalAlpha;
+            ctx.globalAlpha = mWas * mFade;
             ctx.drawImage(mart, mxx - mw2/2, a.y - mh2, mw2, mh2);
+            ctx.globalAlpha = mWas;
           }
         }
       }

@@ -180,6 +180,47 @@ def main():
                           'and it grows smoothly rather than in steps',
                           'one frame grew it by %.1f%%' % ((max(steps) - 1) * 100))
 
+        # ---- AND THE MIRROR RECEDES AT THE SAME RATE (RLG-073) --------------
+        # Owner, 2026-08-30: scenery in the rear-view zooms away at many times the speed it
+        # approaches in the forward view. It was not receding at all: the glass walked fixed
+        # distances BEHIND THE CAR, so every slice sat at a constant distance for ever and
+        # what changed was which object got drawn on each rung. A tree did not glide away,
+        # it sat still and was replaced.
+        #
+        # SO THE QUESTION IS WHETHER IT MOVES EVERY FRAME, not how fast. A view whose median
+        # frame-to-frame size change is zero is not slow, it is stationary - and that is a
+        # thing no tolerance on speed would ever have caught.
+        views = defaultdict(list)
+        for n, f in enumerate(rows):
+            for o in f['objs']:
+                views[o.get('view')].append((n, o))
+        per = {}
+        for v in ('ahead', 'mirror'):
+            byobj = defaultdict(list)
+            for n, o in views.get(v, []):
+                byobj[(o['idx'], o['side'], o['row'])].append((n, o))
+            steps = []
+            for seq in byobj.values():
+                seq.sort(key=lambda t: t[0])
+                for (n0, a), (n1, b) in zip(seq, seq[1:]):
+                    if n1 == n0 + 1 and a['w'] > 0.2:
+                        steps.append(abs(b['w'] - a['w']) / a['w'])
+            per[v] = sorted(steps)
+        res.check(len(per['mirror']) > 50 and len(per['ahead']) > 50,
+                  'both views were traced with enough samples to compare',
+                  'ahead %d, mirror %d' % (len(per['ahead']), len(per['mirror'])))
+        if len(per['mirror']) > 50 and len(per['ahead']) > 50:
+            ma = per['ahead'][len(per['ahead']) // 2]
+            mm = per['mirror'][len(per['mirror']) // 2]
+            print('      median frame-to-frame size change: ahead %.2f%%, mirror %.2f%%'
+                  % (ma * 100, mm * 100))
+            res.check(mm > 0.001,
+                      'a tree in the mirror actually recedes rather than sitting still',
+                      'the mirror median is %.4f%% - it is not moving' % (mm * 100))
+            res.check(mm < ma * 3,
+                      'and it recedes at about the rate the windscreen approaches',
+                      'mirror %.2f%% against ahead %.2f%%' % (mm * 100, ma * 100))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()
