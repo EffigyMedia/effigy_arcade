@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-14"></a>
+## [0.10.14] - 2026-08-30
+- Measured, and **nothing about the road changed**: the scenery's approach obeys perspective
+  exactly. Owner: scenery moves away far faster than it approaches. Following one tree in from
+  30,000 units to 12,500 on a flattened road, apparent width times distance holds at 275,141 with a
+  drift of 0.00% - which is the one law perspective cannot argue with. So the size and the position
+  are right, and whatever the eye is reacting to is the FADE or the draw distance, not the geometry.
+  `scenery-test.py` keeps that as a regression check; a deliberate distance-dependent scale error
+  drifts it 14.7% ([RLG-073](../fragments/RLG-073.md)).
+- Added: debug-only hooks the measurement needed and nothing in the game calls - a trace of where
+  each object was drawn (with the road position stamped **at draw time**, because reading it after
+  the frame put a couple of per cent of skew in and read as the geometry drifting), the road
+  position, and a dead flat, dead straight road. On the shipped road an object near the horizon
+  moves mostly because the terrain under it does: the first run of this measurement reported a
+  50-pixel jump that was a hill ([RLG-073](../fragments/RLG-073.md)).
+
 <a id="v0-10-13"></a>
 ## [0.10.13] - 2026-08-30
 - Fixed: **the hour is a blend, not a branch.** Owner: going from night to day, and day to night, is

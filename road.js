@@ -5555,6 +5555,8 @@ const SCENERY = {
 /* the built bitmaps, one per biome and kind. Cleared on resize with everything
    else, because their pixel size follows the canvas. */
 let sceneryCache = {};
+/* debug only, and null unless a harness turns it on (RLG-073) */
+let sceneTrace = null;
 /* ---- THE ROADSIDE IS LIT BY THE SAME HOUR AS THE HORIZON (RLG-080) -------
    Found by looking at the headlight captures: at midnight the mountain's rock
    faces were pale grey while the skyline BEHIND them had gone dark. The scenery
@@ -5766,6 +5768,18 @@ function drawScenery(idx, p1, y1, z1, fade){
          whole at the edge of the world. The lamps do the same. */
       ctx.globalAlpha = Math.min(1, fade * 4);
       sceneSides[side < 0 ? 'left' : 'right']++;
+      /* debug only: where each object was actually drawn this frame, so a
+         harness can follow ONE of them down the road instead of arguing about
+         perspective from the source (RLG-073) */
+      /* `pos` is recorded HERE, with the width, rather than being read after the
+         frame: a frame of skew between the two is up to ninety world units, which
+         at the near end of an approach is a couple of per cent of the distance and
+         reads as the geometry drifting when it is the instrument that moved. */
+      if(sceneTrace) sceneTrace.push({ idx:idx, side:side, row:row,
+                                       x:+x.toFixed(4), y:+y1.toFixed(4),
+                                       w:+w2.toFixed(4), h:+h2.toFixed(4),
+                                       z:z1, pos:+pos.toFixed(2),
+                                       a:+ctx.globalAlpha.toFixed(3) });
       ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
       /* the windows, on the same schedule as the street lamps */
       const litArt = spec.lit && (!spec.litKinds || spec.litKinds.indexOf(kind) >= 0)
@@ -16379,6 +16393,21 @@ requestAnimationFrame(frameLoop);
   /* how many checkpoint boards are actually on the road. The question RLG-089
      turned on is whether a BOARD exists, not whether a setting is true. */
   API.gantries = function(){ return cpGantries.length; };
+  /* start recording where scenery is drawn, and hand back one frame of it */
+  API.traceScenery = function(on){ sceneTrace = on ? [] : null; return !!sceneTrace; };
+  /* where the camera is down the road, so a trace can be turned into a distance */
+  API.roadPos = function(){ return pos; };
+  /* debug only: a dead straight, dead flat road. Perspective questions are
+     drowned out by hills and bends - an object near the horizon moves mostly
+     because the TERRAIN under it does - so a measurement about how something
+     approaches has to take the terrain away first. */
+  API.flattenRoad = function(){
+    curveSegs.length = 0; hillSegs.length = 0;
+    curveSegs.push({ k:0, len: 1e9 });
+    hillSegs.push({ k:0, len: 1e9 });
+    return true;
+  };
+  API.sceneryFrame = function(){ const t = sceneTrace || []; sceneTrace = []; return t; };
   /* the same path RETRY and DRIVE both take, so a harness tests the reset the
      player gets rather than the menu that leads to it (RLG-090) */
   API.restart = function(){ start(); return true; };
