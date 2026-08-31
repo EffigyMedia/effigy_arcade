@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.0';
+window.ROAD_BUILD = '0.10.27';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6934,11 +6934,17 @@ function reset(){
   gear=1; idleRev=IDLE; autoHold=0; autoDownT=0;
   if(typeof knobRail !== 'undefined'){ knobRail=0; knobY=TOP_Y; }
   dmg=0; nos=40; nosOn=false; nosTime=0; bustT=0;
-  /* ---- ROLLING START --------------------------------------------------
-     Starting at a dead stop in first meant every run began with four seconds
-     of nothing while the car got out of its own way — and after the
-     acceleration retune that got worse, not better. You start MOVING, in the
-     middle of second, which is where a race actually begins.
+  /* ---- THE ROLLING START IS OVER, AND THESE TWO LINES ARE ITS REMAINS --
+     A run used to begin at speed in second, because a dead stop in first meant
+     four seconds of nothing while the car got out of its own way. RLG-088 put
+     a count-in in front of the run instead, and the count-in holds `spd` at
+     zero every frame it is up, so neither of these two values survives to be
+     driven - and RLG-110 now puts the box in NEUTRAL over the top of the gear.
+
+     THEY ARE LEFT HERE ON PURPOSE. `CFG.onReset` fires on the next line, a
+     seam is entitled to read the car it is handed, and changing what it sees
+     is not this unit's business. What is corrected is the comment, which
+     described a start the game has not had for some time.
      ------------------------------------------------------------------- */
   gear = 2;
   spd = MAX_SPD * 0.155;
@@ -7017,6 +7023,17 @@ function start(){
   /* the count runs after `reset`, which has already put the car at rest */
   countFrom = countIn = 3.0;
   countPip = -1;
+  /* ---- AND THE BOX GOES TO NEUTRAL (RLG-110) --------------------------
+     Both gearboxes, because the launch is the same skill on either. `reset`
+     leaves the car in gear and the count-in holds it here every frame, so a
+     knob dragged during the count does not take the neutral away.
+
+     THE KNOB MOVES WITH IT. `placeKnob` is what decides the gear from where
+     the knob physically is, so setting the gear without moving the knob would
+     leave the gate reading 1 and the engine in neutral - and the next touch of
+     the knob would silently put it back.
+     ------------------------------------------------------------------- */
+  armLaunch();
   state='driving';
   veil.classList.add('hidden');
 }
@@ -7395,10 +7412,13 @@ function gearRpm(g, v){
   return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, redline());
 }
 function engineRpm(){
-  if(!optManual){
-    if(gear < 1 || gear > gearTable().length) gear = 1;
-    return gearRpm(gear, spd);
-  }
+  /* ---- NEUTRAL IS NEUTRAL WHATEVER THE GEARBOX IS (RLG-110) -----------
+     The free-revving branch below used to sit UNDER an `if(!optManual)` that
+     clamped the gear to 1 and derived the revs from road speed, so an
+     automatic could not be in neutral and a player on the automatic box saw
+     the needle sit at idle however hard they held the throttle at the lights.
+     The test is now what the box is IN, rather than which box it is.
+     ------------------------------------------------------------------- */
   if(gear < 1 || gear > gearTable().length){
     /* NEUTRAL lets go of the tacho. It used to jump straight to idle, which
        read as the engine being switched off mid-shift. Off the throttle the
@@ -7409,8 +7429,30 @@ function engineRpm(){
        It now runs to the limiter and BOUNCES off it, the way a rev limiter
        actually behaves rather than pinning flat against the stop. */
     const want = (gas || nosOn) ? redline() + 250 : IDLE;
-    /* free-revving climbs much faster than under load */
-    idleRev += (want - idleRev) * (want > idleRev ? 0.22 : 0.045);
+    /* ---- ON THE LINE THE NEEDLE CAN BE HELD (RLG-110) ------------------
+       Free-revving mid-race is a blip and wants to be sharp: 0.22 up and
+       0.045 down puts the needle at the limiter in about eight frames and
+       back at idle in twenty. That is right for a blip and impossible to aim
+       with - from the middle of the band the needle falls out of it in four
+       frames, about seventy milliseconds, so a window would be a coin toss
+       rather than a skill.
+
+       WHILE A LAUNCH IS ARMED the engine is slower to wind up and far slower
+       to come down. THE PEDAL IS A BUTTON, not a hinge: a constant throttle
+       opening is not something a thumb can hold, so the needle has to be
+       walked up and allowed to drift, and the drift is what makes the band
+       holdable at all. At these rates it takes about half a second to bring
+       the needle from idle to the middle of a band, and about the same again
+       to fall out of the bottom of one - so the player blips it up on the
+       last number of the count and rides it into GO.
+
+       WHETHER THAT IS THE RIGHT WEIGHT IS THE OWNER'S, on the device. A
+       harness can prove the band is reachable and it cannot say how it feels
+       under a thumb.
+       ---------------------------------------------------------------- */
+    const up   = launchArmed ? LAUNCH.rise : 0.22;
+    const down = launchArmed ? LAUNCH.fall : 0.045;
+    idleRev += (want - idleRev) * (want > idleRev ? up : down);
     /* remember we were in neutral, so the moment a gear lands knows to look
        for a launch */
     wasNeutral = true;
@@ -7418,6 +7460,33 @@ function engineRpm(){
       /* the limiter cutting in and out */
       idleRev = redline() - Math.abs(Math.sin(performance.now()/38)) * 620;
     }
+    return idleRev;
+  }
+  /* ---- A SPINNING TYRE IS NOT A ROAD SPEED ----------------------------
+     The wheels are turning and the car is not, so the revs cannot come from
+     how fast the scenery is going past. It screams near the limiter and comes
+     back down to the road as the tyres hook up.
+     ------------------------------------------------------------------- */
+  if(spinT > 0){
+    const k = clamp(spinT / LAUNCH.spinFor, 0, 1);
+    idleRev = Math.max(gearRpm(gear, spd),
+                       IDLE + (redline() - IDLE) * (0.70 + 0.26 * k));
+    wasNeutral = false;
+    return idleRev;
+  }
+  /* An automatic that was never in neutral has nothing to catch: the road
+     decides its revs and it takes the short path. It falls through to the
+     launch below only on the one frame the box lands after a neutral. */
+  if(!optManual && !wasNeutral) return gearRpm(gear, spd);
+  /* ---- THE START LINE IS A WINDOW, NOT A CURVE (RLG-110) ---------------
+     Armed by the count-in and disarmed here, so this fires exactly once per
+     start and a mid-race blip keeps the curve below it.
+     ------------------------------------------------------------------- */
+  if(launchArmed && wasNeutral){
+    doLaunch();
+    launchArmed = false;
+    wasNeutral  = false;
+    idleRev = gearRpm(gear, spd);
     return idleRev;
   }
   /* ---- DROPPING IT INTO GEAR ------------------------------------------
@@ -7443,7 +7512,12 @@ function engineRpm(){
       spd = Math.min(MAX_SPD * bodyStat('vmax'), spd + kick * 2600);
       snd.launch(kick);
       if(kick > 0.45){
-        skids.push({ z: pos + PLAYER_Z, x: playerX, life: 1.0, w: 0.30 });
+        /* `stepRubber` ages a mark by `t` and paints it by `heat`, and this
+           record carried `life` and `w` instead - so the launch mark had no
+           heat to draw with and no clock to expire on, and sat on the road
+           until the player drove 2,000 units past it. `layRubber` is the one
+           place that knows the shape. */
+        layRubber(playerX, pos + PLAYER_Z - 340, Math.min(1, kick), PLAYER_W);
         shake = Math.max(shake, kick * 0.55);
       }
     }
@@ -7451,6 +7525,112 @@ function engineRpm(){
   wasNeutral = false;
   idleRev = landed;
   return idleRev;
+}
+
+/* ---- WHERE THE BAND SITS, FOR THIS CAR ON THIS ROAD ----------------------
+   Returned rather than stored, because two of the three edges move: a grippy
+   car can put more revs down before the tyres let go, and a wet road takes
+   that away again. `wetGrip()` is 1.000 dry and falls to 0.340 at its worst,
+   so `1 - wetGrip()` is how wet the road is in the units the rest of the
+   engine already uses.
+   -------------------------------------------------------------------------- */
+function launchWindow(){
+  const B = BODY[optBody] || {};
+  const grip    = (B.grip || 1);
+  const forgive = (B.launch === undefined ? 1 : B.launch);
+  /* ---- WHERE THE BAND SITS IS A FACT ABOUT THE CAR ---------------------
+     A car with torque to spare launches off LOWER revs, and lights the tyres
+     up if you use more than that; a car with very little power has to be
+     wound up before it has anything to give at all. Power-to-weight is that
+     difference and it is already declared for every body in the fleet, so
+     the band moves down the dial as the car gets quicker.
+
+     HOW WIDE IT IS is the body's own `launch` stat - the one that already
+     says how good this car is off the line - and the TOP of it is `grip`,
+     because the top edge is the moment the tyres stop holding. Nothing here
+     invents a number for a class of car: all three come from the same table
+     the rest of the fleet's physics is read from.
+     ------------------------------------------------------------------ */
+  const pw   = powerToWeight();
+  const peak = clamp(LAUNCH.peak - (pw - 1) * LAUNCH.peakPw,
+                     LAUNCH.peakLo, LAUNCH.peakHi);
+  /* ---- AND THE QUICKER THE CAR, THE TIGHTER THE BAND -------------------
+     Owner's decision, 2026-08-31. A thousand horsepower on seven hundred
+     kilos will spin or bog on almost any rev you pick, and a van has not got
+     the power to get it wrong - so precision is asked for where the prize is
+     large and forgiven where it is small. A perfect launch is worth about
+     34mph in a COMET and about 6mph in a van, so the narrow gate stands in
+     front of the big reward rather than in front of the small one.
+
+     The body's own `launch` stat still moves it, secondarily, so two cars of
+     the same class keep the character the fleet table gives them: MATADOR is
+     'FASTEST OFF THE LINE' at 1.20 and STALLION is 'SLOWER OFF THE LINE' at
+     0.88, and that shows up here as well as in `accelOf`.
+     ------------------------------------------------------------------ */
+  const wide = clamp(LAUNCH.wideK - LAUNCH.widePw * pw, LAUNCH.wideLo, LAUNCH.wideHi);
+  const half = LAUNCH.half * wide * forgive;
+  const slip = (1 - wetGrip()) * LAUNCH.wet;
+  const lo   = clamp(peak - half, 0.06, peak - 0.02);
+  const hi   = clamp(peak + half * (1 + (grip - 1) * LAUNCH.grip) - slip,
+                     peak + 0.02, 0.99);
+  return { lo: lo, peak: peak, hi: hi };
+}
+/* Grade a set of revs against that band. `q` is 1 at the middle of the window
+   and 0 at either edge of it; `how` says which side you fell off, and `miss`
+   is how far off you were, so a launch that is barely wrong is barely
+   punished. */
+function launchQuality(rpm){
+  const w = launchWindow();
+  /* the SAME fraction the tachometer is drawn from - `rpm / redline()` -
+     so the amber band on the face and the grade taken here cannot disagree */
+  const f = clamp(rpm / Math.max(1, redline()), 0, 1);
+  if(f < w.lo)  return { f:f, q:0, how:'bog',
+                         miss: clamp((w.lo - f) / Math.max(0.01, w.lo), 0, 1) };
+  if(f > w.hi)  return { f:f, q:0, how:'spin',
+                         miss: clamp((f - w.hi) / Math.max(0.01, 1 - w.hi), 0, 1) };
+  const half = f < w.peak ? (w.peak - w.lo) : (w.hi - w.peak);
+  return { f:f, q: clamp(1 - Math.abs(f - w.peak) / Math.max(0.01, half), 0, 1),
+           how:'go', miss:0 };
+}
+/* ---- AND WHAT IT COSTS OR BUYS ------------------------------------------
+   One place, so the three outcomes cannot drift apart. A bog and a wheelspin
+   are both a hold on the drive rather than a penalty subtracted from the
+   speed: the car is trying and not going anywhere, which is what both of them
+   look like from the driver's seat.
+   ------------------------------------------------------------------------- */
+function doLaunch(){
+  const L = launchQuality(idleRev);
+  launchF = L.f;
+  launchNoteT = 1.60;
+  if(L.how === 'bog'){
+    /* the engine labours, and `bogT` is the sound of exactly that */
+    bogHold = LAUNCH.bogFor * (0.40 + 0.60 * L.miss);
+    bogT = 1;
+    launchNote = 'BOGGED';
+    return;
+  }
+  if(L.how === 'spin'){
+    spinT = LAUNCH.spinFor * (0.35 + 0.65 * L.miss);
+    launchNote = 'WHEELSPIN';
+    shake = Math.max(shake, 0.26);
+    snd.launch(0.22);
+    return;
+  }
+  const kick = L.q * accelOf(optBody);
+  launchKick = kick;
+  spd = Math.min(MAX_SPD * bodyStat('vmax'), spd + L.q * LAUNCH.shove * accelOf(optBody));
+  snd.launch(Math.max(0.20, kick));
+  launchNote = L.q > 0.75 ? 'PERFECT LAUNCH' : 'GOOD LAUNCH';
+  if(L.q > 0.60){
+    shake = Math.max(shake, L.q * 0.30);
+    layRubber(playerX, pos + PLAYER_Z - 340, L.q * 0.9, PLAYER_W);
+  }
+}
+/* How much drive the launch is still taking away. 1 is a clean getaway. */
+function launchDrag(){
+  if(spinT   > 0) return 1 - LAUNCH.spinCut * clamp(spinT / LAUNCH.spinFor, 0, 1);
+  if(bogHold > 0) return 1 - (1 - LAUNCH.bogCut) * clamp(bogHold / LAUNCH.bogFor, 0, 1);
+  return 1;
 }
 
 /* ---- the torque curve ----------------------------------------------------
@@ -7519,6 +7699,88 @@ function torqueAt(rpm, rl){
   return 0.06;                                     /* on the limiter */
 }
 let optManual = false, gear = 1, bogT = 0;
+/* ===========================================================================
+   THE LAUNCH, AND WHY IT IS A WINDOW (RLG-110)
+
+   Owner's decision, 2026-08-31. The grid is held at rest with the box in
+   NEUTRAL, and what revving buys you at the lights is a rev WINDOW. Hold the
+   needle inside the band when the gear lands and the car goes; land below the
+   band and it bogs; land above it and the tyres let go and the engine screams
+   while you sit still.
+
+   THE ALTERNATIVE WAS A PLAIN CURVE - more revs is always more launch - and it
+   was rejected for the reason that makes it simple: the correct play would
+   always be to hold the limiter, so there would be no decision to make. A
+   window is a decision, and it is the only reason a count-in is worth sitting
+   through rather than skipping.
+
+   EVERY NUMBER IS A FRACTION OF THIS CAR'S OWN REDLINE, never an rpm. The
+   FORMULA spins to fifteen thousand and a lorry to five, so a fixed rpm would
+   put the band in a different place on every dial in the fleet.
+
+   THE CAR IS CAPABLE, THE DRIVER DECIDES. The band moves with `grip` - a car
+   that can put power down tolerates more revs before it spins - and the size
+   of the shove is `accelOf`, which is the fleet's own off-the-line figure and
+   already carries hp, mass and the body's `launch` stat. Nothing here invents
+   a second physics for one class of car.
+   =========================================================================== */
+const LAUNCH = {
+  peak:  0.72,   /* where a car of average power launches best                 */
+  peakPw: 0.055, /* how far power-to-weight moves that DOWN the dial           */
+  peakLo: 0.42,  /* and the ends of the range it may be moved into             */
+  peakHi: 0.88,
+  half:  0.115,  /* half the band's width, before the two terms below          */
+  wideK: 1.25,   /* width against power-to-weight: the intercept ...            */
+  widePw: 0.20,  /* ... and how fast a quick car narrows it                     */
+  wideLo: 0.55,  /* the narrowest and widest that term is allowed to be         */
+  wideHi: 1.35,
+  rise:  0.050,  /* how fast the needle climbs while a launch is armed         */
+  fall:  0.005,  /* and how slowly it falls back, so the band can be HELD      */
+  grip:  0.35,   /* how much a grippy car widens the top half of the band      */
+  wet:   0.20,   /* how far a wet road pulls the top of the band down          */
+  shove: 1400,   /* speed units at a perfect launch, times `accelOf`           */
+  bogFor: 0.90,  /* seconds a bogged launch holds the car down                 */
+  bogCut: 0.42,  /* how much of the drive a bogged launch leaves you           */
+  spinFor: 1.30, /* seconds of wheelspin at the worst possible overshoot       */
+  spinCut: 0.82, /* how much of the drive the worst wheelspin takes away       */
+  aiFor: 1.60,   /* seconds a rival's own launch is worth                      */
+  aiLo:  0.84,   /* the worst launch anyone on the grid makes                  */
+  aiHi:  1.14    /* and the best                                               */
+};
+/* `launchArmed` is true from the moment the count-in starts until the gear
+   lands, and it is what tells the drop-into-gear code that THIS one is a start
+   rather than a mid-race blip. The two want different payoffs and a flag is
+   cheaper than guessing from the speed. */
+let launchArmed = false, spinT = 0, bogHold = 0;
+let launchNote = '', launchNoteT = 0, launchF = 0;
+/* ---- HOLDING THE BOX IN NEUTRAL -----------------------------------------
+   THE KNOB HAS TO MOVE WITH THE GEAR. `placeKnob` derives the gear FROM where
+   the knob physically sits, so a gear set behind the gate's back is undone by
+   the next touch of the knob - the player would find the car in first without
+   having shifted. Mid-rail is the neutral slot in every gate the game builds,
+   because `SLOTS` has no entry at `MID_Y`.
+
+   The gate is a DOM element and a cabinet is allowed not to have one, so the
+   knob half is optional and the gear half is not.
+   ------------------------------------------------------------------------- */
+function holdNeutral(){
+  if(typeof knobEl !== 'undefined' && knobEl &&
+     typeof MID_Y === 'number' && knobY !== MID_Y){
+    knobRail = 0; knobY = MID_Y;
+    placeKnob();                /* which sets `gear` to 0 from the slot table */
+  }
+  gear = 0;
+}
+/* Arm a start. Called once, by `start`, after `reset` has put the car at rest:
+   everything the last launch left behind is cleared here rather than in six
+   places, so a second run cannot inherit the first one's wheelspin. */
+function armLaunch(){
+  launchArmed = true;
+  spinT = 0; bogHold = 0; bogT = 0;
+  launchNote = ''; launchNoteT = 0; launchF = 0;
+  idleRev = IDLE; wasNeutral = false;
+  holdNeutral();
+}
 /* keeps the body class, the shifter and the dial height agreeing with the
    gearbox setting — called on change AND once at startup */
 function syncBoxClass(){
@@ -9031,7 +9293,29 @@ function buildField(){
     r.pull  = accelOf(r.body);
     /* skill spread stays, so the grid is strung out rather than identical */
     r.base  = r.vmax * (0.99 - i*0.008 + rnd(-0.006,0.006));
-    r.spd   = r.base * 0.92;
+    /* ---- THE GRID STARTS FROM REST (RLG-118) --------------------------
+       This was `r.base * 0.92` - about 91 per cent of each car's own top
+       speed - and the count-in returns from `step()` before `stepRacers`
+       runs. So the field was never held at zero and released: it was simply
+       not stepped, and eleven cars already at racing speed were let go
+       against a player sitting at nothing in first gear. That is the flying
+       start, and it is arithmetic rather than a tuning fault.
+
+       Nothing has to be built to bring them up. `aiAccel` already runs each
+       rival on its own gearbox and its own torque, so from zero they pull
+       away exactly as the player's car does.
+       ---------------------------------------------------------------- */
+    r.spd   = 0;
+    /* ---- A LAUNCH IS A SKILL OF ITS OWN, AND IT IS NOT GRID ORDER -----
+       Drawn WITHOUT `i`, deliberately. `r.base` above already strings the
+       field out by grid position, and a launch spread that followed the same
+       order would compound with it - the front row would leave the line
+       fastest AND hold the highest speed, and the back of the grid would
+       never see the front again. Independent, the car on row six can out-drag
+       the car on pole and then have to defend the place.
+       ---------------------------------------------------------------- */
+    r.launchQ = rnd(LAUNCH.aiLo, LAUNCH.aiHi);
+    r.launchT = LAUNCH.aiFor;
   });
   /* a tournament round sets its own distance */
   finishZ = pos + (tourOn ? TOUR_MILES[tourRound] : RACE_MILES) * MILE;
@@ -9205,7 +9489,14 @@ function stepRacers(dt){
     const rWas = r.spd;
     /* its OWN gearbox and its OWN torque. `ceiling` still clamps `want` above:
        the rubber band is the one exception to shared physics (RLG-038). */
-    r.spd += aiAccel(r.spd, want, dt, r.body);
+    /* the first seconds off the line are the rival's own launch, and it
+       cannot be used to overshoot the speed it was heading for anyway */
+    let drive = aiAccel(r.spd, want, dt, r.body);
+    if((r.launchT || 0) > 0){
+      r.launchT = Math.max(0, r.launchT - dt);
+      if(drive > 0) drive = Math.min(want - r.spd, drive * (r.launchQ || 1));
+    }
+    r.spd += drive;
     const rDec = (rWas - r.spd) / Math.max(dt, 1/240);
     if(rDec > 900) r.brakeT = 0.35; else if(r.brakeT > 0) r.brakeT -= dt;
     r.braking = (r.brakeT || 0) > 0;
@@ -10408,20 +10699,22 @@ hornBtn.addEventListener('pointerleave',  ()=>setHorn(false));
 hornBtn.addEventListener('pointercancel', ()=>setHorn(false));
 }
 
-/* ---- A SECOND RUN CAN BE STARTED WITH A THUMB (RLG-088) -------------
-   A player who has just crashed and wants another go should not sit through
-   three seconds to get one, or the start becomes a toll on exactly the player
-   who is enjoying it most.
+/* ---- THE COUNT-IN IS NO LONGER DEAD TIME, SO IT IS NO LONGER SKIPPED ----
+   RLG-088 let the throttle shorten a repeat count-in to a third of a second,
+   because three seconds of waiting is a toll on the player who is enjoying the
+   game most. That was right while the count was waiting.
 
-   IT SHORTENS RATHER THAN CANCELS. Dropping straight to GO would take the
-   launch away, which is the thing worth having; a third of a second still
-   reads as a start. And it only works AFTER the first run of a session, so the
-   count is always seen whole once before it can be hurried.
+   IT IS NOT WAITING ANY MORE. The box is in neutral and the throttle is how
+   the player sets the revs for the launch (RLG-110), so the one button that
+   skipped the count is now the button the count exists for - and a third of a
+   second is not enough to catch the window in. The shortcut and the feature
+   cannot both use the throttle, and the feature is the reason the count is
+   there at all.
+
+   THE TOLL RLG-088 WAS FIXING IS PAID BY THE FEATURE, not by the skip: the
+   three seconds are now something to do rather than something to sit through.
    ------------------------------------------------------------------- */
-function hurryStart(){
-  if(countIn > 0 && seenStart && countIn > 0.34) countIn = 0.34;
-}
-gasBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); hurryStart(); setGas(true); });
+gasBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); setGas(true); });
 gasBtn.addEventListener('pointerup',     ()=>setGas(false));
 gasBtn.addEventListener('pointerleave',  ()=>setGas(false));
 gasBtn.addEventListener('pointercancel', ()=>setGas(false));
@@ -10479,10 +10772,30 @@ function step(dt){
       seenStart = true;
       goFor = 0.85;          /* GO stays up while the car is already moving */
     }
-    /* held at rest, and the box in neutral-to-first so the launch is real */
+    /* ---- HELD AT REST, IN NEUTRAL, WITH THE ENGINE FREE (RLG-110) ----
+       The comment here used to say the box was in neutral-to-first and the
+       code did not put it there: `reset` leaves the car in gear, so the
+       needle sat where road speed put it - at idle - however hard the
+       throttle was held. Neutral is asserted every frame, so a knob dragged
+       during the count cannot take it away before the lights.
+       -------------------------------------------------------------- */
     spd = 0; nosOn = false;
+    holdNeutral();
     return;
   }
+  /* ---- WHAT THE LAUNCH LEFT BEHIND (RLG-110) --------------------------
+     Aged here, at the top of the step, so the throttle below reads a drag
+     that is current rather than one frame stale. A spinning car lays rubber
+     for exactly as long as it is spinning, which is the only thing on the
+     screen that says why it is not moving.
+     ------------------------------------------------------------------- */
+  if(spinT > 0){
+    spinT = Math.max(0, spinT - dt);
+    layRubber(playerX, pos + PLAYER_Z - 340,
+              0.55 + 0.45 * clamp(spinT / LAUNCH.spinFor, 0, 1), PLAYER_W);
+  }
+  if(bogHold > 0) bogHold = Math.max(0, bogHold - dt);
+  if(launchNoteT > 0) launchNoteT = Math.max(0, launchNoteT - dt);
   // --- steering ---
   let kd=0;
   if(keys.ArrowLeft||keys.a) kd-=1;
@@ -10669,7 +10982,10 @@ function step(dt){
 
                 NOS scales with it and keeps its edge — 2.6x the base shove
                 rather than 2.5x, so the bottle is still worth the button. */
-             : spd < top ? (nosOn ? 2600 : 1000) * gearFactor() * accelOf(optBody)
+             /* `launchDrag` is 1 unless the start went wrong: a bogged car
+                has no drive for the best part of a second, and a spinning one
+                has almost none until the tyres hook up (RLG-110). */
+             : spd < top ? (nosOn ? 2600 : 1000) * gearFactor() * accelOf(optBody) * launchDrag()
              : (offRoad ? 11000 : 2400);
   /* Approach the target without crossing it. It used to add or subtract a
      fixed step, so on the brakes the car overshot the floor and juddered
@@ -10926,8 +11242,12 @@ function step(dt){
   if(mode === 'race' && !finished) stepRacers(dt);
   if(!optManual) autoGear(dt);
   /* a gear that cannot pull makes the engine labour, which you hear */
-  bogT = (optManual && onGas && gearFactor() < 0.4) ? Math.min(1, bogT + dt*3)
-                                                    : Math.max(0, bogT - dt*3);
+  /* A bogged start labours for the same reason a wrong gear does, so it uses
+     the same sound rather than a second one - and it does so on either
+     gearbox, because an automatic can be bogged off the line too (RLG-110). */
+  bogT = ((optManual && onGas && gearFactor() < 0.4) || bogHold > 0)
+           ? Math.min(1, bogT + dt*3)
+           : Math.max(0, bogT - dt*3);
   /* ---- THE HARD CEILING IS THE FLEET'S, NOT A CONSTANT ------------------
      A safety clamp, and the only thing it should ever stop is a number going
      wild. At a flat 1.30 it was stopping a CAR: COMET's own top end is 1.38,
@@ -14540,6 +14860,7 @@ function draw(){
   vg.addColorStop(1,'rgba(0,0,0,.55)');
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
   drawCountIn();
+  drawStartPrompt();
 }
 
 /* ==== THE START LINE, ON THE GLASS (RLG-088) ============================
@@ -15200,27 +15521,72 @@ function drawMirrorFull(mx, my, mw, mh){
    Shows only before you have first moved, and never comes back.
    -------------------------------------------------------------------------- */
 let hasMoved = false;
+/* ---- WHAT THE PLAYER IS BEING ASKED TO DO (RLG-110) ---------------------
+   THIS FUNCTION WAS NEVER CALLED. It has been here since the fork, saying HOLD
+   THE RIGHT PEDAL and STANDING START - 1ST GEAR, and no line anywhere in the
+   draw path referred to it. So the copy was never on the screen, and neither of
+   the two things it said was ever true of the car it described.
+
+   It is drawn now, because it has something to say. A rev window the player
+   cannot see is a guess rather than a skill, and this project teaches a control
+   in play the first time it matters - there is no controls page to put it on.
+   The band, and the needle inside it, are up for the three seconds they are
+   being used and gone the moment the car is away.
+   ------------------------------------------------------------------------- */
 function drawStartPrompt(){
-  if(hasMoved) return;
-  if(spd > MAX_SPD*0.02){ hasMoved = true; return; }
-  const t = performance.now()/1000;
-  const pulse = 0.55 + Math.abs(Math.sin(t*2.2))*0.45;
+  const showing = countIn > 0 || launchNoteT > 0;
+  if(!showing){
+    if(spd > MAX_SPD*0.02) hasMoved = true;
+    return;
+  }
+  const disp = getComputedStyle(document.body).getPropertyValue('--disp');
+  const w = launchWindow();
+  const live = clamp(idleRev / Math.max(1, redline()), 0, 1);
+  const rev  = countIn > 0 ? live : launchF;
+
   ctx.save();
   ctx.textAlign = 'center';
-  /* a starting-grid strip across the road */
-  const y = H*0.66, bw = W*0.62, bh = H*0.052;
+  const y = H*0.66, bw = W*0.62, bh = H*0.082;
   ctx.fillStyle = 'rgba(8,8,12,.72)';
   ctx.fillRect(W/2 - bw/2, y - bh/2, bw, bh);
   ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1;
   ctx.strokeRect(W/2 - bw/2, y - bh/2, bw, bh);
-  ctx.font = '700 ' + Math.round(H*0.026) + 'px ' +
-             getComputedStyle(document.body).getPropertyValue('--disp');
-  ctx.fillStyle = 'rgba(255,236,190,' + pulse + ')';
-  const touch = !!(AR && AR.touch);
-  ctx.fillText(touch ? 'HOLD THE RIGHT PEDAL' : 'HOLD UP ARROW', W/2, y + H*0.009);
+
+  /* the line of copy: an instruction while the count runs, and the verdict for
+     a moment after it */
+  const t = performance.now()/1000;
+  const pulse = 0.55 + Math.abs(Math.sin(t*2.2))*0.45;
+  ctx.font = '700 ' + Math.round(H*0.024) + 'px ' + disp;
+  if(countIn > 0){
+    ctx.fillStyle = 'rgba(255,236,190,' + pulse + ')';
+    ctx.fillText('NEUTRAL \u00B7 REV IT', W/2, y - bh*0.10);
+  } else {
+    /* green for a launch that worked and amber for one that did not, and the
+       line below says in numbers where the needle actually was - so a player
+       who has just been told WHEELSPIN can see by how much */
+    const good = launchNote.indexOf('LAUNCH') >= 0;
+    ctx.fillStyle = good ? 'rgba(150,240,190,.95)' : 'rgba(255,180,120,.95)';
+    ctx.fillText(launchNote, W/2, y - bh*0.10);
+  }
+
+  /* ---- AND THE SECOND LINE SENDS THEM TO THE DIAL ----------------------
+     THERE IS ONLY ONE INSTRUMENT. An earlier version of this strip drew its
+     own copy of the band here, in the middle of the screen, and the tacho
+     drew another: the same fact in two geometries, and the player has to work
+     out how the two relate before either is useful. The band lives on the
+     tachometer, where the needle is, and this strip says in words what the
+     dial is being used for.
+     ------------------------------------------------------------------- */
   ctx.font = '400 ' + Math.round(H*0.014) + 'px monospace';
   ctx.fillStyle = 'rgba(200,208,224,.72)';
-  ctx.fillText('STANDING START \u00B7 1ST GEAR', W/2, y + bh*0.62);
+  if(countIn > 0){
+    ctx.fillText('HOLD THE NEEDLE IN THE AMBER', W/2, y + bh*0.30);
+  } else {
+    const pct = Math.round(rev*100), band = Math.round(w.peak*100);
+    ctx.fillText(pct + '%  \u00B7  BAND ' + Math.round(w.lo*100) + '-' +
+                 Math.round(w.hi*100) + '%  \u00B7  BEST ' + band + '%',
+                 W/2, y + bh*0.30);
+  }
   ctx.restore();
 }
 
@@ -15308,8 +15674,10 @@ function drawDials(){
   g.clearRect(0,0,115,59);
 
   const rpm = engineRpm();
+  /* the launch window is on the face while the start is live and gone after */
+  const lw = (countIn > 0 || launchNoteT > 0) ? launchWindow() : undefined;
   face(g, 30, 30, 26, rpm / redline(), (rpm/1000).toFixed(1), 'x1000',
-       0.86, '#5ff0d8', '#ff3b5c', undefined, gearLabel());
+       0.86, '#5ff0d8', '#ff3b5c', undefined, gearLabel(), lw);
   /* ---- THE DIAL HAS TO REACH ------------------------------------------
      The needle was `spd / MAX_SPD`, so 200mph was full deflection and anything
      faster simply pegged - which is why nothing ever appeared to go above 200.
@@ -15337,7 +15705,7 @@ function gearLabel(){
   return (gear >= 1 && gear <= gearTable().length) ? String(gear) : 'N';
 }
 function dialCurve(f){ return clamp(f, 0, 1.02); }
-function face(g, cx, cy, r, frac, big, label, redAt, tint, red, odo, gearTag){
+function face(g, cx, cy, r, frac, big, label, redAt, tint, red, odo, gearTag, band){
   const A0 = Math.PI*0.75, A1 = Math.PI*2.25;      /* 7 o'clock to 5 o'clock */
   frac = dialCurve(frac);
   /* needed by the numerals AND the needle, and the needle is now drawn last,
@@ -15351,6 +15719,27 @@ function face(g, cx, cy, r, frac, big, label, redAt, tint, red, odo, gearTag){
   g.beginPath();
   g.arc(cx,cy,r-4, A0+(A1-A0)*dialCurve(redAt), A1);
   g.strokeStyle='rgba(255,59,92,.30)'; g.lineWidth=3.4; g.stroke();
+  /* ---- THE LAUNCH WINDOW, WHILE THERE IS ONE (RLG-110) ----------------
+     Owner, 2026-08-31: a temporary yellow section on the tachometer. It is
+     painted into the FACE, in the same groove as the red zone, because the
+     thing the player has to line up is the NEEDLE - a band anywhere else on
+     the screen asks them to read two places at once and then guess how the
+     two relate. It is up only while a launch is live.
+
+     The tick at the middle is the number to actually hit. The band says how
+     much room there is to be wrong in, and that room is a fact about the car:
+     a supercar's is half the width of a van's.
+     ------------------------------------------------------------------ */
+  if(band && band.hi > band.lo){
+    g.beginPath();
+    g.arc(cx, cy, r-4, A0+(A1-A0)*dialCurve(band.lo), A0+(A1-A0)*dialCurve(band.hi));
+    g.strokeStyle='rgba(255,201,64,.55)'; g.lineWidth=3.4; g.stroke();
+    const ap = A0+(A1-A0)*dialCurve(band.peak);
+    g.beginPath();
+    g.moveTo(cx+Math.cos(ap)*(r-6.2), cy+Math.sin(ap)*(r-6.2));
+    g.lineTo(cx+Math.cos(ap)*(r-1.8), cy+Math.sin(ap)*(r-1.8));
+    g.strokeStyle='rgba(255,232,150,.95)'; g.lineWidth=1.6; g.stroke();
+  }
   /* ticks */
   for(let i=0;i<=10;i++){
     const a = A0 + (A1-A0)*dialCurve(i/10);
@@ -16969,6 +17358,31 @@ requestAnimationFrame(frameLoop);
   API.phase = function(){ return +phase().toFixed(4); };
   API.throttle = function(){ return (gas||nosOn) ? 1 : 0; };
   API.revs = function(){ return engineRpm(); };
+  /* ---- WHAT THE START LINE IS DOING, FOR A HARNESS (RLG-110/RLG-118) ---
+     A launch is over in a frame and cannot be judged from a screenshot, so
+     every number the window is decided by is published: where the band is for
+     THIS car on THIS road, where the needle actually was when the gear landed,
+     and what the launch is still costing. `revs` above calls `engineRpm`,
+     which INTEGRATES - it must not be used to sample the needle twice in one
+     frame - so this reads the state rather than advancing it.
+     ------------------------------------------------------------------- */
+  API.launch = function(){
+    const w = launchWindow();
+    return { armed: !!launchArmed, gear: gear, count: +countIn.toFixed(3),
+             lo:+w.lo.toFixed(3), peak:+w.peak.toFixed(3), hi:+w.hi.toFixed(3),
+             rev:+clamp(idleRev / Math.max(1, redline()), 0, 1).toFixed(3),
+             at:+launchF.toFixed(3), note: launchNote,
+             spin:+spinT.toFixed(3), bog:+bogHold.toFixed(3),
+             drag:+launchDrag().toFixed(3) };
+  };
+  /* the grid as it stands: speed, target speed and the launch each rival drew.
+     `q` is deliberately uncorrelated with grid order and a harness should be
+     able to prove that rather than take the comment's word for it. */
+  API.grid = function(){
+    return racers.map((r, i) => ({ i:i, spd:Math.round(r.spd), base:Math.round(r.base),
+                                   q:+(r.launchQ || 1).toFixed(3),
+                                   left:+((r.launchT || 0)).toFixed(3) }));
+  };
   API.redline = function(){ return redline(); };
   API.setWet = function(v){ wet = wetTarget = v; };
   /* RLG-057's instrument: the cover and how black it is, and a way to force
