@@ -14,6 +14,34 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-17"></a>
+## [0.10.17] - 2026-08-31
+- Added: **the weather falls in the rear-view as well.** Owner: rain and snow should be shown in the
+  rear view - the precipitation itself, not the drops on the glass, which belong to the windscreen.
+  The mirror is a picture of the world behind the car, so weather in the AIR belongs in it and water
+  on a LENS does not. This finishes the job RLG-079 started, and it finishes it the same way: the
+  particles moved out of `drawRain` into one painter that takes a rectangle, so the windscreen and
+  the glass ask the same function rather than two copies of it. Each pane keeps its own particles,
+  because both advance them once a frame and one shared field would be stepped twice. The lean flips
+  in the mirror - rain falls straight down and it is the car that moves through it, so the streaks
+  lean the other way when you look the other way. Three numbers are the mirror's own and are named
+  tunables: the pane is 60 pixels tall against a 900-pixel screen, so the forward view's ninety
+  particles and its streak of 3.5% of the screen would give either a blizzard or nothing
+  ([RLG-092](../fragments/RLG-092.md)).
+- Added: **`tools/mirror-rain-test.py`, which measures the weather in the glass without measuring
+  the weather on the road.** "The mirror looks different when it rains" was already true before this
+  was built, because RLG-079 wired the wet tarmac and the settled snow into the same surface code, so
+  a check written that way would have passed on the old engine. It compares particles against no
+  particles in one and the same wet scene: `API.mirrorRain({n: 0})` removes the feature through the
+  public interface, and the harness runs the identical assertion with it off and requires that to go
+  red. The instrument caught two of its own faults on the way - a road still filling with standing
+  water gets brighter on its own, and parking the car is precisely what makes the engine feed traffic
+  in behind it ([RLG-092](../fragments/RLG-092.md)).
+- Added: **`API.mirrorRect()` publishes where the glass is.** `tools/mirror-shot.py` carries its own
+  copy of the layout formula and the copy is three changes out of date - it still reads 0.62 of the
+  width capped at 250 with a fixed height of 44, against 0.80 capped at 340. Anything that wants to
+  read the pane now asks the code that draws it ([RLG-092](../fragments/RLG-092.md)).
+
 <a id="v0-10-16"></a>
 ## [0.10.16] - 2026-08-31
 - Fixed: **the world settles before the count, not on GO.** Owner: there is still a pop on GO - can

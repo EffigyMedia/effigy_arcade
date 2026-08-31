@@ -194,6 +194,19 @@ const CAM_H = 1050;
 let MIRROR_EYE = 2.20;
 /* where the mirror's horizon sits in the glass, as a fraction from the top */
 let MIRROR_HORIZON = 0.45;
+/* ---- HOW MUCH WEATHER THE MIRROR CARRIES (RLG-092) --------------------
+   The glass is about 55 pixels tall against a 900-pixel screen, so the forward
+   view's own numbers give either nothing or a blizzard. Ninety particles in a
+   pane that size is one every twelve pixels, and a streak 3.5% of the SCREEN
+   is two pixels long in there.
+
+   Three numbers differ and no more. Everything horizontal - the flake radius,
+   the stroke width, the sideways drift - is already written against the pane's
+   own width, so it follows the glass without a knob of its own.
+   -------------------------------------------------------------------- */
+let MIRROR_RAIN_N    = 20;    /* particles in the glass */
+let MIRROR_RAIN_LEN  = 0.17;  /* a streak, as a fraction of the pane's height */
+let MIRROR_RAIN_FALL = 2.4;   /* fall rate, against the forward view's own */
 const FOV = 100;
 const CAM_D = 1/Math.tan((FOV/2)*Math.PI/180);
 const PLAYER_Z = CAM_H*CAM_D;
@@ -13283,14 +13296,88 @@ function drawLens(){
   ctx.restore();
 }
 
+/* ---- ONE FIELD OF WEATHER, TWO PANES OF GLASS (RLG-092) ---------------
+   Owner, 2026-08-31: rain and snow should fall in the rear-view as well - the
+   precipitation itself, not the drops on the lens, which belong to the
+   windscreen the player is looking through.
+
+   SO THE PARTICLES MOVED OUT OF `drawRain` AND INTO A PAINTER THAT TAKES A
+   RECTANGLE. That is the same move RLG-079 made for the sky, the ground and
+   the tarmac: one definition and two callers, rather than a second copy of the
+   weather that drifts out of step with the first. A rain that leaned one way
+   out of the windscreen and another way in the glass would be two weathers.
+
+   EACH PANE OWNS ITS OWN PARTICLES, because a particle carries its position
+   and both views advance it once a frame. Sharing one array would step every
+   drop twice and halve the fall rate the moment the mirror was drawn.
+
+   AND THE LEAN FLIPS. Rain falls straight down and it is the CAR that moves
+   through it, so the streaks lean backward from wherever you are looking. Look
+   the other way down the same road and they lean the other way. `back` is that
+   sign, and it is the one thing in here the mirror does differently on purpose
+   rather than because the pane is small.
+   -------------------------------------------------------------------- */
+function precipField(field, n){
+  if(!field || field.length !== n){
+    field = [];
+    for(let i = 0; i < n; i++)
+      field.push({ x:Math.random(), y:Math.random(), v:0.5+Math.random(), l:0.5+Math.random() });
+  }
+  return field;
+}
+/* `px,py,pw,ph` is the glass. `fall` scales the descent and `lenF` the streak,
+   both against the forward view's numbers, so a short pane can be legible
+   without a second copy of the painter. `back` flips the lean for a view that
+   looks the other way. */
+function paintPrecip(field, px, py, pw, ph, fall, lenF, back){
+  const dir = back ? -1 : 1;
+  if(snowy > 0.5){
+    /* ---- SNOW FALLS, IT DOES NOT STREAK -------------------------------
+       Rain is a line; snow is a flake that drifts. Slower, rounder, and it
+       wanders sideways instead of leaning with the speed. */
+    ctx.fillStyle = 'rgba(250,252,255,' + (0.28 + wet*0.45) + ')';
+    for(const d of field){
+      d.y += (0.0030 + d.v*0.0045) * (1 + spd/MAX_SPD*1.1) * fall;
+      if(d.y > 1){ d.y = -0.05; d.x = Math.random(); }
+      const drift = Math.sin((d.y*7 + d.v*6)) * pw*0.02 * dir;
+      const r = Math.max(1, pw*0.004*d.l);
+      ctx.beginPath();
+      ctx.arc(px + d.x*pw + drift, py + d.y*ph, r, 0, 6.2832);
+      ctx.fill();
+    }
+  } else {
+    /* the streaks on the glass, leaning with the speed */
+    ctx.strokeStyle = 'rgba(190,215,255,' + (0.10 + wet*0.22) + ')';
+    ctx.lineWidth = Math.max(1, pw*0.0028);
+    const lean = (0.10 + (spd/MAX_SPD)*0.42) * dir;
+    for(const d of field){
+      d.y += (0.010 + d.v*0.016) * (1 + spd/MAX_SPD*2.2) * fall;
+      if(d.y > 1){ d.y = -0.05; d.x = Math.random(); }
+      const x = px + d.x*pw, y = py + d.y*ph;
+      const len = ph*lenF*d.l*(1 + spd/MAX_SPD);
+      ctx.beginPath();
+      ctx.moveTo(x, y); ctx.lineTo(x - len*lean, y + len);
+      ctx.stroke();
+    }
+  }
+}
+
+/* the weather in the mirror's own glass. Its own particles, its own three
+   numbers, and it is skipped entirely when it is dry - so a dry frame costs
+   nothing and the check has a dry frame to compare against. */
+let mirrorDrops = null;
+function paintMirrorPrecip(mx, my, mw, mh){
+  if(wet < 0.02) return;
+  mirrorDrops = precipField(mirrorDrops, MIRROR_RAIN_N);
+  ctx.save();
+  paintPrecip(mirrorDrops, mx, my, mw, mh, MIRROR_RAIN_FALL, MIRROR_RAIN_LEN, true);
+  ctx.restore();
+}
+
 let rainDrops = null;
 function drawRain(){
   if(wet < 0.02) return;
-  if(!rainDrops || rainDrops.length !== 90){
-    rainDrops = [];
-    for(let i = 0; i < 90; i++)
-      rainDrops.push({ x:Math.random(), y:Math.random(), v:0.5+Math.random(), l:0.5+Math.random() });
-  }
+  rainDrops = precipField(rainDrops, 90);
   ctx.save();
   /* ---- THE WEATHER IS ON THE SURFACES, NOT OVER THE FRAME (RLG-057) -----
      Two screen-wide rectangles used to be painted here, one per weather, both
@@ -13342,34 +13429,7 @@ function drawRain(){
   ctx.restore();
 
   ctx.save();
-  if(snowy > 0.5){
-    /* ---- SNOW FALLS, IT DOES NOT STREAK -------------------------------
-       Rain is a line; snow is a flake that drifts. Slower, rounder, and it
-       wanders sideways instead of leaning with the speed. */
-    ctx.fillStyle = 'rgba(250,252,255,' + (0.28 + wet*0.45) + ')';
-    for(const d of rainDrops){
-      d.y += (0.0030 + d.v*0.0045) * (1 + spd/MAX_SPD*1.1);
-      if(d.y > 1){ d.y = -0.05; d.x = Math.random(); }
-      const drift = Math.sin((d.y*7 + d.v*6)) * W*0.02;
-      const r = Math.max(1, W*0.004*d.l);
-      ctx.beginPath();
-      ctx.arc(d.x*W + drift, d.y*H, r, 0, 6.2832);
-      ctx.fill();
-    }
-  } else {
-    /* the streaks on the glass, leaning with the speed */
-    ctx.strokeStyle = 'rgba(190,215,255,' + (0.10 + wet*0.22) + ')';
-    ctx.lineWidth = Math.max(1, W*0.0028);
-    const lean = 0.10 + (spd/MAX_SPD)*0.42;
-    for(const d of rainDrops){
-      d.y += (0.010 + d.v*0.016) * (1 + spd/MAX_SPD*2.2);
-      if(d.y > 1){ d.y = -0.05; d.x = Math.random(); }
-      const x = d.x*W, y = d.y*H, len = H*0.035*d.l*(1 + spd/MAX_SPD);
-      ctx.beginPath();
-      ctx.moveTo(x, y); ctx.lineTo(x - len*lean, y + len);
-      ctx.stroke();
-    }
-  }
+  paintPrecip(rainDrops, 0, 0, W, H, 1, 0.035, false);
   ctx.restore();
 }
 
@@ -14501,6 +14561,17 @@ function drawMirrorFull(mx, my, mw, mh){
     ctx.roundRect(x0 + sw*0.14, y0 + sh*0.10, sw*0.72, sh*0.38, Math.max(0.4, sw*0.05));
     ctx.fill();
   }
+  /* ---- AND THE WEATHER FALLS IN HERE TOO (RLG-092) --------------------
+     Last, and inside the clip, because precipitation is in the air BETWEEN the
+     glass and everything the glass shows - so it goes over the cars, the road
+     and the treeline, and it is cut off by the housing like the rest of the
+     view.
+
+     It is the falling weather only. Drops on the lens stay on the windscreen:
+     the mirror is a second piece of glass, and water on THAT would be a
+     different effect nobody asked for.
+     ------------------------------------------------------------------- */
+  paintMirrorPrecip(mx, my, mw, mh);
   ctx.restore();
 }
 
@@ -14558,6 +14629,11 @@ function drawMirror(){
      ------------------------------------------------------------------- */
   const mw = Math.min(W*0.80, 340), mh = Math.round(mw / 5.68);
   const mx = (W - mw)/2, my = 6;
+  /* WHERE THE GLASS IS, PUBLISHED. `tools/mirror-shot.py` carries its own copy
+     of this formula and the copy is three changes out of date - it still reads
+     0.62 of the width capped at 250 with a fixed height of 44. Anything that
+     wants to read the pane asks `API.mirrorRect()` from here on. */
+  mirrorRect = { x: mx, y: my, w: mw, h: mh };
   if(mirrorPub !== mh){
     mirrorPub = mh;
     document.documentElement.style.setProperty('--mirror-h', mh + 'px');
@@ -15415,6 +15491,9 @@ function drawLogo(g, cx, cy, size){
 /* the last mirror height published to the stylesheet, so the write happens on a
    resize rather than on every frame */
 let mirrorPub = 0;
+/* the glass, in the engine's own drawing units. Written by `drawMirror` each
+   frame and read by `API.mirrorRect()`. */
+let mirrorRect = null;
 let titleCar = null;
 function drawTitleArt(){
   if(!titleCv) titleCv = document.getElementById('titleArt');
@@ -16390,6 +16469,23 @@ requestAnimationFrame(frameLoop);
   };
   API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
   API.mirrorHorizon = function(v){ if(v > 0) MIRROR_HORIZON = v; return MIRROR_HORIZON; };
+  /* the mirror's three weather numbers, live, so the density and the streak can
+     be tuned against a picture rather than argued from the pane's height
+     (RLG-092). Passing nothing reads them back. */
+  API.mirrorRain = function(o){
+    if(o){
+      /* ZERO IS ALLOWED AND IT MEANS OFF. That is deliberate: it is the only
+         way a check can remove this feature without editing the engine, and a
+         check nobody has watched fail is not evidence. */
+      if(o.n   >= 0) { MIRROR_RAIN_N = o.n|0; mirrorDrops = null; }
+      if(o.len  > 0) MIRROR_RAIN_LEN  = o.len;
+      if(o.fall > 0) MIRROR_RAIN_FALL = o.fall;
+    }
+    return { n: MIRROR_RAIN_N, len: MIRROR_RAIN_LEN, fall: MIRROR_RAIN_FALL };
+  };
+  /* the mirror's glass, so a harness reads the pane the engine actually drew
+     rather than a stale copy of the layout formula */
+  API.mirrorRect = function(){ return mirrorRect; };
   /* ---- WHERE THE ROADSIDE SITS, IN PIXELS (RLG-024) ---------------------
      For a harness that has to answer "does widening the road move the trees".
      The road edge and the first scenery position at one distance, so the gap

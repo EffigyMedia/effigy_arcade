@@ -32,14 +32,19 @@
    above asks about, and that turned out to be the wrong question: what matters
    is whether the files still agree with each other, and after a change the size
    of road.js they do not. */
-const CORE    = 'effigy-arcade-core-v27';
+/* v28: the weather in the rear-view. road.js changed and no cabinet HTML did, so a stale half
+   would be the old feature rather than the black screen v27 describes - but this build exists to
+   be JUDGED ON A DEVICE, and a device serving a cached arcade.js reports the version it has
+   rather than the version it was sent. Testing 0.10.16 while believing it is 0.10.17 is the
+   failure this project has already had, at a cost of forty-six commits. */
+const CORE    = 'effigy-arcade-core-v28';
 /* ---- ONE VERSION, NOT TWO ----------------------------------------------
    CORE went to v20 and RUNTIME stayed at v19, so a device kept a runtime cache
    from the broken build alongside a fresh core. They are bumped together from
    here: two names, one version number, so a stale half can never survive an
    update.
    ---------------------------------------------------------------------- */
-const RUNTIME = 'effigy-arcade-runtime-v27';
+const RUNTIME = 'effigy-arcade-runtime-v28';
 /* ---- HARD EVICTION -----------------------------------------------------
    A half-updated cache is worse than no cache: a device holding the previous
    game HTML beside the current shared scripts gets a black screen, because the
