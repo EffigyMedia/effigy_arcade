@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.36';
+window.ROAD_BUILD = '0.10.37';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1234,6 +1234,10 @@ function updateViewShift(){
    Interstate has no corners worth the name.
    ------------------------------------------------------------------------ */
 const CORNER_G_BASE = 0.42, CORNER_LAG = 1.8;
+/* How far back the rear-view reaches, in world units. Named because three
+   places have to agree about it: where the glass starts its walk, where its
+   horizon band is measured, and where the scenery fades away (RLG-128). */
+const MIRROR_BACK = 34000;
 /* ---- AND GRIP DECIDES HOW SHARPLY THE CAR ANSWERS (RLG-119) -------------
    Owner, 2026-08-31: "should grip not only affect being pushed on the corner,
    but also your steering rate? A formula should handle extremely well and a
@@ -15676,7 +15680,7 @@ function drawMirrorFull(mx, my, mw, mh){
      -------------------------------------------------------------------- */
   const mfB = bioAt(bhd);
   if(mfB.sea){
-    const ma = rproj(0, pos - 34000), mb = rproj(0, pos - 34000 + 900*12);
+    const ma = rproj(0, pos - MIRROR_BACK), mb = rproj(0, pos - MIRROR_BACK + 900*12);
     if(ma && mb && ma.y > vpy && mb.y > ma.y){
       const s1 = ma.x + seaSide * roadsideAt(ma, mfB.beach, mw);
       const s2 = mb.x + seaSide * roadsideAt(mb, mfB.beach, mw);
@@ -15772,7 +15776,7 @@ function drawMirrorFull(mx, my, mw, mh){
      there says the same thing: anything pinned to the segment behind the player
      shifts by one every time the player crosses one.
      ---------------------------------------------------------------- */
-  const mFar = Math.floor((pos - 34000) / MSEG) * MSEG;
+  const mFar = Math.floor((pos - MIRROR_BACK) / MSEG) * MSEG;
   for(let wz = mFar; wz < pos - 200; wz += MSEG){
     const a = rproj(0, wz), b2 = rproj(0, wz + MSEG);
     if(!a || !b2) continue;
@@ -15894,9 +15898,42 @@ function drawMirrorFull(mx, my, mw, mh){
             const mxi = a.x + mside * roadsideAt(a, moff, mw);
             const mxx = mxi + mside * mw2/2;
             if(mxx + mw2 < mx || mxx - mw2 > mx + mw) continue;
-            /* eased in over the biggest fifth of what is allowed, so an object
-               arrives rather than appearing (RLG-073) */
-            const mFade = Math.min(1, Math.max(0, (mCap - mw2) / (mCap * 0.20)));
+            /* ---- THE FADE WAS INSIDE OUT (RLG-128) ---------------------
+               Owner, 2026-08-31: "it looks like it starts alpha and then
+               becomes opaque as it moves away, and it should be an inversion
+               of the forward view - in the rearview mirror the scenery should
+               be opaque and become alpha as it reaches the draw distance."
+
+               IT WAS DRIVEN BY THE OBJECT'S WIDTH: `(mCap - mw2) / (mCap*0.2)`.
+               A NEAR object is BIG, so that numerator goes to zero and it drew
+               nearly transparent; a FAR object is SMALL, so it clamped to
+               fully opaque. In a mirror everything only ever RECEDES, so every
+               tree faded IN as it went away - which is the report exactly, and
+               is backwards twice over: it is the opposite of the windscreen
+               and the opposite of what air does.
+
+               THIS EXACT MISTAKE WAS MADE ONCE BEFORE, in the forward view, and
+               the note on the lamp posts records it: "`globalAlpha = fade` made
+               the whole post see-through for most of its life, since `fade` is
+               the distance ramp and only reaches 1 right in front of you. A
+               steel column is not translucent at any distance."
+
+               So the mirror uses the windscreen's own shape now - the same
+               ramp, the same factor of four: solid everywhere, easing away
+               only over the last quarter of the reach. `mAway` is 0 just
+               behind the car and 1 at the draw edge, which is `fade` measured
+               backwards, because that is what a mirror is.
+               ------------------------------------------------------- */
+            const mAway  = clamp((pos - wz) / MIRROR_BACK, 0, 1);
+            const mGone  = Math.min(1, clamp(1 - mAway, 0, 1) * 4);
+            /* AND A SHORT ARRIVAL AT THE NEAR END, which is the one thing the
+               old ramp was right about. Anything wider than `mCap` is culled
+               outright, so without an ease a tree that has just receded under
+               the cap POPS IN at a fifth of the glass. The band is 6% of the
+               cap rather than the old 20%: long enough that it arrives, short
+               enough that it is never the see-through object the owner saw. */
+            const mNear  = clamp((mCap - mw2) / (mCap * 0.06), 0, 1);
+            const mFade  = Math.min(mGone, mNear);
             if(mFade <= 0.02) continue;
             sceneSides[mside < 0 ? 'mLeft' : 'mRight']++;
             /* the same trace the forward pass writes, marked as the mirror, so
@@ -15905,6 +15942,10 @@ function drawMirrorFull(mx, my, mw, mh){
                                              row:mrow, x:+mxx.toFixed(4),
                                              y:+a.y.toFixed(4), w:+mw2.toFixed(4),
                                              h:+mh2.toFixed(4), z:widx*SEG,
+                                             /* what it was actually drawn AT, so the
+                                                polarity of the fade can be checked
+                                                rather than reasoned about (RLG-128) */
+                                             a:+mFade.toFixed(4),
                                              pos:+pos.toFixed(2) });
             const mWas = ctx.globalAlpha;
             ctx.globalAlpha = mWas * mFade;

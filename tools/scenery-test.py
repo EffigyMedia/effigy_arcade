@@ -221,6 +221,53 @@ def main():
                       'and it recedes at about the rate the windscreen approaches',
                       'mirror %.2f%% against ahead %.2f%%' % (mm * 100, ma * 100))
 
+        # ---- AND IT FADES AT THE FAR EDGE, NOT AT THE CAR (RLG-128) --------------
+        # Owner, 2026-08-31: "it looks like it starts alpha and then becomes opaque as it
+        # moves away, and it should be an inversion of the forward view - in the rearview
+        # mirror the scenery should be opaque and become alpha as it reaches the draw
+        # distance."
+        #
+        # THE POLARITY IS THE WHOLE QUESTION, so it is measured as one: every mirror object
+        # in the trace, bucketed by how far behind the car it stands, and the near bucket
+        # compared with the far one. The old ramp was driven by the object's WIDTH, so a
+        # near object drew nearly transparent and a far one solid - and in a mirror
+        # everything only ever recedes, so every tree faded IN as it went away.
+        mir = [o for _, o in views.get('mirror', []) if o.get('a') is not None]
+        res.check(len(mir) > 40, 'the mirror traced enough scenery to judge the fade',
+                  'only %d object(s) carried an alpha' % len(mir))
+        if len(mir) > 40:
+            back = [(o['pos'] - o['z'], o['a']) for o in mir]
+            reach = max(d for d, _ in back)
+            near = [a for d, a in back if d < reach * 0.35]
+            far = [a for d, a in back if d > reach * 0.85]
+            if near and far:
+                mn = sum(near) / len(near)
+                mf = sum(far) / len(far)
+                print('      mirror scenery alpha: %.3f near the car, %.3f at the draw edge'
+                      % (mn, mf))
+                # THE NEAREST OBJECTS ARE THE BIGGEST ONES, and they are what the old
+                # ramp made see-through - so this asks the widest tenth directly. A
+                # distance bucket is too blunt for it: with the defect reintroduced the
+                # near bucket still averaged 0.986, because only the handful of objects
+                # closest to the size cap were transparent and the bucket drowned them.
+                # NOT THE WIDEST OBJECT. That was tried and it is the wrong question: the
+                # widest object on the road is the one that has just receded under the size
+                # cap, and it is deliberately faint because it is ARRIVING. Asking it to be
+                # solid asserts against the arrival ease rather than against the fault.
+                #
+                # What discriminates is the FAR end. With the fault present the draw edge
+                # read 1.000 - fully solid, no fade at all - which is the whole complaint
+                # stated as a number.
+                res.check(mn > 0.9,
+                          'scenery just behind the car is solid, not see-through',
+                          'the near third averaged %.3f alpha' % mn)
+                res.check(mf < 0.6,
+                          'and it really does fade out at the draw distance',
+                          'the far edge averaged %.3f alpha, which is no fade at all' % mf)
+                res.check(mf < mn,
+                          'and it fades AWAY toward the draw distance rather than into it',
+                          'near %.3f against far %.3f, which is the wrong way round' % (mn, mf))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()
