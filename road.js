@@ -9168,6 +9168,93 @@ function tailLights(box, braking, spr){
    be readable from a long way out, because knowing whether you will REACH it
    is the decision the clock is asking you to make.
    -------------------------------------------------------------------------- */
+/* ---- ONE GANTRY, TWO FACES (RLG-108) ------------------------------------
+   The proportions live here rather than inside a painter, because there are two
+   painters now: the windscreen sees the front of the sign and the rear-view
+   sees the back of it. They must be the same OBJECT seen from two sides rather
+   than two objects that happen to look similar, and a literal copied into a
+   second painter is how that stops being true.
+
+   Every number is a fraction of the road's width at the board's distance, so
+   one set serves a full-screen view and a 60-pixel pane without scaling.
+   ------------------------------------------------------------------------- */
+const GANTRY = {
+  half:  0.78,    /* the uprights, measured out from the centre line   */
+  legH:  0.62,    /* how far above the road the truss sits             */
+  leg:   0.020,   /* the thickness of an upright                       */
+  truss: 0.075,   /* the depth of the lattice span                     */
+  board: 0.20,    /* the height of the sign hung under it              */
+  bw:    1.06     /* and its width, a little wider than the road       */
+};
+/* ---- AND THE BACK OF ONE, WHICH IS A DIFFERENT PICTURE (RLG-108) --------
+   Owner, 2026-08-31: "checkpoint signs aren't shown in the rearview mirror by
+   the way." They were road furniture standing in the world and the mirror is a
+   picture of the world behind the car, so the gap was the same one RLG-079
+   closed for the sky, the ground, the scenery, the treeline and the cars.
+
+   A CHECKPOINT IS THE ONE PIECE OF FURNITURE WITH A REASON TO BE IN THERE.
+   Everything else in the glass is scenery or traffic. A gantry is the thing
+   the Interstate is played against, and a player who is not sure whether they
+   have crossed one has a real question that the mirror is the answer to.
+
+   THE BACK OF A SIGN IS NOT THE FRONT OF ONE, and it is not a simplified
+   render of it either - this project has a standing rule against a machine
+   fading to a cheaper drawing. It is a genuinely different object: the green
+   face, the white border and the word are all on the other side, and what you
+   see from behind is the back of the panel, its stiffening rails and the two
+   hangers holding it to the truss. The legs and the lattice are the same steel
+   from either side, and they read from the same `GANTRY` table so the two
+   pictures cannot become two different objects.
+
+   NO LAMP GLOW. The lights on a gantry point at the traffic coming toward it,
+   which is the other way. From behind you see the fittings and not the light.
+   ------------------------------------------------------------------------- */
+function drawGantryBack(g, px, py, roadW, wide){
+  if(roadW < 6 || roadW > wide*4) return;
+  const half  = roadW * GANTRY.half;
+  const legH  = roadW * GANTRY.legH;
+  const truss = py - legH;
+  const lw    = Math.max(0.6, roadW * GANTRY.leg);
+  const th    = Math.max(1, roadW * GANTRY.truss);
+  const bh    = Math.max(1.5, roadW * GANTRY.board);
+  const bw    = roadW * GANTRY.bw;
+
+  /* the uprights and the span: the same steel from either side */
+  g.fillStyle = '#4a5058';
+  g.fillRect(px - half, truss, lw, legH);
+  g.fillRect(px + half - lw, truss, lw, legH);
+  g.fillStyle = '#5a616a';
+  g.fillRect(px - half, truss, half*2, Math.max(0.6, th*0.22));
+  g.fillRect(px - half, truss + th - Math.max(0.6, th*0.22), half*2, Math.max(0.6, th*0.22));
+  if(roadW > 40){
+    g.strokeStyle = '#5a616a';
+    g.lineWidth = Math.max(0.6, th*0.13);
+    const bays = 12, step = (half*2)/bays;
+    for(let i2=0;i2<bays;i2++){
+      const x0 = px - half + i2*step;
+      g.beginPath(); g.moveTo(x0, truss + th); g.lineTo(x0 + step, truss); g.stroke();
+      g.beginPath(); g.moveTo(x0, truss); g.lineTo(x0 + step, truss + th); g.stroke();
+    }
+  }
+  /* the two hangers, and then the back of the panel */
+  const by = truss + th;
+  g.fillStyle = '#454b53';
+  g.fillRect(px - bw*0.30, by, lw, Math.max(0.6, bh*0.10));
+  g.fillRect(px + bw*0.30 - lw, by, lw, Math.max(0.6, bh*0.10));
+  const bTop = by + Math.max(0.6, bh*0.10);
+  g.fillStyle = '#2e343c';
+  g.fillRect(px - bw/2, bTop, bw, bh);
+  g.fillStyle = '#3c434c';
+  g.fillRect(px - bw/2 + lw*0.6, bTop + lw*0.6, bw - lw*1.2, bh - lw*1.2);
+  /* the stiffening rails across the back, which is what a sign looks like
+     from the wrong side and is the only detail there is to see */
+  if(bh > 5){
+    g.fillStyle = '#4a525c';
+    const rh = Math.max(0.6, bh*0.09);
+    g.fillRect(px - bw/2 + lw, bTop + bh*0.28, bw - lw*2, rh);
+    g.fillRect(px - bw/2 + lw, bTop + bh*0.64, bw - lw*2, rh);
+  }
+}
 function drawGantry(cp){
   const p1 = proj(0, cp.z);
   if(!p1.ok) return;
@@ -9180,13 +9267,13 @@ function drawGantry(cp){
      a motorway gantry is actually built in, and it is what stops the thing
      reading as a banner floating over the tarmac.
      -------------------------------------------------------------------- */
-  const half  = roadW * 0.78;
-  const legH  = roadW * 0.62;
+  const half  = roadW * GANTRY.half;
+  const legH  = roadW * GANTRY.legH;
   const truss = p1.y - legH;
-  const lw    = Math.max(1, roadW * 0.020);
-  const th    = Math.max(2, roadW * 0.075);
-  const bh    = Math.max(3, roadW * 0.20);
-  const bw    = roadW * 1.06;
+  const lw    = Math.max(1, roadW * GANTRY.leg);
+  const th    = Math.max(2, roadW * GANTRY.truss);
+  const bh    = Math.max(3, roadW * GANTRY.board);
+  const bw    = roadW * GANTRY.bw;
 
   ctx.fillStyle = '#4a5058';
   ctx.fillRect(p1.x - half, truss, lw, legH);
@@ -15719,11 +15806,26 @@ function drawMirrorFull(mx, my, mw, mh){
     back.push({ o:k, w:k.w||0.27, tint:'#dfe4ec', cop:true }); }
   for(const r of racers) if(r.z < pos)
     back.push({ o:r, w:r.w, tint:(PAINT[r.paint]||PAINT.WHITE).body, cop:false });
+  /* ---- AND THE CHECKPOINT BOARDS (RLG-108) ----------------------------
+     The data and the retention were already right: `cpGantries` keeps a board
+     for 8,000 units after it is passed and this glass sees 34,000 back, so
+     what was missing was only a pass. They go into the same sorted list as the
+     cars rather than being painted underneath them, because a gantry stands in
+     the world at a distance like everything else and the list is what puts
+     near things over far ones. */
+  for(const cp of cpGantries) if(cp.z < pos) back.push({ o:cp, gantry:true });
   back.sort((a,b) => a.o.z - b.o.z);
 
   for(const it of back){
-    const p1 = rproj(it.o.x*ROAD, it.o.z);
+    /* a gantry spans the road, so it is projected on the centre line rather
+       than at a lateral offset it has not got */
+    const p1 = rproj(it.gantry ? 0 : it.o.x*ROAD, it.o.z);
     if(!p1) continue;
+    if(it.gantry){
+      /* `p1.w` is HALF the road at this distance, in the glass's own units */
+      drawGantryBack(ctx, p1.x, p1.y, p1.w * 2, mw);
+      continue;
+    }
     const sw = p1.scale * it.w * CAR_UNIT * mw;
     if(sw < 1.4) continue;
     const sh = sw * 0.60;
@@ -18054,6 +18156,19 @@ requestAnimationFrame(frameLoop);
      test runs on it. It sits beside `parkTraffic`, which exists for exactly
      the same reason and says so.
      ------------------------------------------------------------------- */
+  /* ---- A TEST CAN PARK A BOARD BEHIND THE CAR (RLG-108) ----------------
+     A checkpoint sits two miles out, so measuring what the mirror does with one
+     by driving to it would take most of a minute and measure the spawner on the
+     way. This puts one on the REAL `cpGantries` array with the fields the
+     placer gives it, at a chosen distance BEHIND, which is where the mirror
+     looks. `dz` is positive for behind, because that is how the glass thinks.
+     ------------------------------------------------------------------- */
+  API.parkGantry = function(dz){
+    cpGantries.length = 0;
+    if(dz !== null)
+      cpGantries.push({ z: pos - (dz === undefined ? 4000 : dz), hit:true, n:1 });
+    return cpGantries.length;
+  };
   API.parkCrate = function(dz){
     crates.length = 0;
     crates.push({ z: pos + PLAYER_Z + (dz === undefined ? 900 : dz),

@@ -99,6 +99,20 @@ window.__probe.grab = function(slot){
    line and a flake is a white disc - so the measure is one-sided on purpose. A two-sided
    difference would also count the scene getting darker, which is the surface code's job and was
    already there before this. */
+/* AND A TWO-SIDED ONE, because a checkpoint gantry is dark steel and a green board against a
+   road and a sky: it DARKENS about as much of the glass as it lightens, and the one-sided
+   measure below would score half of it as nothing. Weather keeps the one-sided measure for the
+   reason stated there; furniture needs this one. */
+window.__probe.changed = function(a, b, thr){
+  var A = window.__probe.slots[a], B = window.__probe.slots[b];
+  if(!A || !B || A.length !== B.length) return null;
+  var n = 0, sum = 0;
+  for(var i = 0; i < A.length; i++){
+    var d = Math.abs(A[i] - B[i]);
+    if(d > thr){ n++; sum += d; }
+  }
+  return { px: n, share: n/A.length, ink: sum/A.length };
+};
 window.__probe.brighter = function(a, b, thr){
   var A = window.__probe.slots[a], B = window.__probe.slots[b];
   if(!A || !B || A.length !== B.length) return null;
@@ -386,6 +400,91 @@ def main():
         print('  the sweeper removed %d vehicle%s that spawned behind the parked car'
               % (swept, '' if swept == 1 else 's'))
         res.check(page.evaluate(COUNT) == 0, 'the road behind is empty at the end')
+
+        # ---- AND THE CHECKPOINT BOARDS ARE IN THERE (RLG-108) --------------------
+        # Owner, 2026-08-31: "checkpoint signs aren't shown in the rearview mirror by the
+        # way." They are road furniture standing in the world, and the mirror is a picture of
+        # the world behind the car - the same gap RLG-079 closed for the sky, the ground, the
+        # scenery, the treeline and the cars.
+        #
+        # IT LIVES HERE because this file already owns the machinery the ruling asked for: the
+        # pane's own rectangle taken from the engine, a per-pixel grab kept in the page, and a
+        # difference between two grabs. Copying that into a fourth file to ask one more question
+        # of the same glass would be three chances for the copies to drift apart.
+        #
+        # THE WORLD IS HELD STILL FOR IT. The car is stopped, the road is swept and the weather
+        # is off, so the ONLY thing differing between the two grabs is whether a board is
+        # standing behind the car. Without that the glass changes on its own every frame and the
+        # difference would be measuring the traffic.
+        print('\n  the checkpoint boards in the glass (RLG-108)')
+        # HELD EVERY FRAME, NOT ONCE. The weather rolls back on its own, the road refills
+        # with traffic, and either one repaints the glass - so a scene set still at the top
+        # of a measurement is not still by the time it is sampled. Measured with the board
+        # pass removed, a run that set them once read 27.47% of the pane changing between
+        # two grabs of an unchanged world; held every frame it reads 0.07%.
+        HOLD = """() => { const R = window.__probe.road;
+            R.setWet(0); R.setSnow(0); R.setPool(0); R.clearTraffic(); R.setSpd(0); }"""
+
+        def settle(page, frames=14):
+            for _ in range(frames):
+                page.evaluate(HOLD)
+                page.wait_for_timeout(24)
+
+        def median_change(page, boards, base):
+            """How much the glass differs from `base`, in a TYPICAL frame rather than in one.
+
+            THE MEDIAN, and this file already learnt why: a car spawning behind the player is
+            drawn once before the sweeper removes it, and a single contaminated frame is exactly
+            what a maximum walks away with. Sweeping every frame is not enough either - the
+            spawner puts a car on the road between two sweeps and it is drawn in between.
+            """
+            got = []
+            for _ in range(9):
+                page.evaluate("(n) => window.__probe.road.parkGantry(n)", boards)
+                settle(page, 4)
+                page.evaluate(GRAB, 'live')
+                r = page.evaluate("([a,b,t]) => window.__probe.changed(a,b,t)",
+                                  ['live', base, THR])
+                if r:
+                    got.append(r)
+            got.sort(key=lambda r: r['share'])
+            return got[len(got)//2]
+
+        page.evaluate("() => window.__probe.road.parkGantry(null)")
+        settle(page, 20)
+        none_there = page.evaluate('() => window.__probe.road.gantries()')
+        page.evaluate(GRAB, 'nosign')
+        with_board = median_change(page, 4000, 'nosign')
+        one_there = page.evaluate('() => window.__probe.road.gantries()')
+        # AND A CONTROL: the same measurement with NO board parked. The world is held still, so
+        # this is what "nothing changed" looks like - and it is what stops the check above
+        # passing on a glass that merely churns. With the board pass removed from the engine and
+        # the scene set still only once, a run read 27.48% with a board against 27.47% without.
+        still = median_change(page, None, 'nosign')
+        print('      boards on the road: %d with none parked, %d with one'
+              % (none_there, one_there))
+        print('      the glass changed by %.2f%% with a board, %.2f%% with nothing'
+              % (with_board['share'] * 100, still['share'] * 100))
+        res.check(none_there == 0 and one_there == 1,
+                  'a board can be parked behind the car and only one is there',
+                  '%d then %d' % (none_there, one_there))
+        # THE CONTROL IS CHECKED FIRST, because everything after it depends on the glass
+        # being still. With the board pass removed and the world set still only once, a run
+        # read 27.48% with a board against 27.47% without - and a bare "did the glass change"
+        # check passes happily on that. It is not evidence of a board; it is evidence that
+        # the measurement is worthless.
+        res.check(still['share'] < 0.02,
+                  'the glass is still when nothing is behind the car, so the rest can be read',
+                  'it changed %.2f%% on its own, which is more than a board is worth'
+                  % (still['share'] * 100))
+        res.check(with_board['share'] > 0.01,
+                  'a checkpoint board behind the car shows up in the mirror',
+                  'only %.3f%% of the glass differs, which is nothing appearing'
+                  % (with_board['share'] * 100))
+        res.check(with_board['share'] > still['share'] * 4 + 0.005,
+                  'and it is the board rather than the glass simply moving',
+                  'a board changed %.2f%% against %.2f%% for an unchanged world'
+                  % (with_board['share'] * 100, still['share'] * 100))
 
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
