@@ -14,8 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
-<a id="v0-11-0"></a>
-## [0.11.0] - 2026-08-30
+<a id="v0-10-10"></a>
+## [0.10.10] - 2026-08-30
+- Fixed: **a race has checkpoints, whatever the timed toggle says.** Owner: turn TIMED off under
+  TEST DRIVE and a race started afterwards has no checkpoints in it. The loop that places the boards
+  already sat inside `clockRuns()`, which is `mode === 'race' || timedRun` and is the correct test -
+  and then asked `timedRun` again on the next line, getting a different answer. Worse, it still
+  counted past each checkpoint, so they were thrown away rather than deferred and turning the toggle
+  back on mid-run could not have recovered them. There is no condition there now: being inside
+  `clockRuns()` is the condition, and TIMED is a choice about a test drive rather than something a
+  race consults ([RLG-089](../fragments/RLG-089.md)).
+- **The countdown was mis-numbered as 0.11.0 and is renumbered 0.10.9 above.** One feature is one
+  patch, and a new mechanic is not a reason for a minor bump; the entry heading and its anchor are
+  corrected rather than a second entry added, because two numbers for one release is worse than an
+  edited heading. Version numbers only climb, so this release is 0.10.10.
+
+<a id="v0-10-9"></a>
+## [0.10.9] - 2026-08-30
 - Added: **three, two, one, GO before the car moves.** Owner: hitting DRIVE should give a countdown,
   with some flare. The car is **held**, not merely covered - the throttle is ignored, the run clock
   does not start and nothing is scored until GO, because a countdown drawn over a car that is

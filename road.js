@@ -10155,7 +10155,25 @@ function step(dt){
        which is the wrong sign at the one place it matters. In a race nothing
        is placed at or beyond the finish, and the finish gets its own board. */
     if(mode === 'race' && cz >= finishZ - 200){ nextCP++; continue; }
-    if(timedRun) cpGantries.push({ z: cz, hit:false, n:nextCP });
+    /* ---- A RACE HAS CHECKPOINTS, WHATEVER THE TOGGLE SAYS (RLG-089) ---
+       Owner, 2026-08-30: turn TIMED off under TEST DRIVE, and a RACE started
+       afterwards has no checkpoints in it.
+
+       IT DID NOT, AND THE WRONG QUESTION WAS BEING ASKED TWICE OVER. This whole
+       loop already sits inside `clockRuns()`, which is `mode === 'race' ||
+       timedRun` and is the correct test - it was written for exactly this. The
+       inner `if(timedRun)` then asked again, and got a different answer: in a
+       race with the toggle off, the clock ran and the boards did not appear.
+
+       WORSE, IT CONSUMED THEM. `nextCP++` ran regardless, so each checkpoint
+       was counted past and thrown away rather than deferred. Turning the toggle
+       back on mid-run could not have recovered the ones already skipped, which
+       is why the owner found it survived switching the setting.
+
+       There is no condition here at all now: being inside `clockRuns()` is the
+       condition, and TIMED is a choice about a test drive rather than something
+       a race consults. */
+    cpGantries.push({ z: cz, hit:false, n:nextCP });
     nextCP++;
   }
   for(const cp of cpGantries){
@@ -16241,6 +16259,9 @@ requestAnimationFrame(frameLoop);
   /* the box a given car actually gets, so a harness can compare the bands
      rather than infer them from how a lap felt (RLG-069) */
   API.gearBox = function(k){ return gearTableFor(k || optBody); };
+  /* how many checkpoint boards are actually on the road. The question RLG-089
+     turned on is whether a BOARD exists, not whether a setting is true. */
+  API.gantries = function(){ return cpGantries.length; };
   /* what the start line is doing: how much of the count is left, which number
      has been sounded, and whether GO is still on the glass (RLG-088) */
   API.startLine = function(){
