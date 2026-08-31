@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""
+CRATE TEST - a pickup pays what this car can actually use, and says what it paid.
+
+    .venv/Scripts/python tools/crate-test.py
+
+RLG-107. Owner, 2026-08-31: "for cars with no NOS, picking up the pickup says '+0 NOS', but that
+should be omitted if they don't have NOS."
+
+THE AWARD WAS WRONG BEFORE THE TEXT WAS, and that is why this checks the car and not just the label.
+`nos` was raised in four places without one of them asking whether the car has a bottle - the repair
+crate, threading a roadblock gap, putting a cruiser out, and the trickle that refills it over a run.
+So a LORRY carried a charge it could never spend, and the crate announced it. Hiding the label would
+have left the charge there, so what is asserted is that the CAR did not gain it.
+
+AND THE THIRD CASE, WHICH IS THE OWNER'S DECISION OF 2026-08-31. A car with no bottle at full health
+drove over a crate and got NOTHING - the exact problem the bottle top-up was added to solve, left
+unsolved for half the fleet. It is paid in SECONDS now, which is the currency Interstate is played
+in and the one a checkpoint already pays out.
+
+IT PARKS ITS OWN CRATE. Crates spawn out of sight and sit on the SHOULDER at 0.86 to 1.02 of the
+road, so reaching one by driving means measuring the spawner and the verge instead of the pickup.
+`API.parkCrate` puts one on the REAL crates array with the fields the spawner gives it, in front of
+the car, so the real pickup test runs on it - the same reason `parkTraffic` exists.
+
+Exit code 0 if every check passed, 1 otherwise.
+"""
+
+import argparse
+import functools
+import http.server
+import socketserver
+import sys
+import threading
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tools'))
+from harness import console_utf8, launch_chromium
+
+GAME = 'games/sw/interstate.html'
+
+# A car with a bottle and two without. The garage locks the utility cars behind distance, but
+# `setBody` is the same seam every other fleet measurement uses and goes straight to the body.
+WITH_BOTTLE = 'ROADSTER'
+WITHOUT = ['LORRY', 'VAN']
+
+INIT = r"""
+window.__probe = { errors: [], road: null };
+(function(){
+  var real = null, wrapped = null;
+  Object.defineProperty(window, 'ROAD', {
+    configurable: true,
+    get: function(){ return real ? wrapped : undefined; },
+    set: function(fn){
+      real = fn;
+      wrapped = function(CFG){
+        var api = real(CFG);
+        window.__probe.road = api || (CFG && CFG.api) || null;
+        return api;
+      };
+    }
+  });
+})();
+window.addEventListener('error', function(e){ window.__probe.errors.push(String(e.message)); });
+"""
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+
+def serve(root):
+    handler = functools.partial(QuietHandler, directory=str(root))
+    httpd = socketserver.TCPServer(('127.0.0.1', 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, httpd.socket.getsockname()[1]
+
+
+class Results:
+    def __init__(self):
+        self.fails = []
+
+    def check(self, ok, label, detail=''):
+        print(('  ok    ' if ok else '  FAIL  ') + label + ('' if ok else '   [' + str(detail) + ']'))
+        if not ok:
+            self.fails.append(label)
+
+
+def take_crate(page, body, dmg):
+    """Set the car up, park a crate in front of it, drive over it, and report what happened.
+
+    The speed is held every frame while it closes on the crate: the pickup is a distance test and a
+    car left to coast covers a different distance each time.
+    """
+    page.evaluate("""(a) => { const R = window.__probe.road;
+        R.setBody(a.body); R.setLane(0); R.setTarget(0); R.setDmg(a.dmg);
+        R.setWet(0); R.setSnow(0); R.setPool(0);
+        R.clearTraffic(); R.parkCrate(900); }""", {'body': body, 'dmg': dmg})
+    before = page.evaluate("""() => { const R = window.__probe.road;
+        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, has: R.hasNos() }; }""")
+    for _ in range(40):
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.setSpd(R.MAX_SPD * 0.5); R.setTarget(0); }")
+        page.wait_for_timeout(60)
+        if page.evaluate("() => window.__probe.road.lastFx()"):
+            break
+    after = page.evaluate("""() => { const R = window.__probe.road;
+        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, fx: R.lastFx() }; }""")
+    return before, after
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--headed', action='store_true')
+    args = ap.parse_args()
+    console_utf8()
+    res = Results()
+    httpd, port = serve(ROOT)
+    print('crate-test  .  a pickup pays what this car can use, and says what it paid')
+
+    with sync_playwright() as p:
+        browser = launch_chromium(p, headless=not args.headed)
+        page = browser.new_context(viewport={'width': 480, 'height': 900},
+                                   has_touch=True, is_mobile=True).new_page()
+        page.add_init_script(INIT)
+        page.goto('http://127.0.0.1:%d/%s' % (port, GAME), wait_until='load')
+        page.wait_for_function('!!window.__probe.road', timeout=10000)
+        page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
+        page.click('[data-act="play"]')
+        page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+        page.click('[data-act="drive"]')
+        page.wait_for_timeout(3600)          # past the count-in
+
+        # ---- 1. THE FLEET AGREES ABOUT WHICH CARS HAVE A BOTTLE ------------------
+        # If it did not, everything below would be measuring the wrong cars and would say so
+        # in a way that looked like a pass.
+        has = page.evaluate("""(list) => { const R = window.__probe.road; const out = {};
+            for(const k of list){ R.setBody(k); out[k] = R.hasNos(); } return out; }""",
+                            [WITH_BOTTLE] + WITHOUT)
+        print('      bottles: %s' % has)
+        res.check(has.get(WITH_BOTTLE) is True,
+                  '%s has a bottle, so it is a fair control' % WITH_BOTTLE, has)
+        res.check(all(has.get(k) is False for k in WITHOUT),
+                  'and %s have none, so they are the cars the report is about' % ', '.join(WITHOUT),
+                  has)
+
+        # ---- 2. A CAR WITH A BOTTLE STILL GETS ONE FILLED ------------------------
+        before, after = take_crate(page, WITH_BOTTLE, 0)
+        print('      %-8s full health: %r   nos %d -> %d, clock %.1f -> %.1f'
+              % (WITH_BOTTLE, after['fx'], before['nos'], after['nos'],
+                 before['clock'], after['clock']))
+        res.check(bool(after['fx']), 'the crate was actually picked up', 'nothing was said')
+        res.check(after['nos'] > before['nos'],
+                  'a car with a bottle still has it filled',
+                  'nos went %d to %d' % (before['nos'], after['nos']))
+        res.check('NOS' in after['fx'], 'and is told so', after['fx'])
+
+        # ---- 3. A CAR WITH NO BOTTLE IS NOT GIVEN ONE, NOR TOLD IT WAS -----------
+        for body in WITHOUT:
+            before, after = take_crate(page, body, 0)
+            print('      %-8s full health: %r   nos %d -> %d, clock %.1f -> %.1f'
+                  % (body, after['fx'], before['nos'], after['nos'],
+                     before['clock'], after['clock']))
+            res.check(bool(after['fx']), '%s picked the crate up' % body, 'nothing was said')
+            # THE CAR, NOT THE LABEL. This is the half that hiding the text would have missed.
+            # It asserts the car GAINED nothing rather than that it holds nothing: `setBody` is
+            # a test seam that goes straight to the body and does not reset the run, so a bottle
+            # filled on the control car above is still sitting there. What a run actually starts
+            # with is checked separately below, through the same restart a player gets.
+            res.check(after['nos'] == before['nos'],
+                      '%s is given no nitrous at all' % body,
+                      'nos went %d to %d' % (before['nos'], after['nos']))
+            res.check('NOS' not in after['fx'],
+                      'and is not told about a bottle it has not got',
+                      after['fx'])
+            # AND IT IS PAID IN THE GAME'S OWN CURRENCY (owner, 2026-08-31)
+            gained = after['clock'] - before['clock']
+            res.check(gained > 1,
+                      'and a car with nothing to gain is paid in seconds instead',
+                      'the clock went %.2f to %.2f, so the crate did nothing at all'
+                      % (before['clock'], after['clock']))
+            res.check('SEC' in after['fx'],
+                      'and the flash says so, in the words a checkpoint uses',
+                      after['fx'])
+
+        # ---- 4. AND A DAMAGED ONE IS REPAIRED, STILL WITHOUT A BOTTLE ------------
+        # The branch that must not mention nitrous is the one that has something else to say.
+        before, after = take_crate(page, WITHOUT[0], 60)
+        print('      %-8s damaged:     %r   dmg %d -> %d, clock %.1f -> %.1f'
+              % (WITHOUT[0], after['fx'], before['dmg'], after['dmg'],
+                 before['clock'], after['clock']))
+        res.check(after['dmg'] < before['dmg'],
+                  'a damaged car with no bottle is repaired',
+                  'dmg went %d to %d' % (before['dmg'], after['dmg']))
+        res.check('REPAIRED' in after['fx'] and 'NOS' not in after['fx'],
+                  'and told about the repair and nothing else', after['fx'])
+        res.check(abs(after['clock'] - before['clock']) < 1.5,
+                  'and not paid in seconds as well, because the crate was already worth something',
+                  'the clock went %.2f to %.2f' % (before['clock'], after['clock']))
+
+        # ---- 5. AND THE BOTTLE DOES NOT TRICKLE INTO A CAR THAT HAS NOT GOT ONE --
+        # The deepest instance of the same fault, and the one no pickup would ever show: the
+        # bottle refills on its own over a run, and that ran for every car in the fleet.
+        for body, want in ((WITH_BOTTLE, True), (WITHOUT[0], False)):
+            page.evaluate("(k) => { const R = window.__probe.road; R.setBody(k); }", body)
+            n0 = page.evaluate("() => window.__probe.road.nos()")
+            page.wait_for_timeout(2500)
+            n1 = page.evaluate("() => window.__probe.road.nos()")
+            print('      %-8s bottle over 2.5s: %d -> %d' % (body, n0, n1))
+            res.check((n1 > n0) == want,
+                      'the bottle trickles back %s' % ('on a car that has one' if want
+                                                       else 'into no car that has not'),
+                      '%s went %d to %d' % (body, n0, n1))
+
+        # ---- 6. AND A RUN STARTED IN ONE BEGINS WITH AN EMPTY BOTTLE ------------
+        # Through `restart`, which is the same path RETRY and DRIVE both take, so this is what
+        # a player gets rather than what a test seam leaves behind. A car that cannot spend a
+        # charge should not be holding one.
+        for body, want_empty in ((WITHOUT[0], True), (WITH_BOTTLE, False)):
+            page.evaluate("(k) => { const R = window.__probe.road; R.setBody(k); R.restart(); }",
+                          body)
+            page.wait_for_timeout(300)
+            n = page.evaluate("() => window.__probe.road.nos()")
+            print('      %-8s starts a run holding %d' % (body, n))
+            res.check((n == 0) == want_empty,
+                      'a run in %s starts with %s' % (body, 'nothing in the bottle' if want_empty
+                                                      else 'a charge to spend'),
+                      'it started with %d' % n)
+
+        errs = page.evaluate('() => window.__probe.errors')
+        res.check(not errs, 'no page errors', errs)
+        browser.close()
+
+    httpd.shutdown()
+    print('')
+    if res.fails:
+        print('FAILED: ' + '; '.join(res.fails))
+        return 1
+    print('all checks passed')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

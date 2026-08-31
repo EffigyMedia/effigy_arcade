@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.32';
+window.ROAD_BUILD = '0.10.33';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -317,9 +317,10 @@ const CLOCK_START = 60, CLOCK_BONUS = 20, CP_MILES = 2;
    old one. Both flashes take their number from the value now.
    ------------------------------------------------------------------------ */
 const CLOCK_UNIT = 'SEC', WRECK_SECS = 2.0;
-function timeFlash(label, secs){
-  return label + '  ' + (secs < 0 ? '\u2212' : '+') + Math.abs(secs) + ' ' + CLOCK_UNIT;
+function timeAward(secs){
+  return (secs < 0 ? '\u2212' : '+') + Math.abs(secs) + ' ' + CLOCK_UNIT;
 }
+function timeFlash(label, secs){ return label + '  ' + timeAward(secs); }
 /* TEST DRIVE is practice: the clock is optional there. A race always has one. */
 let timedRun = true;
 /* stripes are paint, not a body — any car can wear them */
@@ -2367,6 +2368,40 @@ const BODY = {
    FORMULA car, and the SUPER CRUISER — which is a supercar the force took.
    Traffic bodies are ordinary vehicles and have none.
    ---------------------------------------------------------------------- */
+/* ---- NOTHING IS GIVEN TO A CAR THAT CANNOT USE IT (RLG-107) -------------
+   Owner, 2026-08-31: "for cars with no NOS, picking up the pickup says '+0
+   NOS', but that should be omitted if they don't have NOS."
+
+   AND THE AWARD WAS WRONG BEFORE THE TEXT WAS, which is why this is a function
+   rather than a hidden label. `nos` was raised in FOUR places and not one of
+   them asked whether the car has a bottle: the repair crate, threading a
+   roadblock gap, putting a cruiser out, and the trickle that refills it over a
+   run. So a LORRY carried a charge it could never spend, and the crate
+   announced it. Suppressing the label alone would have left the charge there.
+
+   It returns what was ACTUALLY given, so the caller can say so rather than
+   guess - and a caller that is given nothing knows to offer something else.
+   ------------------------------------------------------------------------ */
+function awardNos(n){
+  if(!hasNos()) return 0;
+  const was = nos;
+  nos = Math.min(100, nos + n);
+  return Math.round(nos - was);
+}
+/* ---- AND WHAT A CAR WITH NOTHING TO GAIN IS PAID INSTEAD ----------------
+   Owner's decision, 2026-08-31. A car with no bottle, at full health, driving
+   over a repair crate got NOTHING - and the note beside the bottle top-up says
+   exactly why that matters: "a reward that is invisible most of the time is not
+   a reward." The top-up was added to solve that and it did not solve it for the
+   half of the fleet that has no bottle to top up.
+
+   SECONDS ARE WHAT INTERSTATE IS PLAYED IN. It is the currency the game already
+   pays out at every checkpoint, it needs no new system, it is worth something to
+   every car in every state, and the flash says it in the same words a checkpoint
+   does. A full-health full-bottle supercar is paid the same way, so the crate is
+   never a thing you drive over for nothing.
+   ------------------------------------------------------------------------ */
+const CRATE_SECS = 10;
 function hasNos(){
   const B = BODY[optBody];
   if(!B) return false;
@@ -7024,7 +7059,9 @@ function reset(){
   pos=0; playerX=0; camX=0; targetX=0; spd=0;
   gear=1; idleRev=IDLE; autoHold=0; autoDownT=0;
   if(typeof knobRail !== 'undefined'){ knobRail=0; knobY=TOP_Y; }
-  dmg=0; nos=40; nosOn=false; nosTime=0; bustT=0;
+  /* a car with no bottle starts with nothing in it rather than with a charge
+     nothing in the game can ever spend (RLG-107) */
+  dmg=0; nos = hasNos() ? 40 : 0; nosOn=false; nosTime=0; bustT=0;
   /* ---- AND THE ROLLING START IS BACK, AS A SEAM ------------------------
      A run used to begin at speed in second, because a dead stop in first meant
      four seconds of nothing while the car got out of its own way. RLG-088 put
@@ -11436,7 +11473,8 @@ function step(dt){
      so the decision is WHEN to spend it rather than whether you found a box.
      A full bottle from empty takes a little over a minute and a half.
      -------------------------------------------------------------------------- */
-  if(!nosOn && nos < 100) nos = Math.min(100, nos + dt * 1.1);
+  /* and it only trickles into a bottle that exists (RLG-107) */
+  if(!nosOn && hasNos() && nos < 100) nos = Math.min(100, nos + dt * 1.1);
 
   if(hornCool > 0) hornCool -= dt;
   /* ---- traffic coming up behind ------------------------------------------
@@ -12143,20 +12181,31 @@ function step(dt){
     /* held: a crate cannot be collected by a car nobody is driving */
     if(!held && Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < carW(0.30)){
       c.got = true;
-      const before = dmg, nosBefore = nos;
-      dmg = Math.max(0, dmg - 25);
-      /* ---- IT PAYS NOS TOO ----------------------------------------------
-         The crate healed and nothing else, while the two other pickup paths in
-         this file both top the bottle up as well. On a clean run there is no
-         damage to repair, so driving over one did literally nothing — a
-         reward that is invisible most of the time is not a reward. */
-      nos = Math.min(100, nos + 25);
+      /* ---- IT PAYS WHATEVER THIS CAR CAN ACTUALLY USE (RLG-107) ---------
+         The crate healed and nothing else, and the bottle top-up was added
+         because on a clean run driving over one did literally nothing - a
+         reward that is invisible most of the time is not a reward. That fix
+         never reached the cars with no bottle, which is the owner's report:
+         they were told "+0 NOS".
 
-      snd.threaded();
-      const gained = Math.round(nos - nosBefore);
+         So each award is taken in turn and the label is built from what was
+         GIVEN rather than from what was offered. If neither was worth
+         anything - no damage to repair and no bottle to fill, which is a
+         production car on a clean run - it is paid in seconds instead, and
+         that is the owner's decision of 2026-08-31.
+         ---------------------------------------------------------------- */
+      const before = dmg;
+      dmg = Math.max(0, dmg - 25);
       const healed = Math.round(before - dmg);
-      fx.push({txt: healed ? ('REPAIRED \u2212' + healed + '%  NOS +' + gained)
-                           : ('NOS +' + gained + '%'),
+      const gained = awardNos(25);
+      let secs = 0;
+      if(!healed && !gained){ clock += (secs = CRATE_SECS); lastBeep = -1; }
+      snd.threaded();
+      const won = [];
+      if(healed) won.push('REPAIRED \u2212' + healed + '%');
+      if(gained) won.push('NOS +' + gained + '%');
+      if(secs)   won.push(timeAward(secs));
+      fx.push({txt: won.join('  '),
                x:W/2, y:H*0.62, vy:-60, age:0, life:1.2});
       burst(c, '#3ddc84');
     }
@@ -12175,8 +12224,9 @@ function step(dt){
         if(Math.abs(p.x - playerX) < carW(p.w + PLAYER_W)/2){ clean=false; break; }
       }
       if(clean){
-        /* a near miss is its own reward — no nitrous for bravado */
-        nos = Math.min(100, nos+25); dmg = Math.max(0, dmg-25);
+        /* a near miss is its own reward - and a car with no bottle is not
+           handed one it cannot spend (RLG-107) */
+        awardNos(25); dmg = Math.max(0, dmg-25);
         snd.threaded();
         /* ---- NO SCORE IN THIS GAME ---------------------------------------
            These labels advertised points that do not exist — there is no score
@@ -12277,8 +12327,9 @@ function wreckCop(k, how){
   /* taking one out is the other way to earn heat (RLG-030, owner 2026-08-30) */
   if(!optEasy){ heat = Math.min(5, heat + 1); coolT = 0; }
   /* the crate: a proper repair and a proper slug of nitrous, which is what
-     makes it worth crossing the road for */
-  nos = Math.min(100, nos + 25); dmg = Math.max(0, dmg - 25);
+     makes it worth crossing the road for - and no slug at all for a car with
+     nowhere to put it (RLG-107) */
+  awardNos(25); dmg = Math.max(0, dmg - 25);
   fx.push({txt:'CRUISER DOWN', x:W/2, y:H*0.58, vy:-55, age:0, life:1.2});
   burst(k, '#ff9a5a');
 }
@@ -17994,6 +18045,33 @@ requestAnimationFrame(frameLoop);
      `setBody` and `setTow`, which all exist for the same reason.
      ------------------------------------------------------------------- */
   API.setTarget = function(x){ targetX = x; return targetX; };
+  /* ---- A TEST CAN PUT A CRATE IN FRONT OF THE CAR (RLG-107) -------------
+     Crates spawn out of sight and park on the SHOULDER at 0.86 to 1.02 of the
+     road, so reaching one from a harness means driving off the road and waiting
+     for a spawner - which measures the spawner and the verge rather than what
+     the pickup pays. This puts one where the car already is, on the REAL
+     `crates` array with the fields the spawner gives it, so the real pickup
+     test runs on it. It sits beside `parkTraffic`, which exists for exactly
+     the same reason and says so.
+     ------------------------------------------------------------------- */
+  API.parkCrate = function(dz){
+    crates.length = 0;
+    crates.push({ z: pos + PLAYER_Z + (dz === undefined ? 900 : dz),
+                  x: playerX, got:false });
+    return crates.length;
+  };
+  /* what a pickup last SAID, which is the half of RLG-107 the owner reported.
+     The crate writes into `fx` rather than into the warning strip, so there is
+     no element for a harness to read it from. */
+  API.lastFx = function(){
+    for(let i = fx.length - 1; i >= 0; i--) if(fx[i].txt) return fx[i].txt;
+    return '';
+  };
+  /* damage, so the REPAIRED branch can be reached without staging a crash -
+     the branch that must not mention a bottle the car has not got */
+  API.setDmg = function(v){ dmg = clamp(v, 0, 99); return dmg; };
+  API.nos = function(){ return Math.round(nos); };
+  API.hasNos = function(){ return hasNos(); };
   API.simTime = function(){ return +simT.toFixed(5); };
   API.steerRate = function(){ return +steerRate().toFixed(4); };
   /* ---- AN EMPTY ROAD, FOR A HARNESS THAT PHOTOGRAPHS ONE ----------------
