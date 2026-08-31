@@ -24,14 +24,22 @@
 /* v20: v19 shipped with an EMPTY asset list. Any device that installed it is
    holding a worker that caches no cabinets, and it will keep serving that
    worker until the name changes. */
-const CORE    = 'effigy-arcade-core-v26';
+/* v27: eight versions shipped in one evening - the beam rebuilt, the count-in,
+   the biome moved onto distance - and the cache names were not touched once.
+   The owner got the exact symptom the note below predicts: a black screen with
+   the mirror still drawing, which is the previous game HTML running beside the
+   current shared scripts. Nothing MOVED or was renamed, which is what the rule
+   above asks about, and that turned out to be the wrong question: what matters
+   is whether the files still agree with each other, and after a change the size
+   of road.js they do not. */
+const CORE    = 'effigy-arcade-core-v27';
 /* ---- ONE VERSION, NOT TWO ----------------------------------------------
    CORE went to v20 and RUNTIME stayed at v19, so a device kept a runtime cache
    from the broken build alongside a fresh core. They are bumped together from
    here: two names, one version number, so a stale half can never survive an
    update.
    ---------------------------------------------------------------------- */
-const RUNTIME = 'effigy-arcade-runtime-v26';
+const RUNTIME = 'effigy-arcade-runtime-v27';
 /* ---- HARD EVICTION -----------------------------------------------------
    A half-updated cache is worse than no cache: a device holding the previous
    game HTML beside the current shared scripts gets a black screen, because the

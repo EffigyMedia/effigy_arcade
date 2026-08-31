@@ -6616,20 +6616,18 @@ function reset(){
      previous run ended at 3am is not a setting. The continuity is worth less
      than the control, so the run starts where the player said. */
   dayClock = TIMES[optTime].p * DAY_SECONDS;
-  /* ---- AND THE MAP STARTS AGAIN WITH IT (RLG-022) --------------------
-     Neither of these was ever cleared, so only the FIRST run of a page load
-     chose its opening place outright. A second run inherited the last one and
-     the leftover countdown with it, which could be a few hundred units - a
-     place that ended before the car had left the starting line. The same
-     reasoning as the sky one line above: continuity across runs is worth less
-     than a run that starts where it says it does.
+  /* ---- AND THE WORLD STARTS AGAIN WITH IT (RLG-022, RLG-090) ---------
+     The map used to be inherited: only the FIRST run of a page load chose its
+     opening place outright, and a second run took the last one's place and
+     whatever was left of its countdown. The weather was inherited the same
+     way, which is how a dry biome arrived with snow still under the tyres.
+
+     Both live in `freshWorld` now rather than as lines here, because three of
+     these have been found one after another and a fourth line would have fixed
+     one and left the next. Same reasoning as the sky above: continuity across
+     runs is worth less than a run that starts where it says it does.
      ---------------------------------------------------------------- */
-  biomeStarted = 0; biomeNext = 0;
-  /* and the place is chosen HERE rather than by whichever function runs first.
-     With the count-in holding `step()`, the first `stepBiome` is the frame
-     after GO - so leaving it to that changed the world in front of the player
-     the instant they were let go (RLG-088). */
-  openBiome();
+  freshWorld();
   traffic=[]; cops=[]; blocks=[]; crates=[]; fx=[];
   shake=0; hitFlash=0; sirenPhase=0; lastKmh=0; iframe=0;
   acc=0;
@@ -7642,6 +7640,38 @@ let pool = 0, poolFall = 0, poolDry = 0;
    the same slope. See the accumulation block for why `wet` cannot answer this. */
 let settleFall = 0;
 
+/* ==== WHAT A RUN OWNS OF THE WORLD (RLG-090) ============================
+   Owner, 2026-08-30: on a time-over, hitting RETRY carries state over - you
+   start in a dry biome with snow slipperiness still applied.
+
+   THAT IS TWO PIECES OF STATE DISAGREEING, WHICH IS WORSE THAN EITHER BEING
+   WRONG. The place is fresh and the grip is not, so the road looks like one
+   thing and drives like another, and nothing on screen explains why the car
+   will not hold a line.
+
+   THREE OF THESE HAVE NOW BEEN FOUND ONE AFTER ANOTHER - the biome countdown,
+   the opening place, and now the weather - and they were all the same fault:
+   module-level world state that no reset ever cleared, so a run inherited
+   whatever the last one finished with. Adding a fourth line to `reset()` would
+   have fixed this one and left the next.
+
+   SO THIS IS THE LIST, AND IT IS THE ONLY PLACE THE LIST EXISTS. Anything the
+   WORLD carries between runs belongs here rather than scattered through the
+   reset, and `API.worldState` reports exactly these fields so a harness can
+   assert a fresh run starts clean without being told what clean means twice.
+   Add a field to the world, add it here, and the check covers it.
+   ======================================================================= */
+function freshWorld(){
+  /* the weather: what is falling, how wet the road is, and what has settled */
+  wet = 0; wetTarget = 0; wetNext = 0; snowy = 0;
+  settle = 0; settleMelt = 0;
+  /* the sky above it */
+  cloud = 0.15; cloudTarget = 0.15; cloudNext = 0; storm = 0;
+  /* and the place, which chooses itself outright rather than transitioning */
+  biomeStarted = 0; biomeNext = 0;
+  openBiome();
+}
+
 /* ---- THE OPENING PLACE IS CHOSEN BEFORE THE FIRST FRAME (RLG-088) ----
    Owner, 2026-08-30: when the countdown finishes, the entire world changes -
    you arrive in a brand new biome on GO.
@@ -7665,6 +7695,20 @@ function openBiome(){
   biomeFrom = biomeTo = biome;
   biomeEdge = -1e9;
   buildSkyline();
+  /* ---- AND THE NEXT PLACE IS A FULL RUN AWAY (RLG-088) --------------
+     Owner, 2026-08-30, on the build that stopped the whole world changing at
+     GO: the horizon still snaps to the next biome the instant the count ends.
+
+     It did, and this line is why it did not before. `biomeNext` was left at 0,
+     which means A CHANGE IS DUE - so the first `stepBiome` after the count
+     immediately placed a new place at the horizon. Choosing the opening biome
+     at the reset fixed the ground under the car and left the sky doing exactly
+     what it had been doing, one step further out.
+
+     A place you have just arrived in is not also a place you are leaving, so
+     the distance is armed here with the same range every other change uses.
+     ---------------------------------------------------------------- */
+  biomeNext = rnd(6.5, 12) * MILE;
 }
 
 function stepBiome(dt){
@@ -16299,6 +16343,17 @@ requestAnimationFrame(frameLoop);
   /* how many checkpoint boards are actually on the road. The question RLG-089
      turned on is whether a BOARD exists, not whether a setting is true. */
   API.gantries = function(){ return cpGantries.length; };
+  /* the same path RETRY and DRIVE both take, so a harness tests the reset the
+     player gets rather than the menu that leads to it (RLG-090) */
+  API.restart = function(){ start(); return true; };
+  /* exactly the fields `freshWorld` owns, so a check on a fresh run does not
+     have to be told twice what clean means (RLG-090) */
+  API.worldState = function(){
+    return { wet:+wet.toFixed(3), wetTarget:+wetTarget.toFixed(3),
+             snowy:snowy, settle:+settle.toFixed(3),
+             cloud:+cloud.toFixed(3), storm:storm,
+             biome:biome, from:biomeFrom, to:biomeTo };
+  };
   /* what the start line is doing: how much of the count is left, which number
      has been sounded, and whether GO is still on the glass (RLG-088) */
   API.startLine = function(){

@@ -116,7 +116,12 @@ def main():
         for _ in range(26):
             page.wait_for_timeout(160)
             row = page.evaluate('() => window.__probe.road.startLine()')
-            row['biome'] = page.evaluate('() => window.__probe.road.biomeSweep().player')
+            b = page.evaluate('() => window.__probe.road.biomeSweep()')
+            # the HORIZON as well as the ground: the owner's second report was that the
+            # ground held still and the far end snapped to the next place at GO, which a
+            # check on `player` alone reads as one unchanged biome
+            row['biome'] = b['player']
+            row['ahead'] = b['to']
             seen.append(row)
 
         held = [s for s in seen if s['left'] > 0]
@@ -192,7 +197,7 @@ def main():
         # THE PLACE IS SAMPLED ACROSS THE WHOLE COUNT AND PAST IT. The question is not
         # whether a biome exists but whether it is the SAME ONE the player was looking at,
         # so what is compared is the first sample against every later one.
-        places = [s['biome'] for s in seen]
+        places = [s['biome'] for s in seen] + [s['ahead'] for s in seen]
         print('      the place across the count and past GO: %s'
               % ' '.join(dict.fromkeys(places)))
         res.check(len(set(places)) == 1,

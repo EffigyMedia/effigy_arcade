@@ -14,6 +14,30 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-12"></a>
+## [0.10.12] - 2026-08-30
+- Fixed: **the device was serving a half-updated cache, which is a black screen.** Owner: pressing
+  DRIVE gives an all-black screen with the mirror still drawing. That is the exact symptom `sw.js`
+  predicts in its own note - the previous game HTML running beside the current shared scripts. Eight
+  versions shipped in one evening and the cache names were not touched once. The rule written there
+  says to bump them whenever a file MOVES or is RENAMED, and nothing had; that turned out to be the
+  wrong question, because what matters is whether the files still agree with each other, and after a
+  change the size of `road.js` they do not. Caches are v27, and `pack.sh` refused the build until
+  `assets.js` agreed - which is the check that would have caught this on any of the seven builds
+  before it, had it been run ([RLG-090](../fragments/RLG-090.md)).
+- Fixed: **a run owns its weather, and a retry starts it clean.** Owner: on a time-over, RETRY
+  carries state over - a dry biome with snow slipperiness still applied. Two pieces of state
+  disagreeing is worse than either being wrong: the road looks like one thing and drives like
+  another. Rain, snow, what has settled, the cloud and the storm now live in one `freshWorld` list
+  with the place, rather than as lines scattered through the reset - **three of these have been
+  found one after another**, and a fourth line would have fixed one and left the next
+  ([RLG-090](../fragments/RLG-090.md)).
+- Fixed: **the horizon no longer snaps to the next biome at GO.** Owner, on the previous build: the
+  ground holds still now but the far end changes the instant the count ends. `biomeNext` was left at
+  zero, which means a change is DUE, so the first frame after the count placed a new place at the
+  horizon. A place you have just arrived in is not also one you are leaving, so the distance to the
+  next is armed when the opening place is chosen ([RLG-088](../fragments/RLG-088.md)).
+
 <a id="v0-10-11"></a>
 ## [0.10.11] - 2026-08-30
 - Fixed: **the world does not change when the countdown ends.** Owner: when the countdown finishes
