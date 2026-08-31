@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.30';
+window.ROAD_BUILD = '0.10.31';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1200,6 +1200,61 @@ function updateViewShift(){
    Interstate has no corners worth the name.
    ------------------------------------------------------------------------ */
 const CORNER_G_BASE = 0.42, CORNER_LAG = 1.8;
+/* ---- AND GRIP DECIDES HOW SHARPLY THE CAR ANSWERS (RLG-119) -------------
+   Owner, 2026-08-31: "should grip not only affect being pushed on the corner,
+   but also your steering rate? A formula should handle extremely well and a
+   lorry could handle poorly."
+
+   IT DID NOT, AND THE GAP WAS REAL. `grip` was consulted in exactly two places
+   - the braking rate and `cornerG` - and the rate at which a car answers the
+   wheel was in neither. Two constants decided it for the whole fleet: a
+   ceiling on lateral speed, and how quickly the car converges on the ask. So a
+   LORRY placed itself across the road exactly as sharply as a FORMULA car.
+   Slow, heavy, bad at stopping, pushed wide in corners - and it turned like a
+   racing car. Three of the four axes already said "lorry".
+
+   THE CEILING MOVES AND THE CONVERGENCE DOES NOT. `STEER.rate` is how fast the
+   car can be PLACED and `STEER.snap` is how quickly it settles on the ask.
+   Scaling the ceiling makes a low-grip car feel HEAVY; scaling the convergence
+   as well would make it feel LAGGY, which is a different and worse sensation -
+   the car would answer late rather than slowly. So the ceiling alone, until
+   the ceiling has been felt.
+
+   AND IT IS COMPRESSED, WHICH IS THE WHOLE OF WHY IT IS DRIVEABLE. `grip` runs
+   0.42 to 2.05 across the fleet. Multiplied in raw, a formula car would place
+   itself five times as fast as a lorry: that is not a handling model, it is two
+   different games. `bite` is the exponent on the ratio to a mid-fleet
+   reference, and 0.5 is a square root - it keeps the ordering the owner asked
+   for and compresses 4.9:1 down to 2.2:1 - the LORRY at 2.49 lanes a second
+   against the VECTOR at 5.49, with every body in between in the order its grip
+   puts it.
+
+   ONE PHYSICS FOR EVERY CAR STILL HOLDS. The rule forbids a branch that names a
+   vehicle class to get a behaviour. This is one number every car already
+   declares, given a third consequence, with no branch anywhere.
+
+   THE REFERENCE IS THE ROADSTER at 1.20 - the car a fresh install starts in,
+   and the one the owner has felt most. At the reference the rate is exactly
+   what it has always been, so the starting car does not change at all.
+   ------------------------------------------------------------------------ */
+const STEER = {
+  rate: 4.2,     /* lanes per second at the reference grip                    */
+  snap: 14,      /* how fast it converges on the ask - NOT scaled by grip     */
+  ref:  1.20,    /* the grip `rate` belongs to: the ROADSTER, the first car   */
+  bite: 0.5,     /* the exponent on the grip ratio. 0.5 is a square root      */
+  /* THE BAND IS A RAIL, NOT A TUNING, and it is set WIDE ENOUGH TO BIND ON
+     NOTHING the fleet actually declares. At 0.72 it caught the LORRY, the VAN,
+     the PICKUP and the CAB and flattened all four to the same rate - which
+     throws away the ordering at the bottom of the fleet, and the bottom of the
+     fleet is where the owner asked for it. It exists so a body with a wild or
+     missing `grip` cannot make itself undriveable. */
+  lo:   0.58,
+  hi:   1.32
+};
+function steerRate(){
+  const g = ((BODY[optBody] && BODY[optBody].grip) || 1) / STEER.ref;
+  return STEER.rate * clamp(Math.pow(g, STEER.bite), STEER.lo, STEER.hi);
+}
 function cornerG(){
   const g = ((BODY[optBody] && BODY[optBody].grip) || 1) * wetGrip();
   return CORNER_G_BASE / g;
@@ -10827,6 +10882,7 @@ if(AR && AR.pad) AR.pad.onPress(name=>{
 });
 
 /* ---------- simulation ---------- */
+let simT = 0;
 function step(dt){
   /* ---- HELD ON THE LINE, AND THE WORLD IS NOT (RLG-121) ---------------
      THIS COMMENT USED TO SAY "everything below this runs, so the road, the
@@ -10852,6 +10908,19 @@ function step(dt){
      of it now arrives at GO already running, so GO changes exactly one thing -
      who is driving.
      ------------------------------------------------------------------ */
+  /* ---- THE ENGINE'S OWN CLOCK ------------------------------------------
+     Seconds the world has actually been SIMULATED, which is not the seconds
+     that have passed. `frameLoop` caps its `dt` at 0.05 and feeds it to this
+     function in fixed chunks, so a browser running at eleven frames a second
+     advances the world at about half real time - and by a different fraction
+     for a heavier car, because a heavier car renders slower.
+
+     A measurement taken against the wall therefore reads the frame rate rather
+     than the car. It is published for `tools/brake-test.py`, which measures how
+     fast a car can be placed across the road and got that wrong twice before
+     this existed. Nothing in the game reads it.
+     ------------------------------------------------------------------- */
+  simT += dt;
   if(goFor > 0) goFor -= dt;
   /* the engine is wound here rather than by whoever draws the dial - it has to
      turn while the count is up, and the count returns below */
@@ -10952,8 +11021,10 @@ function step(dt){
      ------------------------------------------------------------------- */
   const slick = 1 - wetGrip();
   const carry = Math.min(0.86, slick * (snowy > 0.5 ? 2.6 : 1.5));
-  const grip = (1 - Math.exp(-14*dt)) * (1 - carry*0.72);
-  const want2 = clamp((targetX-playerX)*grip, -4.2*dt, 4.2*dt);
+  const grip = (1 - Math.exp(-STEER.snap*dt)) * (1 - carry*0.72);
+  /* the ceiling is this car's, not the fleet's (RLG-119) */
+  const lim  = steerRate() * dt;
+  const want2 = clamp((targetX-playerX)*grip, -lim, lim);
   slideX = slideX * carry + want2;
   playerX += slideX;
   /* a wall does not care how slippery it is */
@@ -17887,6 +17958,17 @@ requestAnimationFrame(frameLoop);
      waits for them to leave is waiting on the thing it is measuring. */
   API.copsClear = function(){ const n = cops.length; cops.length = 0; return n; };
   API.setSpd = function(v){ spd = v; };
+  /* ---- A TEST CAN ASK THE CAR TO GO SOMEWHERE (RLG-119) ----------------
+     `setLane` moves `targetX` and `playerX` together, which is right for
+     placing a car and useless for measuring how fast it gets anywhere. This
+     sets the ASK alone, so the harness can hold a steady steering command from
+     a known position and time the crossing - which is the steering rate, with
+     no driver in the loop to influence it. It sits with `setWet`, `setSpd`,
+     `setBody` and `setTow`, which all exist for the same reason.
+     ------------------------------------------------------------------- */
+  API.setTarget = function(x){ targetX = x; return targetX; };
+  API.simTime = function(){ return +simT.toFixed(5); };
+  API.steerRate = function(){ return +steerRate().toFixed(4); };
   /* ---- AN EMPTY ROAD, FOR A HARNESS THAT PHOTOGRAPHS ONE ----------------
      Debug only, and nothing in the game calls it. A check that subtracts one
      frame from another has to hold everything but the thing it is measuring
@@ -18009,6 +18091,13 @@ requestAnimationFrame(frameLoop);
     traffic.length = 0; cops.length = 0; blocks.length = 0;
     crates.length = 0; fx.length = 0; racers.length = 0;
     return traffic.length + cops.length + racers.length;
+  };
+  /* how many things are on the road that could hit you. A cornering measurement
+     that is really a collision is the fault RLG-055's cornering half had, and a
+     harness cannot see it without asking. */
+  API.cars = function(){
+    return (traffic ? traffic.length : 0) + (cops ? cops.length : 0)
+         + (blocks ? blocks.length : 0) + (racers ? racers.length : 0);
   };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };
