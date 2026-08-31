@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.31';
+window.ROAD_BUILD = '0.10.32';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -293,6 +293,33 @@ const HEAT_COOL = 12;
    you do. Coasting past one buys the twenty seconds and the run continues.
    -------------------------------------------------------------------------- */
 const CLOCK_START = 60, CLOCK_BONUS = 20, CP_MILES = 2;
+/* ---- AND THE UNIT THE CLOCK IS COUNTED IN (RLG-106) ---------------------
+   Owner, 2026-08-31: "when you're rewarded more time, it just has a number
+   '+20', it should be '+20 sec'."
+
+   THE NUMBER HAD NO UNIT, so it read as points, or a multiplier, or a place -
+   anything but seconds, which is the one thing it is. It matters more than a
+   missing word usually would, because it is THE ONLY PLACE THE CLOCK IS EVER
+   ADDED TO: everything else about the timer counts DOWN in the HUD, where the
+   context establishes what it is, and this is the single moment a number goes
+   up. It is also the number the whole of Interstate is played against.
+
+   AND THE UNIT ALREADY EXISTED, SPELT DIFFERENTLY. The wreck penalty read
+   `\u22122s` while the checkpoint read `+20`, so the two moments that change the
+   clock disagreed about what a clock is measured in, and one of them did not
+   say at all. Both are built by `timeFlash` now, from one word, so they cannot
+   drift apart again - which is what this ruling asked for when it said to read
+   what the timer calls itself rather than write a second literal.
+
+   THE PENALTY'S NUMBER WAS A LITERAL TOO, and that is the same fault one step
+   further on: `2` was written into the string while the value it describes is
+   `WRECK_SECS`, so changing the penalty would have left the text announcing the
+   old one. Both flashes take their number from the value now.
+   ------------------------------------------------------------------------ */
+const CLOCK_UNIT = 'SEC', WRECK_SECS = 2.0;
+function timeFlash(label, secs){
+  return label + '  ' + (secs < 0 ? '\u2212' : '+') + Math.abs(secs) + ' ' + CLOCK_UNIT;
+}
 /* TEST DRIVE is practice: the clock is optional there. A race always has one. */
 let timedRun = true;
 /* stripes are paint, not a body — any car can wear them */
@@ -7113,7 +7140,7 @@ function wreck(reason){
   if(clock > 0){
     snd.dead();
     shake = 1.4;
-    wreckWait = 2.0;
+    wreckWait = WRECK_SECS;
     spd = 0; dmg = 0; playerX = 0; targetX = 0; camX = 0;
     gear = 1; nosOn = false;
     /* ---- CLEAR THE THING THAT CALLED US -------------------------------
@@ -7127,7 +7154,7 @@ function wreck(reason){
        by the thing it triggers.
        ---------------------------------------------------------------- */
     bustT = 0;
-    flashWarn('WRECKED  \u22122s');
+    flashWarn(timeFlash('WRECKED', -WRECK_SECS));
     return;
   }
   state='wrecked';
@@ -11308,7 +11335,7 @@ function step(dt){
       clock += CLOCK_BONUS;
       lastBeep = -1;
       snd.checkpoint();
-      flashWarn('CHECKPOINT  +' + CLOCK_BONUS);
+      flashWarn(timeFlash('CHECKPOINT', CLOCK_BONUS));
     }
   }
   cpGantries = cpGantries.filter(cp => cp.z > pos - 8000);

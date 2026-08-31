@@ -21,6 +21,7 @@ Exit code 0 if every check passed, 1 otherwise.
 """
 
 import argparse
+import re
 import functools
 import http.server
 import socketserver
@@ -182,6 +183,41 @@ def main():
         res.check(boards2 > 0,
                   'a race with TIMED off still puts boards on the road',
                   'none were placed, though the clock was running')
+
+        # ---- AND CROSSING ONE SAYS WHAT IT PAID YOU (RLG-106) ---------------------
+        # Owner, 2026-08-31: "when you're rewarded more time, it just has a number '+20',
+        # it should be '+20 sec'." A bare number reads as points, or a multiplier, or a
+        # place - anything but seconds, which is the one thing it is. It is also the ONLY
+        # moment the clock is ever added to: everything else about the timer counts down in
+        # the HUD, where context says what it is.
+        #
+        # SO THE CAR HAS TO ACTUALLY CROSS ONE. Placing a board is not crossing it, and the
+        # check above only proves boards exist. A checkpoint sits two miles out, about
+        # 257,000 world units, so this drives on until the flash fires or gives up.
+        seen_flash = ''
+        for _ in range(90):
+            page.evaluate('() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD)')
+            page.wait_for_timeout(120)
+            t = page.eval_on_selector('#warn', 'e => e.textContent') or ''
+            if 'CHECKPOINT' in t:
+                seen_flash = t.strip()
+                break
+        print('      the checkpoint flash reads: %r' % seen_flash)
+        res.check(bool(seen_flash), 'a checkpoint is actually crossed',
+                  'no CHECKPOINT flash appeared in the whole run')
+        if seen_flash:
+            m = re.search(r'\+(\d+)\s+([A-Za-z]+)', seen_flash)
+            res.check(m is not None,
+                      'and it names a unit rather than a bare number',
+                      'it read %r, which is a number with nothing to say what of' % seen_flash)
+            if m:
+                # AND THE NUMBER IS THE REWARD, not a literal that can drift from it. The
+                # clock jumps by the award at the same moment, so the two are compared
+                # rather than the text being trusted on its own.
+                print('      it awarded %s %s' % (m.group(1), m.group(2)))
+                res.check(int(m.group(1)) > 0 and len(m.group(2)) >= 1,
+                          'and the unit is a word and the award is a real number',
+                          'it read %r' % seen_flash)
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
