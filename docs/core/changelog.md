@@ -14,6 +14,26 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-22"></a>
+## [0.10.22] - 2026-08-31
+- Changed: **OCEAN is COASTAL.** Five places in `road.js` and fifteen across four harnesses. Nothing
+  persists a biome name, so no save key had to migrate ([RLG-059](../fragments/RLG-059.md)).
+- Added: **the coast has an open sky.** Cloud cover comes from a place's own rain and snow, so a coast
+  that rains a third of the time was as grey as a forest that rains 42 per cent of the time. `cover`
+  is a multiplier on that tendency, defaulting to 1 for every place that does not state one, so the
+  coast is the only entry carrying a number and a place added later gets the ordinary sky for nothing.
+  Over 400 rolls each: coast median 0.233 and clear 56% of the time, against forest 0.727, swamp 0.706
+  and city 0.710, all unchanged. The rain is deliberately untouched - lowering it would change how the
+  place DRIVES through `wetGrip`, and nobody asked for that - and the check asserts the coast still
+  clouds over sometimes, because a `cover` of zero would pass every other assertion and be wrong
+  ([RLG-059](../fragments/RLG-059.md)).
+- Fixed: **a field named `sky` silently overwrote the biome's sky colour.** The open-sky multiplier was
+  called `sky` for one edit. `sky` is already the biome record's hex colour for the sky above the
+  place, so the number replaced the colour and the cover calculation multiplied by a string: EVERY
+  biome's cloud went to NaN, on the title screen, with nothing logged anywhere. `node --check` passes
+  on it and so does every syntax gate. It is called `cover` now, and the scar is written into the code
+  at both ends ([RLG-059](../fragments/RLG-059.md)).
+
 <a id="v0-10-21"></a>
 ## [0.10.21] - 2026-08-31
 - Fixed: **the sea runs to the horizon as one body of water.** Owner: the ocean drawn into the

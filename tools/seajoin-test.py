@@ -294,7 +294,7 @@ def main():
         page.wait_for_timeout(2000)
 
         page.evaluate("() => { const R = window.__probe.road;"
-                      " R.setBiomePair('OCEAN','OCEAN'); R.setSpd(0); }")
+                      " R.setBiomePair('COASTAL','COASTAL'); R.setSpd(0); }")
         page.wait_for_timeout(400)
 
         # ---- COLLECT THE BANDS ONCE, AND MEASURE EVERYTHING ON THEM ------------------------

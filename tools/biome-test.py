@@ -631,11 +631,63 @@ def main():
 
         # ------------------------------- the sea is beside the road, one side
         print()
-        print('  THE OCEAN IS ON ONE SIDE, AND WHICH SIDE IS ROLLED')
-        seaB = page.evaluate("() => window.__probe.road.roadShape('OCEAN')")
+        # ---- THE COAST HAS AN OPEN SKY (RLG-059) ------------------------------------------
+        # Owner, with the coastal rename: the coast gets an open sky. Cloud cover comes from a
+        # place's own rain and snow, so a coast that rains a third of the time was as grey as
+        # anywhere else that does. `sky` is a multiplier on that tendency, and every place that
+        # does not state one gets 1.
+        #
+        # SAMPLED FROM THE GAME'S OWN ROLL, not from the formula. A check that computed
+        # `rain * 1.6 * sky` itself would agree with a copy of the code rather than with the code,
+        # and would go on agreeing after somebody changed it.
+        print()
+        print('  THE COAST HAS AN OPEN SKY, AND IT IS A TENDENCY RATHER THAN A SPECIAL CASE')
+        cover = {}
+        for k in ('COASTAL', 'FOREST', 'SWAMP', 'DESERT', 'CITY'):
+            rolls = page.evaluate('([k, n]) => window.__probe.road.rollSkyFor(k, n)', [k, 400])
+            rolls.sort()
+            cover[k] = {'median': rolls[len(rolls) // 2], 'worst': rolls[-1],
+                        'clear': sum(1 for v in rolls if v < 0.25) / len(rolls)}
+            print('      %-8s median cover %.3f   heaviest %.3f   clear %.0f%% of the time'
+                  % (k, cover[k]['median'], cover[k]['worst'], cover[k]['clear'] * 100))
+
+        # A coast rains almost as often as a forest - 0.34 against 0.42 - so before this they sat
+        # within a whisker of each other. The point of the ruling is that they should not.
+        res.check(cover['COASTAL']['median'] < cover['FOREST']['median'] * 0.75,
+                  'the coast is clearer than a forest that rains about as often',
+                  'coast %.3f against forest %.3f'
+                  % (cover['COASTAL']['median'], cover['FOREST']['median']))
+        res.check(cover['COASTAL']['clear'] > 0.5,
+                  'and it is clear more often than not',
+                  'clear on only %.0f%% of rolls' % (cover['COASTAL']['clear'] * 100))
+        # AND IT IS STILL A SKY. An open sky is not a switched-off one: the coast rains, and rain
+        # needs a sky to fall out of. A `sky` of zero would pass both checks above.
+        res.check(cover['COASTAL']['worst'] > 0.30,
+                  'and it still clouds over sometimes, because it still rains',
+                  'the heaviest cover a coast ever rolls is %.3f' % cover['COASTAL']['worst'])
+        # AND NO OTHER PLACE MOVED. `sky` defaults to 1 where it is not stated, so a change here
+        # must be invisible everywhere else - which is what makes it a tendency rather than a
+        # branch naming one biome.
+        # AND NO OTHER PLACE MOVED. Stated as an ORDERING among places that declare no `cover`,
+        # and only between two that are far apart in weather. Swamp against city was tried and is
+        # not a usable pair: the tendency is clamped at 0.75 and both of them reach it, so they
+        # tie at 0.706 and 0.710 and the comparison reads as a coin toss on any build.
+        res.check(cover['FOREST']['median'] > cover['DESERT']['median'] * 3,
+                  'and a place that states no cover still takes it from its own weather',
+                  'forest %.3f against desert %.3f - they should be far apart'
+                  % (cover['FOREST']['median'], cover['DESERT']['median']))
+        res.check(min(cover['FOREST']['median'], cover['SWAMP']['median'],
+                      cover['CITY']['median']) > cover['COASTAL']['median'] * 2,
+                  'and the coast is the only place carrying a number',
+                  'forest %.3f swamp %.3f city %.3f against the coast %.3f'
+                  % (cover['FOREST']['median'], cover['SWAMP']['median'],
+                     cover['CITY']['median'], cover['COASTAL']['median']))
+
+        print('  THE COASTAL IS ON ONE SIDE, AND WHICH SIDE IS ROLLED')
+        seaB = page.evaluate("() => window.__probe.road.roadShape('COASTAL')")
         sides = []
         for _ in range(40):
-            page.evaluate("() => window.__probe.road.startBiomeChange('OCEAN')")
+            page.evaluate("() => window.__probe.road.startBiomeChange('COASTAL')")
             sides.append(page.evaluate('() => window.__probe.road.seaSide()'))
         left = sides.count(-1)
         print('      over 40 placements: %d left, %d right' % (left, len(sides) - left))
@@ -648,19 +700,19 @@ def main():
 
         # ------------------------- swamp and coast are the flattest of all
         flat = {}
-        for k in ('SWAMP', 'OCEAN', 'CITY', 'MOUNTAIN'):
+        for k in ('SWAMP', 'COASTAL', 'CITY', 'MOUNTAIN'):
             flat[k] = page.evaluate('(k) => window.__probe.road.roadShape(k)', k)
         print('      climb: swamp %.2f  ocean %.2f  city %.2f  mountain %.2f'
-              % (flat['SWAMP']['hill'], flat['OCEAN']['hill'],
+              % (flat['SWAMP']['hill'], flat['COASTAL']['hill'],
                  flat['CITY']['hill'], flat['MOUNTAIN']['hill']))
         res.check(flat['SWAMP']['hill'] < flat['CITY']['hill']
-                  and flat['OCEAN']['hill'] < flat['CITY']['hill'],
+                  and flat['COASTAL']['hill'] < flat['CITY']['hill'],
                   'swamp and coast are flatter than the city - both are at sea level',
                   'swamp %.2f, ocean %.2f, city %.2f'
-                  % (flat['SWAMP']['hill'], flat['OCEAN']['hill'], flat['CITY']['hill']))
-        res.check(flat['SWAMP']['hill'] > 0 and flat['OCEAN']['hill'] > 0,
+                  % (flat['SWAMP']['hill'], flat['COASTAL']['hill'], flat['CITY']['hill']))
+        res.check(flat['SWAMP']['hill'] > 0 and flat['COASTAL']['hill'] > 0,
                   'and still never completely flat',
-                  '%.2f and %.2f' % (flat['SWAMP']['hill'], flat['OCEAN']['hill']))
+                  '%.2f and %.2f' % (flat['SWAMP']['hill'], flat['COASTAL']['hill']))
 
         # ------------------------------------------- and the distinction can fail
         print()

@@ -5344,7 +5344,7 @@ const SCENERY = {
      four palms, two rocks and two houses is how "random palm trees and beach
      houses" gets a shoreline with more trees on it than buildings.
      ------------------------------------------------------------------ */
-  OCEAN:  { density:0.24, w:1.30, h:1.60, out:1.40, spread:2.40, kinds:8,
+  COASTAL:  { density:0.24, w:1.30, h:1.60, out:1.40, spread:2.40, kinds:8,
             lit:true, litKinds:[6, 7],
             build:(g,W2,H2,i)=>{
               if(i >= 6){ BEACH_HOUSE(g, W2, H2, i - 6); return; }
@@ -5948,7 +5948,7 @@ function skylinePlanFor(B, w, h, BANDS){
         kind = 'peak';
         bw = rint(90, 240); bh = Math.round(rint(70, 200) * band.tall);
         x -= Math.round(rint(20, 70) / band.gap);
-      } else if(B.name === 'OCEAN'){
+      } else if(B.name === 'COASTAL'){
         /* a sea horizon is almost nothing: a low flat band with the occasional
            island or headland standing off it. The gaps ARE the subject. */
         kind = 'mesa';
@@ -7490,7 +7490,7 @@ const BIOMES = {
      arriving from elsewhere, the skyline, the roadside scenery, and how much
      the road climbs and turns. Nothing needed a new branch to accept them.
 
-     OCEAN is a coast road. It rains often and never snows, the ground is pale
+     COASTAL is a coast road. It rains often and never snows, the ground is pale
      sand rather than grass, and it winds along the water - so `bend` is well
      above `hill`, the only place besides forest where that is true.
 
@@ -7506,7 +7506,11 @@ const BIOMES = {
      0.18 against the city's 0.30 - still not zero, because the owner has twice
      said never completely flat.
      ------------------------------------------------------------------ */
-  OCEAN:    { name:'OCEAN',    rain:0.34, snow:0.00, hill:0.18, bend:0.60,
+  COASTAL:    { name:'COASTAL',    rain:0.34, snow:0.00, hill:0.18, bend:0.60,
+              /* the open sky the rename asked for: a coast is bright between
+                 the showers rather than overcast because it is wet (RLG-059).
+                 NOT named `sky` - see the scar in `rollSky`. */
+              cover:0.45,
               grassLo:'#7d7458', grassHi:'#9c9370',
               /* ---- THE SEA IS ON ONE SIDE OF THE ROAD ------------------
                  Owner, 2026-08-30: "I was kind of wanting the ocean to be either
@@ -8171,7 +8175,30 @@ function rollSky(){
   /* a place with weather in it is a place with cloud in it - the same roll
      the rain uses, read as a tendency rather than as an event */
   const base = clamp((B.rain + B.snow) * 1.6, 0.05, 0.75);
-  cloudTarget = clamp(base * rnd(0.35, 1.5), 0.02, 1);
+  /* ---- AND HOW OPEN THE SKY IS OVER IT (RLG-059) ---------------------
+     Owner, 2026-08-30, with the coastal rename: the coast gets an open sky.
+
+     IT IS A TENDENCY OF THE PLACE, NOT A SPECIAL CASE FOR ONE. Cloud already
+     comes from the place's own rain and snow, so a coast that rains a third of
+     the time is as grey as anywhere else that does - which is true of a
+     rainforest and wrong for a coast road, where the whole point is the amount
+     of sky. `cover` is a multiplier on that tendency, defaulting to 1 for every
+     place that does not state one, so the coast is the only entry carrying a
+     number and a place added later gets the ordinary sky for nothing.
+
+     IT IS NOT CALLED `sky`, AND THAT IS A SCAR. It was, for one edit: `sky` is
+     already this record's HEX COLOUR for the sky above the place, so the number
+     replaced the colour and the cover calculation multiplied by a string. Every
+     biome's cloud went to NaN, on the title screen, with nothing logged
+     anywhere - `node --check` passes on it and so does every syntax gate. A
+     silent overwrite of a field that already existed.
+
+     THE RAIN IS NOT TOUCHED. A coast still rains as often as it did; it simply
+     spends less of the dry time under cloud. Lowering the rain instead would
+     have changed how the place DRIVES, and nobody asked for that.
+     ------------------------------------------------------------------ */
+  const open = B.cover === undefined ? 1 : B.cover;
+  cloudTarget = clamp(base * open * rnd(0.35, 1.5), 0.02, 1);
   cloudNext = rnd(25, 70);
 }
 function stepSky(dt){
@@ -16728,6 +16755,23 @@ requestAnimationFrame(frameLoop);
   API.sky = function(){ return { cloud:+cloud.toFixed(3), storm:+storm.toFixed(3),
                                  bolt:+boltFlash().toFixed(3) }; };
   API.setSky = function(c, st){ cloud = cloudTarget = c; if(st !== undefined) storm = st; };
+  /* ---- WHAT COVER A PLACE ROLLS, SAMPLED (RLG-059) ---------------------
+     Rolls the game's OWN `rollSky` for a named place and hands back what it
+     asked for. Not a formula restated in the harness: a check that computed
+     `rain * 1.6 * sky` itself would agree with a copy of the code rather than
+     with the code, and would keep agreeing after somebody changed it.
+
+     It saves and restores every global it touches, so sampling a place the car
+     is not in cannot disturb the run that is happening.
+     ------------------------------------------------------------------- */
+  API.rollSkyFor = function(name, n){
+    const keep = { biome:biome, target:cloudTarget, next:cloudNext };
+    const out = [];
+    if(BIOMES[name]) biome = name;
+    for(let i = 0; i < (n || 200); i++){ rollSky(); out.push(+cloudTarget.toFixed(4)); }
+    biome = keep.biome; cloudTarget = keep.target; cloudNext = keep.next;
+    return out;
+  };
   /* snow and how much of it has settled, so the two-layer cover can be
      photographed rather than driven to */
   API.setSnow = function(v){ snowy = v > 0 ? 1 : 0; settle = clamp(v, 0, 1); };

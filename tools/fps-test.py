@@ -67,7 +67,7 @@ with sync_playwright() as p:
         print("  the hour is pinned at phase %.2f" % ARGS.phase)
     print("  a change is only real if two ranges do not overlap")
     SAMPLES = ARGS.samples
-    for k in ('CITY','DESERT','FOREST','MOUNTAIN','TUNDRA','OCEAN','SWAMP'):
+    for k in ('CITY','DESERT','FOREST','MOUNTAIN','TUNDRA','COASTAL','SWAMP'):
         pg.evaluate("(k) => { const R = window.__probe.road; R.setBiomePair(k,k); }", k)
         runs = []
         for _ in range(SAMPLES):

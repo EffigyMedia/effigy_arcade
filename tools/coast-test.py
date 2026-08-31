@@ -249,7 +249,7 @@ def main():
 
         # ------------------------------------------------ a coast, driven
         page.evaluate("""() => { const R = window.__probe.road;
-          R.setBiomePair('OCEAN','OCEAN'); R.setWet(0); R.setSnow(0); R.setPool(0); }""")
+          R.setBiomePair('COASTAL','COASTAL'); R.setWet(0); R.setSnow(0); R.setPool(0); }""")
         page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD*0.45)")
         page.wait_for_timeout(1500)
         page.evaluate('() => window.__probe.road.resetScenerySides()')
@@ -382,7 +382,7 @@ def main():
                   % (outliers, total, limit, worst_bend, median))
 
         # ------------------------------------------------ what the coast is made of
-        kinds = [page.evaluate('(k) => window.__probe.road.sceneryProbe("OCEAN", k)', k)
+        kinds = [page.evaluate('(k) => window.__probe.road.sceneryProbe("COASTAL", k)', k)
                  for k in range(8)]
         for k, pr in enumerate(kinds):
             b = pr['body']
