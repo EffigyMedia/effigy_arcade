@@ -122,6 +122,7 @@ def main():
             # check on `player` alone reads as one unchanged biome
             row['biome'] = b['player']
             row['ahead'] = b['to']
+            row['view'] = page.evaluate('() => window.__probe.road.viewState()')
             seen.append(row)
 
         held = [s for s in seen if s['left'] > 0]
@@ -186,6 +187,39 @@ def main():
         later = [s for s in seen if s['seen']]
         res.check(bool(later), 'and it is remembered once it has been seen',
                   'no sample reported a start had been seen')
+
+        # ---- 5b. THE WORLD IS ALIVE BEHIND THE NUMBERS (RLG-121) -------------
+        # The comment at the top of step() said "everything below this runs, so the road, the
+        # traffic and the sky are all alive behind the numbers" - and the code RETURNED two lines
+        # under it. So the whole world was frozen for three seconds and resumed in one frame, which
+        # is what the owner reported four times as a pop on GO.
+        #
+        # `viewShift` IS THE CLEAREST OF THEM. It is the forward view's horizontal offset, it is
+        # set nowhere but inside step(), and on a touch device it goes from 0 to minus 8.5 per cent
+        # of the screen width. Frozen through the count, it snapped on the first driving frame and
+        # took the entire picture - and the player's own car with it - sideways in one frame. That
+        # is exactly "everything shifts at once, and my car jumps to a different place".
+        vs_held = [s2['view']['viewShift'] for s2 in held]
+        vs_after = [s2['view']['viewShift'] for s2 in after]
+        print('      the view offset during the count: %s   after GO: %s'
+              % (sorted(set(vs_held)), sorted(set(vs_after))))
+        if vs_held and vs_after:
+            res.check(set(vs_held) == set(vs_after),
+                      'the forward view is in the same place during the count as after it',
+                      'it was %s while held and %s after' % (sorted(set(vs_held)), sorted(set(vs_after))))
+            res.check(vs_after[0] != 0,
+                      'and that place is the shifted one, so the check is not passing on two zeroes',
+                      'the offset was 0 throughout, which a desktop viewport would also produce')
+
+        # AND THE ROAD IS BEING RE-INTEGRATED WHILE THE COUNT RUNS. The bend cache is rebuilt on a
+        # timer inside step(), so behind the old return it was never rebuilt and the first driving
+        # frame did it in front of the player. This is the general form of the question: is the
+        # world TICKING, or is it waiting.
+        if len(held) >= 2:
+            builds = held[-1]['view']['bendBuilds'] - held[0]['view']['bendBuilds']
+            print('      the road was re-integrated %d time(s) while the count was up' % builds)
+            res.check(builds > 0, 'the road is re-integrated while the count is up',
+                      'it was rebuilt %d times, so it was waiting for GO' % builds)
 
         # ---- 6. AND THE WORLD DOES NOT CHANGE AT GO (RLG-088) ----------------
         # Owner, 2026-08-30: when the countdown finishes, the entire world changes - you

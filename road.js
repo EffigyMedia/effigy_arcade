@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.28';
+window.ROAD_BUILD = '0.10.29';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1285,7 +1285,9 @@ function isStraight(z){
 }
 
 function totalLen(list){ let t=0; for(const s2 of list) t += s2.len; return t; }
+let bendBuilds = 0;
 function rebuildBend(){
+  bendBuilds++;
   const need = pos + 100000;
   while(bendZ0 + totalLen(curveSegs) < need) pushCurve();
   while(bendZ0 + totalLen(hillSegs)  < need) pushHill();
@@ -10781,11 +10783,29 @@ if(AR && AR.pad) AR.pad.onPress(name=>{
 
 /* ---------- simulation ---------- */
 function step(dt){
-  /* ---- HELD ON THE LINE (RLG-088) ------------------------------------
-     Everything below this runs, so the road, the traffic and the sky are all
-     alive behind the numbers. What does not run is the car: the throttle is
-     ignored, the clock does not start, and nothing is scored. `countIn`
-     reaching zero is the only thing that releases it.
+  /* ---- HELD ON THE LINE, AND THE WORLD IS NOT (RLG-121) ---------------
+     THIS COMMENT USED TO SAY "everything below this runs, so the road, the
+     traffic and the sky are all alive behind the numbers" - AND THE CODE
+     RETURNED. Two lines under it. So the whole world was frozen for three
+     seconds and every part of it resumed in the same frame, which is what the
+     owner has reported four times as a pop on GO.
+
+     The contradiction is the bug, and the comment was the correct design all
+     along. `held` replaces the return: everything below runs, and the CAR is
+     held by name at each of the places that would move it, score it, hurt it
+     or spend its clock. Each of those gates says `held` and can be found by
+     searching for it.
+
+     WHAT IS HELD: the steering input, the road speed, the run clock, the
+     distance, the heat, the corner push, the rivals, the traffic that gets
+     summoned when you dawdle, the police boxing in a stationary car, and
+     every collision - that last one through `iframe`, which is already the
+     engine's own word for "this car cannot be hit right now".
+
+     WHAT IS NOT: the sky, the weather, the biome, the lens, the scenery, the
+     spawn timers, the bend cache, the view shift, the camera, and the fx. All
+     of it now arrives at GO already running, so GO changes exactly one thing -
+     who is driving.
      ------------------------------------------------------------------ */
   if(goFor > 0) goFor -= dt;
   /* the engine is wound here rather than by whoever draws the dial - it has to
@@ -10793,6 +10813,9 @@ function step(dt){
   stepEngine(dt);
   if(countIn > 0){
     countIn -= dt;
+    /* `held` below is read AFTER this decrement, so the frame the count
+       reaches zero is already a driving frame - GO releases on the same frame
+       it is announced rather than one later. */
     const n = Math.max(0, Math.ceil(countIn));
     if(n !== countPip){ countPip = n; snd.startPip(n); }
     if(countIn <= 0){
@@ -10823,8 +10846,14 @@ function step(dt){
        -------------------------------------------------------------- */
     const revNow = clamp((idleRev - IDLE) / Math.max(1, redline() - IDLE), 0, 1);
     snd.drive(revNow * MAX_SPD, MAX_SPD, false, false, 0, 0, 0, true);
-    return;
+    /* NOTHING MAY HIT A CAR NOBODY IS DRIVING YET. `iframe` is the engine's
+       own term for it and every collision in this function already asks it,
+       so one line here covers traffic, the police and the rivals rather than
+       a gate at each of them. It is re-armed every frame the count is up. */
+    iframe = Math.max(iframe, 0.25);
+    /* AND THERE IS NO RETURN HERE ANY MORE - see the note at the top. */
   }
+  const held = countIn > 0;
   /* ---- WHAT THE LAUNCH LEFT BEHIND (RLG-110) --------------------------
      Aged here, at the top of the step, so the throttle below reads a drag
      that is current rather than one frame stale. A spinning car lays rubber
@@ -10849,7 +10878,9 @@ function step(dt){
     if(AR.pad.down('right')) kd =  1;
   }
   /* keyboard steering obeys the same rule: no roll, no steering */
-  if(kd){
+  /* the input is ignored while the car is held; the lateral physics below is
+     not, so `camX` keeps converging and arrives at GO already settled */
+  if(kd && !held){
     setInputSource(true);
     targetX = clamp(targetX + kd*2.1*dt*clamp(spd/(MAX_SPD*0.07),0,1), -1.18, 1.18);
   }
@@ -11036,6 +11067,14 @@ function step(dt){
      never stopped. */
   const spdWas = spd;
   spd += clamp(top - spd, -rate*dt, rate*dt);
+  /* ---- AND THE CAR IS HELD (RLG-121) ----------------------------------
+     Pinned HERE, after the whole speed block rather than by skipping it. The
+     block declares `offRoad`, `overRun`, `tow`, `decel` and `brakeLamp` and
+     three hundred lines below read them, so jumping over it would leave half
+     of them undefined - and the throttle still has to be READ while the count
+     is up, because it is what sets the revs for the launch.
+     ------------------------------------------------------------------- */
+  if(held) spd = 0;
   /* your own brake light, on the same hysteresis every other car uses */
   if((spdWas - spd) / Math.max(dt, 1/240) > 900) brakeLamp = 0.30;
   else if(brakeLamp > 0) brakeLamp -= dt;
@@ -11107,7 +11146,8 @@ function step(dt){
   }
 
   /* ---- the clock ------------------------------------------------------ */
-  if(!finished && clockRuns()){
+  /* held: the count is not the player's time to spend */
+  if(!finished && clockRuns() && !held){
     clock -= dt;
     /* the last five seconds each get a beep */
     const whole = Math.ceil(clock);
@@ -11238,7 +11278,11 @@ function step(dt){
        carries you to the OUTSIDE of that — which is left. Adding it pushed the
        car around the corner with the road, so a bend helped you instead of
        costing you, and the car appeared to steer itself into the turn. */
-    targetX = clamp(targetX - pushK * v * v * dt * cornerG(), -1.30, 1.30);
+    /* held: a car being held on the line holds its lane. `pushK` itself is
+       still chased above, so the force arrives at GO already built rather
+       than starting from zero in front of the player. */
+    if(!held)
+      targetX = clamp(targetX - pushK * v * v * dt * cornerG(), -1.30, 1.30);
   }
   stepWheel(dt);
   /* ---- the bottle refills itself -----------------------------------------
@@ -11270,8 +11314,11 @@ function step(dt){
      here is a temporal dead zone and throws every frame.
      ------------------------------------------------------------------------ */
   const FLOW = MAX_SPD * 0.42;          /* the slowest thing on the road */
-  if(spd < FLOW) slowFor += dt; else slowFor = 0;
-  if(!CFG.circuitOnly && slowFor > 2){
+  /* held: a car on the line is not dawdling, and three seconds of it would
+     otherwise summon a queue of traffic in behind the grid */
+  if(held) slowFor = 0;
+  else if(spd < FLOW) slowFor += dt; else slowFor = 0;
+  if(!held && !CFG.circuitOnly && slowFor > 2){
     behindT -= dt;
     if(behindT <= 0){
       /* the further below the flow you are, the more of it arrives */
@@ -11281,8 +11328,15 @@ function step(dt){
     }
   } else behindT = 0.4;
   if(autoHold > 0) autoHold -= dt;
-  if(mode === 'race' && !finished) stepRacers(dt);
-  if(!optManual) autoGear(dt);
+  /* held: the grid stands still on the line (RLG-118). Everything else in
+     the world moves around it, which is the whole of RLG-121. */
+  if(mode === 'race' && !finished && !held) stepRacers(dt);
+  /* held: the automatic box must not shift out of NEUTRAL while the count is
+     up - `autoGear` clamps the gear to 1 on its first line, so without this it
+     undid `holdNeutral` every frame and the launch fired on the count's first
+     frame instead of on GO. Caught by launch-test the moment the count stopped
+     returning early (RLG-110, RLG-121). */
+  if(!optManual && !held) autoGear(dt);
   /* a gear that cannot pull makes the engine labour, which you hear */
   /* A bogged start labours for the same reason a wrong gear does, so it uses
      the same sound rather than a second one - and it does so on either
@@ -11325,7 +11379,9 @@ function step(dt){
   }
 
   pos += spd*dt;
-  dist += spd*dt/1000 * 0.00777;
+  /* held: `spd` is pinned so `pos` does not move anyway, but distance unlocks
+     cars and must never be earned by standing on the line */
+  if(!held) dist += spd*dt/1000 * 0.00777;
   runTopMph = Math.max(runTopMph, spd/MAX_SPD*200);     // ~ miles
   /* No score. The game is a drive, not a tally — distance is the only number
      worth keeping and the odometer already shows it. */
@@ -11351,7 +11407,8 @@ function step(dt){
      trap catches you again, so the way to cool off is to stop being seen rather
      than to wait.
      ------------------------------------------------------------------- */
-  if(!optEasy){
+  /* held: heat neither rises nor cools while nobody is driving */
+  if(!optEasy && !held){
     /* A PARKED TRAP IS NOT CHASING YOU. It is a cruiser on the verge with its
        engine off, and there are always two to four of them on the road - so
        counting them as pursuit meant the cooling clock reset every frame and
@@ -11924,7 +11981,8 @@ function step(dt){
     const c = crates[i];
     if(c.z < pos - 1500){ crates.splice(i,1); continue; }
     if(c.got) continue;
-    if(Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < carW(0.30)){
+    /* held: a crate cannot be collected by a car nobody is driving */
+    if(!held && Math.abs(c.z - pz) < 460 && Math.abs(c.x - playerX) < carW(0.30)){
       c.got = true;
       const before = dmg, nosBefore = nos;
       dmg = Math.max(0, dmg - 25);
@@ -11949,7 +12007,7 @@ function step(dt){
   for(let i=blocks.length-1;i>=0;i--){
     const b = blocks[i];
     if(b.z < pos - 2000){ blocks.splice(i,1); continue; }
-    if(!b.hit && Math.abs(b.z - pz) < 420){
+    if(!b.hit && !held && Math.abs(b.z - pz) < 420){
       iframe = Math.max(iframe, 0.6);
       b.hit = true;
       let clean = true;
@@ -12034,9 +12092,11 @@ function step(dt){
   if(state === 'driving' && wreckWait <= 0){
     /* you cannot be busted for standing still during the two seconds it takes
        to put a fresh car on the road */
+    /* held: a car on the line IS crawling, by definition, and the count is
+       three seconds against a bust that lands at three */
     const crawling = spd < MAX_SPD * 0.10;
     let boxed = false;
-    if(crawling && !optEasy){
+    if(crawling && !optEasy && !held){
       for(const k of cops){
         if(k.wreck > 0) continue;
         if(Math.abs(k.z - pz) < 2600){ boxed = true; break; }
@@ -17334,6 +17394,29 @@ requestAnimationFrame(frameLoop);
   API.segAt = segAt; API.rr = rr; API.rnd = rnd; API.rint = rint;
   API.flashWarn = flashWarn; API.snd = snd;
   API.horizon = function(){ return horizon; };
+  /* ---- EVERYTHING THE PICTURE IS DRAWN THROUGH (RLG-121) ---------------
+     The owner reported four times that the world pops on GO, and the fourth
+     report named it: the car jumps and everything shifts at once. It did,
+     because `step()` returned while the count was up and every one of these
+     was left at whatever `reset` had put there until the first driving frame.
+
+     `viewShift` is the clearest of them and the worst: it is the whole
+     forward view's horizontal offset, it is set nowhere but in `step()`, and
+     on a touch device it goes from 0 to minus 8.5 per cent of the screen
+     width. That is the entire picture moving sideways in one frame.
+
+     Published together because the useful question is not "did this one
+     field move" but "was ANYTHING saved up", which is the same question
+     RLG-090 asked of the weather and had to ask generically to answer.
+     ------------------------------------------------------------------- */
+  API.viewState = function(){
+    return { viewShift:+viewShift.toFixed(3), camX:+camX.toFixed(5),
+             playerX:+playerX.toFixed(5), targetX:+targetX.toFixed(5),
+             pushK:+pushK.toFixed(5), bendT:+bendT.toFixed(4),
+             bendBuilds: bendBuilds, horizon: horizon,
+             traffic: traffic ? traffic.length : 0,
+             cops: cops ? cops.length : 0, fx: fx ? fx.length : 0 };
+  };
   API.wet = function(){ return +wet.toFixed(3); };
   API.snowy = function(){ return snowy; };
   API.settle = function(){ return +settle.toFixed(3); };
