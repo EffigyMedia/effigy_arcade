@@ -6490,14 +6490,22 @@ function spawnBehind(){
           : roll<0.58 ? 'tuner'  : roll<0.66 ? 'muscle'
           : roll<0.72 ? 'taxi'
           : roll<0.86 ? 'sedan'  : 'sedan2';
+  const behindCruise = Math.min((TYPE_VMAX[t] || 0.58) * MAX_SPD, 0.46 * MAX_SPD,
+                                Math.max(spd * 1.12, (t==='truck' ? 0.24 : 0.34) * MAX_SPD));
   traffic.push({
     z, lane, x: LANE_X[lane] + rnd(-TRAF_JITTER, TRAF_JITTER) * LANE_W,
     /* it must actually be quicker than you or it will never arrive */
     /* a car coming up BEHIND has to be quicker than you or it never arrives,
        but 1.25x your speed at 190 is 237mph. Capped to something a road car
        could actually do. */
-    spd: 0, cruise: Math.min(0.46 * MAX_SPD,
-                             Math.max(spd * 1.12, (t==='truck' ? 0.24 : 0.34) * MAX_SPD)),
+    /* CAPPED BY WHAT THE CAR IS, TOO. This used to cap at a flat 0.46 for every
+       body, so a lorry came up behind you at 92mph. The catch-up speed is what
+       the driver needs; `TYPE_VMAX` is what the vehicle has; the smaller wins,
+       exactly as it does in the main spawner (RLG-054). */
+    spd: 0, cruise: behindCruise,
+    /* and the driver is read OFF that speed rather than rolled, so nothing ever
+       carries a personality that contradicts what it is doing */
+    mind: mindFor(behindCruise),
     type: t,
     w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
      : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
@@ -6544,7 +6552,7 @@ function spawnWave(z){
             : roll<0.59 ? 'tuner'  : roll<0.67 ? 'muscle'
             : roll<0.73 ? 'taxi'
             : roll<0.86 ? 'sedan'  : 'sedan2';
-    const rogue = (t === 'tuner' || t === 'muscle') && Math.random() < 0.20;
+    const mind = rollMind(t);
     traffic.push({
       z: z + rnd(-600,600), lane,
       x: LANE_X[lane] + rnd(-TRAF_JITTER, TRAF_JITTER) * LANE_W,
@@ -6564,9 +6572,8 @@ function spawnWave(z){
          They are still TRAFFIC: no points, no placings, they queue at
          roadblocks and they get out of the way of a siren like anyone else.
          The only difference is the number. */
-      spd: 0, cruise: rogue ? rnd(0.50, 0.62) * MAX_SPD
-                            : (t==='truck' ? rnd(0.22,0.28) : rnd(0.26,0.42)) * MAX_SPD,
-      rogue: rogue,
+      spd: 0, cruise: cruiseFor(t, mind),
+      mind: mind,
       type: t,
       w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
        : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
@@ -6584,7 +6591,7 @@ function spawnWave(z){
    have a reason to be there:
 
    A TRAP is a cruiser parked on the verge with its engine off. Anything that
-   passes it above the limit sets it moving — you, a rogue tuner, a rival. It
+   passes it above the limit sets it moving — you, a speeding driver, a rival. It
    does not care who you are, only how fast you went past.
 
    A SUPER CRUISER is what gets sent when a car is genuinely running: sustained
@@ -6594,6 +6601,68 @@ function spawnWave(z){
    these are not for that.
    =========================================================================== */
 const SPEED_LIMIT = 80 / 200;          /* as a fraction of MAX_SPD */
+
+/* ==== WHO IS DRIVING (RLG-054) ==========================================
+   Owner, 2026-08-28: "I want all NPC cars to have driving personalities in 3
+   categories: Racer, Speeder, and Civilian."
+
+   EVERY NPC GETS ONE, and it is one system rather than a traffic feature. It is
+   the project's spine applied to behaviour: THE CAR IS FULLY CAPABLE, THE DRIVER
+   DECIDES. RLG-042 gave traffic real stats and made their drivers the
+   limitation; RLG-052 wired every indicator and left nothing asking them to come
+   on. This is the same shape a third time.
+
+   A PERSONALITY IS A SET OF DECISIONS, NOT A SECOND STAT TABLE. It chooses a
+   TARGET speed and nothing else. What the car can actually do is `TYPE_VMAX`,
+   which belongs to the vehicle, and the cruise is the smaller of the two. So a
+   Speeder in a lorry drives a lorry as fast as a lorry goes - about 68mph, under
+   the limit - and is a speeder in intent rather than in fact. A personality that
+   made a car faster would reintroduce exactly the fault RLG-042's measurement
+   found, in a new place and under a friendlier name.
+
+   AND THE ROGUE IS SUPERSEDED BY THIS, NOT KEPT BESIDE IT. One in five tuners
+   and muscle cars used to cruise at 100-124mph under a `rogue` flag, which was a
+   separate mechanism bolted to the spawner for the same purpose. It is the top
+   of this spectrum now. The rate is deliberately similar - the old rogue was
+   about 2.8% of traffic and a Racer is about 2% - because the owner asked for
+   rarity and this is a supersession rather than an increase.
+   ======================================================================== */
+const CIVILIAN = 0, SPEEDER = 1, RACER = 2;
+/* what each vehicle can actually do, as a fraction of MAX_SPD. This is the CAR,
+   and it is the only thing in here that reads the body. */
+const TYPE_VMAX = { truck:0.34, van:0.50, pickup:0.52, taxi:0.55,
+                    sedan:0.58, sedan2:0.58, coupe:0.66, tuner:0.74, muscle:0.78 };
+/* who drives what. A sports car raises the odds of a driver being a Speeder -
+   RLG-045 ruled that, and it is a statement about the person who chose the car
+   rather than about the car. The Civilian/Speeder split is RLG-045's 90/10. */
+const SPORTY = { coupe:1, tuner:1, muscle:1 };
+function rollMind(t){
+  const fast = !!SPORTY[t];
+  if(Math.random() < (fast ? 0.05 : 0.01)) return RACER;
+  if(Math.random() < (fast ? 0.30 : 0.10)) return SPEEDER;
+  return CIVILIAN;
+}
+/* the speed a driver of this mind WANTS. Civilians keep the limit, which
+   RLG-045 puts at 60-80 with the limit itself at 80. */
+function mindCruise(mind){
+  return (mind === RACER   ? rnd(0.58, 0.70)
+        : mind === SPEEDER ? rnd(0.42, 0.54)
+                           : rnd(0.30, 0.40)) * MAX_SPD;
+}
+/* ---- AND THE SAME RELATIONSHIP READ THE OTHER WAY ---------------------
+   A car spawned BEHIND the player has to be quicker than the player or it never
+   arrives, so its speed is decided before its driver is. Rather than let it
+   carry a personality that contradicts what it is doing - a Civilian at 110 -
+   the personality is read OFF the speed. A driver is what they are doing.
+   -------------------------------------------------------------------- */
+function mindFor(v){
+  return v >= 0.55 * MAX_SPD ? RACER
+       : v >  SPEED_LIMIT * MAX_SPD ? SPEEDER : CIVILIAN;
+}
+/* the cruise a vehicle of this type ends up with, given who is driving it */
+function cruiseFor(t, mind){
+  return Math.min(mindCruise(mind), (TYPE_VMAX[t] || 0.58) * MAX_SPD);
+}
 
 function spawnTrap(){
   /* parked on the verge, engine off, facing the traffic */
@@ -6631,9 +6700,12 @@ function trapWatch(dt){
       if(spd > MAX_SPD * (170/200)) supersEarned = true;
       continue;
     }
-    /* and anything else on the road — a rogue tuner gets pulled too */
+    /* and anything else on the road — a speeding driver gets pulled too. It asked
+       for the `rogue` flag, which no longer exists; a driver who CHOOSES to
+       exceed the limit is what it meant (RLG-054). The speed test below still
+       decides, so a Speeder in a lorry - capped under the limit - trips nothing. */
     for(const c of traffic){
-      if(!c.rogue) continue;
+      if(!(c.mind >= SPEEDER)) continue;
       if(Math.abs(k.z - c.z) > 2200) continue;
       if((c.spd || c.cruise || 0) > MAX_SPD * SPEED_LIMIT){
         k.armed = false; k.trap = false; k.grace = 0.6;
@@ -10874,7 +10946,7 @@ function step(dt){
   }
   const pz = pos + PLAYER_Z;
 
-  /* a rogue does not sit behind you at your speed — it is going somewhere.
+  /* a driver who is going somewhere does not sit behind you at your speed.
      `cruiseFloor` was written here and read by NOTHING, on rogues alone. It is
      the pace a car should come back to after it has been made to slow down,
      and now that giving way ends rather than lasting forever it has that job -
@@ -11186,13 +11258,13 @@ function step(dt){
     if(k.cool>0)  k.cool  -= dt;
 
     /* ---- THE LAW IS NOT ONLY AFTER YOU ---------------------------------
-       A cruiser chased `pz` and nothing else, so a rogue tuner could sit at
+       A cruiser chased `pz` and nothing else, so a speeding driver could sit at
        122mph three lanes over and be ignored. Now it picks the nearest
-       SPEEDER — you, a rival on the grid, or a rogue in the traffic — and runs
+       SPEEDER — you, a rival on the grid, or a Speeder in the traffic — and runs
        that one down.
 
        You are still the default and still weighted toward: a cop already on
-       you does not abandon the chase because a rogue went past. But if one is
+       you does not abandon the chase because a speeder went past. But if one is
        genuinely nearer and genuinely quick, it goes.
 
        It also means a pursuit you started can be taken off you by somebody
@@ -11212,7 +11284,7 @@ function step(dt){
         if(d < bestD && d < 9000){ bestD = d; bestZ = z; bestX = x; }
       };
       for(const r of racers) look(r.z, r.x, r.spd);
-      for(const c of traffic) if(c.rogue) look(c.z, c.x, c.spd);
+      for(const c of traffic) if(c.mind >= SPEEDER) look(c.z, c.x, c.spd);
       k.tz = bestZ; k.tx = bestX;
       k.onPlayer = (bestZ === pz);
     }
@@ -11330,7 +11402,7 @@ function step(dt){
     /* ---- COLLIDE AGAINST THE PLAYER, NOT THE TARGET --------------------
        `dz` here is the AI's number: `k.z - tz`, the distance to whatever that
        cruiser is CHASING. That was fine when the only target was you — but
-       once cops could chase rogues and rivals, a cop sitting 3,800 units away
+       once cops could chase speeders and rivals, a cop sitting 3,800 units away
        hunting a tuner had a small `dz` against ITS target and passed this
        test, so it hit you from off screen.
 
@@ -17194,6 +17266,42 @@ requestAnimationFrame(frameLoop);
      many have announced one at all, and how many drivers never signal. A check
      that only counted blinking cars could not tell "nobody signals" from
      "nobody is merging". */
+  /* ---- WHO IS DRIVING OUT THERE (RLG-054) ------------------------------
+     Counts by personality, plus how many are actually EXCEEDING the limit -
+     which is not the same number, because a Speeder in a lorry is capped below
+     it. A check that read only the personalities could not tell a system that
+     assigns them from one that also acts on them.
+     -------------------------------------------------------------------- */
+  API.minds = function(){
+    const out = { civilian:0, speeder:0, racer:0, seen:0, overLimit:0, byType:{} };
+    for(const c of traffic){
+      out.seen++;
+      out[c.mind === RACER ? 'racer' : c.mind === SPEEDER ? 'speeder' : 'civilian']++;
+      if((c.spd || c.cruise || 0) > MAX_SPD * SPEED_LIMIT) out.overLimit++;
+      const b = out.byType[c.type] || (out.byType[c.type] = { seen:0, racer:0, speeder:0 });
+      b.seen++;
+      if(c.mind === RACER) b.racer++;
+      if(c.mind === SPEEDER) b.speeder++;
+    }
+    return out;
+  };
+  /* what a car of this type can do, so a check reads the ceiling from the engine
+     rather than carrying a copy of the table */
+  API.typeVmax = function(t){ return TYPE_VMAX[t]; };
+  /* roll the engine's OWN personality picker for a type, many times. A check that
+     computed the odds itself would agree with a copy of the code rather than with
+     the code, and rarity needs a sample far larger than the road ever holds -
+     a Racer is about one car in fifty (RLG-054). */
+  API.sampleMinds = function(t, n){
+    const out = { civilian:0, speeder:0, racer:0, cruise:[] };
+    for(let i = 0; i < (n || 2000); i++){
+      const m = rollMind(t);
+      out[m === RACER ? 'racer' : m === SPEEDER ? 'speeder' : 'civilian']++;
+      if(out.cruise.length < 400) out.cruise.push(+(cruiseFor(t, m) / MAX_SPD).toFixed(4));
+    }
+    return out;
+  };
+  API.speedLimit = function(){ return SPEED_LIMIT; };
   API.signalling = function(){
     let now = 0, waiting = 0, never = 0, seen = 0;
     for(const c of traffic){

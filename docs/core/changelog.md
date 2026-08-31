@@ -14,6 +14,33 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-24"></a>
+## [0.10.24] - 2026-08-31
+- Added: **every NPC driver has a personality - Civilian, Speeder or Racer.** One system for traffic
+  and rivals alike, and the project's spine applied to behaviour: the car is capable, the driver
+  decides. A personality picks a TARGET speed and nothing else; what the vehicle can do is its own
+  ceiling, and the cruise is the smaller of the two. So a Speeder in a lorry drives a lorry - 68mph,
+  under the 80mph limit - and trips no trap, while the same mind in a tuner reaches 140. Nothing names
+  a body to decide a personality; the body only caps the outcome. Sampled 4,000 per type, ordinary
+  bodies run 88-90% civilian against RLG-045's 90/10, and a sports car lifts the Speeder odds 2.8
+  times. A Racer is about one car in fifty ([RLG-054](../fragments/RLG-054.md)).
+- Changed: **the rogue is superseded, at deliberately the same rarity.** One in five tuners and muscle
+  cars used to cruise at 100-124mph under a separate flag - about 2.8% of traffic against a Racer's
+  2%. The speed trap and the cruiser's target search asked "is this a rogue" and now ask "is this a
+  driver who chooses to exceed the limit"; both already had a speed test after that question, which is
+  why a capped lorry correctly trips neither ([RLG-054](../fragments/RLG-054.md)).
+- Fixed: **a lorry could come up behind the player at 92mph.** The behind-spawner capped every body at
+  a flat 0.46 of top speed. It takes the vehicle's own ceiling now, like everything else - and because
+  its speed is decided before its driver is, the personality is read OFF the speed rather than rolled,
+  so nothing carries a mind that contradicts what it is doing
+  ([RLG-054](../fragments/RLG-054.md)).
+- Added: **`tools/mind-test.py`.** Its road check had to be rewritten to be worth anything: the first
+  version took one snapshot, saw 14 cars all civilian, and would have passed on an engine that gave
+  every driver the same mind - at one in ten, a fourteen-car sample is empty of speeders about a
+  quarter of the time. It watches 24 times across a drive now. `traffic-test`'s corridor guarantee was
+  measured on both arms - 0.288/0.347/0.441 before, 0.295/0.409/0.372 after - so RLG-037's known
+  one-in-three flake did not move ([RLG-054](../fragments/RLG-054.md)).
+
 <a id="v0-10-23"></a>
 ## [0.10.23] - 2026-08-31
 - Fixed: **standing water survived a reset, and took a quarter of the grip with it.** `freshWorld`
