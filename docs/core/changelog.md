@@ -14,6 +14,29 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-19"></a>
+## [0.10.19] - 2026-08-31
+- Added: **the city's windows switch on and off on their own clocks.** Owner: the skyline does not
+  have dynamic window lights like it used to. It never had them by design - one window sheet at one
+  global alpha following the clock, which is all `DESIGN.md` ever described. What was moving was
+  RLG-094's defect regenerating the sheet every six seconds with new positions and new colours, seen
+  from the side where it looked good. The habit is on the window now: each carries a phase, a period
+  between 26 and 190 seconds and a duty, and is lit when its own cycle says so. Spreading the periods
+  is the point rather than decoration - a city where every window shares one clock is a pulse, not a
+  place, which is the lesson RLG-012 already recorded about a thruster on a single sine. The sheet is
+  repainted when the pattern changes and not every frame, at most once every 0.35 seconds; the
+  buildings sheet is never touched. Driven from `drawSky` on a fixed frame step rather than the step
+  loop, because the loop returns early on the results screen and the title draws a skyline without
+  stepping at all. `lampsOn()` is untouched, so at midday the city is dark whatever any window thinks
+  ([RLG-095](../fragments/RLG-095.md)).
+- Changed: **`skyline-test.py` reads the lit sheet as well as the silhouette,** because the two
+  assertions have to hold at once. The pattern must move - 65 of 1024 columns change across six
+  minutes of window clock - and the buildings must not, which is what stops this being satisfied by
+  putting RLG-094's defect back. Both are watched failing: with the window clock held still, zero
+  columns change; with the plan re-rolled, 1,021 do. No measurable frame-rate cost across two pairs
+  of runs, with overlapping ranges and the direction flipping between them
+  ([RLG-095](../fragments/RLG-095.md)).
+
 <a id="v0-10-18"></a>
 ## [0.10.18] - 2026-08-31
 - Fixed: **the skyline was a different city every six seconds.** Owner: the skyline jitters and pops,

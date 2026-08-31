@@ -5861,7 +5861,10 @@ function skylineFor(key){
     const keep = biome;
     biome = key;                 /* buildSkyline reads bio() */
     buildSkyline();
-    skylineCache[key] = { bucket: bucket, body: skyline, lit: skylineLit };
+    skylineCache[key] = { bucket: bucket, body: skyline, lit: skylineLit,
+                          /* what `paintWindows` just drew, so `stepWindows` does not
+                             repaint a sheet that is already correct (RLG-095) */
+                          mask: windowMask(skylinePlans[key][2], winClock) };
     biome = keep;
   }
   return skylineCache[key];
@@ -5966,12 +5969,30 @@ function skylinePlanFor(B, w, h, BANDS){
            back cannot be picked out, and drawing one there is a shimmer */
         if(band.haze < 0.2){
           for(let k = 0; k < bh/16; k++){
-            /* the third entry is whether this window burns warm or cold, rolled ONCE
-               with the window. Rolled at paint time it was re-rolled every bucket,
-               so a lit city flickered between amber and blue every six seconds. */
+            /* ---- A WINDOW IS A PLACE, A COLOUR AND A HABIT (RLG-094, RLG-095) ----
+               Everything about a window except whether it is lit RIGHT NOW is rolled
+               once, here, with the window. Rolled at paint time it was re-rolled on
+               every rebuild, so a lit city changed the colour of every window it had
+               ten times a minute.
+
+                 0,1  where it is
+                 2    warm or cold - amber sodium, or the cold blue of a screen
+                 3    its phase, so the city does not switch as one
+                 4    how long its cycle runs, in seconds
+                 5    how much of that cycle it spends lit
+
+               THE LAST THREE ARE THE HABIT OF WHOEVER IS BEHIND IT. A long cycle and a
+               high duty is an office block that stays on all night; a short cycle and a
+               low one is somebody up and down the stairs. Spreading the periods is what
+               stops the city breathing together - the same lesson RLG-012 recorded about
+               a thruster driven by one clock, which reads as a pulse rather than a place.
+               -------------------------------------------------------------------- */
             if(Math.random() < 0.42)
               wins.push([x + rint(3, Math.max(4, bw-6)), h - bh + rint(4, Math.max(5, bh-8)),
-                         Math.random() < 0.22 ? 1 : 0]);
+                         Math.random() < 0.22 ? 1 : 0,
+                         Math.random(),
+                         rint(26, 190),
+                         0.45 + Math.random() * 0.42]);
           }
         }
       }
@@ -6011,15 +6032,108 @@ function buildSkyline(){
     });
   });
 
-  skylineLit = sprite(w, h, (g) => {
-    g.clearRect(0, 0, w, h);
-    for(const b of plans[2]){
-      for(const wp of b.wins){
-        g.fillStyle = wp[2] ? 'rgba(190,225,255,.95)' : 'rgba(255,190,110,.95)';
-        g.fillRect(wp[0], wp[1], 2, 3);
-      }
+  skylineLit = sprite(w, h, (g) => paintWindows(g, w, h, plans[2]));
+}
+
+/* ==== THE CITY IS AWAKE, AND NOT ALL AT ONCE (RLG-095) ===================
+   Owner, 2026-08-31: "the city skyline doesn't have dynamic window lights like it
+   used to."
+
+   IT NEVER HAD THEM BY DESIGN, AND THAT IS THE USEFUL PART OF THE REPORT. The
+   skyline has always been two sheets - the buildings, and the windows over the
+   top at ONE global alpha following the clock. `DESIGN.md` describes exactly
+   that: the lights come on at dusk, burn through the night and go out by
+   mid-morning. One alpha for every window in the city; no window has ever
+   switched on by itself.
+
+   So what the owner remembers is RLG-094's defect seen from the side where it
+   looked good. The window sheet was regenerated every six seconds along with the
+   rest of the city, with new positions and a fresh colour roll for each window,
+   and at a glance that reads as lights going on and off across a skyline. The
+   liveliness was real and worth keeping. Its source was not: a city whose whole
+   window pattern is replaced ten times a minute is not a city where somebody
+   switched a light on, it is a different building every time you look.
+
+   SO THE HABIT MOVED ONTO THE WINDOW. Each one carries a phase, a period between
+   26 and 190 seconds, and a duty - and it is lit when its own cycle says so. The
+   pattern changes a window or two at a time, all night, and never in step.
+
+   AND THE SHEET IS REPAINTED WHEN THE PATTERN CHANGES, NOT EVERY FRAME. Drawing
+   a hundred and twenty windows individually per tile per view is three hundred
+   fills a frame for something that changes a few times a second. `windowMask`
+   walks the same list and returns what is lit; if that differs from what is on
+   the sheet, the sheet is repainted and not otherwise. The buildings sheet - the
+   expensive one, with every shape in it - is never touched.
+
+   THE HOUR STILL DECIDES WHETHER THE CITY IS LIT AT ALL. `lampsOn()` is
+   unchanged and still sets the alpha the sheet is drawn at. A window's own clock
+   only decides whether THIS window is on within that, so at midday the city is
+   dark whatever any window thinks.
+   ======================================================================== */
+/* how long the windows have been running. Its own clock rather than `phase()`,
+   because the day is 240 seconds long and a window that switched on a
+   day-fraction would cycle four times an hour of game time by accident. */
+let winClock = 0;
+/* at most this often, in seconds. A repaint is 120 fills into a 1024x220 canvas,
+   and a burst of windows all changing in one frame must not cost more than one. */
+const WIN_REPAINT = 0.35;
+let winRepaintDue = 0;
+
+function windowLit(wp, t){
+  /* wp[3] phase, wp[4] period in seconds, wp[5] duty */
+  return (((t / wp[4]) + wp[3]) % 1) < wp[5];
+}
+
+/* which windows are lit right now, as a string, so two patterns can be compared
+   without walking them twice */
+function windowMask(plan, t){
+  let m = '';
+  for(const b of plan)
+    for(const wp of b.wins) m += windowLit(wp, t) ? '1' : '0';
+  return m;
+}
+
+function paintWindows(g, w, h, plan){
+  g.clearRect(0, 0, w, h);
+  for(const b of plan){
+    for(const wp of b.wins){
+      if(!windowLit(wp, winClock)) continue;
+      g.fillStyle = wp[2] ? 'rgba(190,225,255,.95)' : 'rgba(255,190,110,.95)';
+      g.fillRect(wp[0], wp[1], 2, 3);
     }
-  });
+  }
+}
+
+/* ---- AND IT ONLY REPAINTS WHEN SOMETHING ACTUALLY SWITCHED --------------
+   Walking the list to build the mask is a hundred and twenty modulo operations;
+   repainting the canvas is the part worth avoiding, and most frames have nothing
+   to repaint.
+
+   CALLED FROM `drawSky`, WITH A FIXED FRAME STEP, AND NOT FROM THE STEP LOOP.
+   Two reasons, and the second is the one that decides it. The step loop returns
+   early when the run is over or the car is wrecked, so a city would freeze on
+   the results screen. And the TITLE draws a skyline without running a step at
+   all - `skySmooth` above is chased on a fixed step for exactly that reason, and
+   the note there says so: a title screen and a run both call this at the same
+   rate. A window's cycle is between 26 and 190 seconds, so the difference
+   between a fixed step and a real one is not visible in it. What would be
+   visible is a dead city on the menu.
+   ------------------------------------------------------------------------ */
+function stepWindows(){
+  const dt = 1/60;
+  winClock += dt;
+  if(winRepaintDue > 0){ winRepaintDue -= dt; return; }
+  for(const key in skylineCache){
+    const entry = skylineCache[key];
+    const plan = skylinePlans[key];
+    if(!entry || !entry.lit || !plan) continue;
+    const near = plan[2];
+    const mask = windowMask(near, winClock);
+    if(mask === entry.mask) continue;
+    entry.mask = mask;
+    paintWindows(entry.lit.getContext('2d'), entry.lit.width, entry.lit.height, near);
+    winRepaintDue = WIN_REPAINT;
+  }
 }
 
 /* ---- ONE SHAPE, WITH AN INSIDE ------------------------------------------
@@ -11661,6 +11775,8 @@ function drawSky(){
   /* drawSky has no dt, so the chase uses a fixed frame step — a title screen
      and a run both call this at the same rate */
   skySmooth += (skyWant - skySmooth) * 0.045;
+  /* the city's own clock, on the same fixed step and for the same reason (RLG-095) */
+  stepWindows();
   const skyShift = skySmooth;
   let ox = ((-camX*W*0.018) + skyShift) % dw;
   if(ox>0) ox -= dw;
@@ -16454,6 +16570,38 @@ requestAnimationFrame(frameLoop);
     for(const k in skylineCache) delete skylineCache[k];
     return n;
   };
+  /* ---- WHAT IS ACTUALLY LIT, READ OFF THE SHEET (RLG-095) --------------
+     The lit sheet is what gets drawn, so it is what a check should read. Reading
+     the PLAN instead would be a harness asking the engine to agree with its own
+     idea of which windows ought to be on.
+
+     `px` is how many window pixels are burning and `cols` is where they are, so
+     a check can tell "the same count in different places" from "nothing moved".
+     -------------------------------------------------------------------- */
+  API.skylineLit = function(key){
+    const a = skylineFor(key || biome);
+    if(!a.lit) return null;
+    const cv = a.lit, g = cv.getContext('2d');
+    const d = g.getImageData(0, 0, cv.width, cv.height).data;
+    const cols = new Array(cv.width).fill(0);
+    let px = 0;
+    for(let x = 0; x < cv.width; x++){
+      for(let y = 0; y < cv.height; y++){
+        if(d[(y*cv.width + x)*4 + 3] > 40){ cols[x]++; px++; }
+      }
+    }
+    return { px: px, cols: cols };
+  };
+  /* how far the windows' own clock has run, and a way to move it. A cycle is
+     between 26 and 190 seconds, so a check that waited for one in real time
+     would take three minutes to ask one question. */
+  API.windowClock = function(t){
+    if(typeof t === 'number'){ winClock = t; winRepaintDue = 0; }
+    return +winClock.toFixed(2);
+  };
+  /* whether the world thinks it is dark enough for lights at all. The windows'
+     own clocks decide which are on WITHIN this; they never overrule it. */
+  API.lampsOn = function(){ return +lampsOn().toFixed(3); };
   API.skylineProfile = function(key){
     const a = skylineFor(key || biome);
     const cv = a.body, g = cv.getContext('2d');

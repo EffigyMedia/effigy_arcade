@@ -70,8 +70,9 @@ window.addEventListener('error', function(e){ window.__probe.errors.push(String(
    report one without the other. */
 window.__probe.sample = function(key){
   var R = window.__probe.road;
-  return { phase: R.phase(), bucket: R.skyBucket(),
-           prof: R.skylineProfile(key), pix: R.skylinePixel(key) };
+  return { phase: R.phase(), bucket: R.skyBucket(), lamps: R.lampsOn(),
+           prof: R.skylineProfile(key), pix: R.skylinePixel(key),
+           lit: R.skylineLit(key), clock: R.windowClock() };
 };
 
 /* the horizon band as the player sees it, for the eye */
@@ -93,6 +94,10 @@ PHASES = [0.10, 0.14, 0.18, 0.22, 0.30, 0.42, 0.55, 0.68, 0.80, 0.92]
 # the colour has to travel at least this far across the day, in summed RGB distance. A silhouette
 # that never changed colour would satisfy every shape check in this file and be the opposite fault.
 MIN_COLOUR_TRAVEL = 24
+# where to move the windows' own clock to. A window's cycle is between 26 and 190 seconds, so these
+# have to be minutes apart to see the slow ones turn over, and a check that waited in real time
+# would take three minutes to ask one question.
+WINDOW_CLOCK = [0, 40, 95, 170, 260, 400]
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -224,6 +229,70 @@ def main():
         res.check(len(set(px)) == 1,
                   'and the silhouette covers the same area at every hour',
                   'pixel counts %s' % sorted(set(px)))
+        print()
+
+        # ---- THE CITY IS AWAKE, AND NOT ALL AT ONCE (RLG-095) -------------------------------
+        # Owner: the skyline does not have dynamic window lights like it used to. It never had them
+        # by design - one sheet at one global alpha - and what was moving was RLG-094's defect
+        # regenerating the sheet every six seconds. The habit is on the window now.
+        #
+        # THE HOUR IS PINNED TO NIGHT AND THE DAY DOES NOT MOVE for this section. The windows run on
+        # their own clock, so nothing here needs the sun; leaving the hour walking as well would
+        # mean two things changing at once and no way to say which did it.
+        print('  the windows')
+        page.evaluate("() => window.__probe.road.setPhase(0.25)")
+        page.wait_for_timeout(200)
+        night = []
+        for t in WINDOW_CLOCK:
+            page.evaluate("(t) => window.__probe.road.windowClock(t)", t)
+            page.wait_for_timeout(160)
+            night.append(page.evaluate("(k) => window.__probe.sample(k)", key))
+
+        res.check(all(n['lamps'] > 0.5 for n in night),
+                  'the hour is dark enough for the city to be lit at all',
+                  'lampsOn read %s' % [n['lamps'] for n in night])
+
+        # 1. THE PATTERN MOVES.
+        base_cols = night[0]['lit']['cols']
+        moved = max(sum(1 for a, b in zip(base_cols, n['lit']['cols']) if a != b) for n in night[1:])
+        res.check(moved > 0,
+                  'windows switch on and off as the night goes on',
+                  'not one of %d columns changed across %s seconds of window clock'
+                  % (len(base_cols), WINDOW_CLOCK[-1] - WINDOW_CLOCK[0]))
+        print('        columns whose lit count changed: %d of %d' % (moved, len(base_cols)))
+
+        # 2. AND THE SILHOUETTE STILL DOES NOT. This is what stops RLG-095 being built by putting
+        #    RLG-094's defect back: regenerating the city would satisfy the check above.
+        shape_moved = max(prof_diff(night[0]['prof'], n['prof'])[0] for n in night[1:])
+        res.check(shape_moved == 0,
+                  'and the buildings do not move while their windows do',
+                  '%d columns of silhouette moved - the city is being rebuilt again' % shape_moved)
+
+        # 3. NOT ALL AT ONCE. A city where every window shares one clock is a pulse, not a place -
+        #    the same fault RLG-012 recorded about a thruster on a single sine.
+        counts = [n['lit']['px'] for n in night]
+        swing = max(counts) - min(counts)
+        res.check(0 < swing < max(counts) * 0.5,
+                  'and they do not switch in unison',
+                  'lit pixels ran %s - a swing of %d against a peak of %d'
+                  % (counts, swing, max(counts)))
+        print('        lit pixels across the night: %s' % counts)
+        print()
+
+        # AND THE SAME CHECK WITH THE CLOCK HELD STILL. The assertion above is about change over
+        # time, so the way to show it is not vacuous is to take the time away: same hour, same
+        # clock, six samples. If the pattern still "moves" it is reading noise.
+        held = []
+        for _ in WINDOW_CLOCK:
+            page.evaluate("(t) => window.__probe.road.windowClock(t)", 120)
+            page.wait_for_timeout(160)
+            held.append(page.evaluate("(k) => window.__probe.sample(k)", key))
+        still = max(sum(1 for a, b in zip(held[0]['lit']['cols'], h['lit']['cols']) if a != b)
+                    for h in held[1:])
+        res.check(still == 0,
+                  'with the window clock held still nothing switches, so the check reads time',
+                  '%d columns changed with the clock frozen' % still)
+        print('        with the clock held at 120s: %d columns changed' % still)
         print()
 
         # ---- and the same check, with the defect put back ------------------------------------
