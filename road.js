@@ -6845,13 +6845,78 @@ function vmaxOf(k){ return MAX_SPD * ((BODY[k] && BODY[k].vmax) || 1); }
    player-only version did, once a frame - is a lot of garbage for a table that
    only ever has three shapes. */
 const GEAR_TABLES = {};
+/* ---- A SHORT BOX IS DESIGNED, NOT A LONG ONE WITH THE TOP CUT OFF ------
+   Owner, 2026-08-30: the muscle car's first three gears are good and its
+   fourth is one long tedious grind.
+
+   IT WAS. This took the first n gears of the six-speed table and forced the
+   last one's ceiling to the top of the range. For the four-speed muscle car
+   that left fourth running from 0.41 of top speed to 1.00 - fifty-nine per
+   cent of everything the car can do, in one gear - while the three below it
+   kept their original short bands. The needle therefore swept three times in
+   the first two fifths and then crawled for the rest, which is exactly what a
+   grind feels like. A five-speed had the same fault more mildly: fifth carried
+   forty-two per cent.
+
+   THE SHAPE OF THE SIX-SPEED IS THE THING WORTH KEEPING, not its numbers. Its
+   gears get progressively longer - 0.15 of the range in first up to 0.215 in
+   sixth - because that is what a gearbox does. So the six-speed's own shift
+   points are read as a CURVE, and a shorter box samples that curve at its own
+   spacing. Four gears take it in four steps rather than in four sixths of one.
+
+   The result for a four-speed is bands of 0.24, 0.28, 0.32 and 0.34, still
+   growing, with fourth carrying a third of the range instead of three fifths.
+   A five-speed's top gear carries a quarter instead of two fifths.
+
+   NOTHING CHANGES FOR A SIX-SPEED. The table is returned untouched when the
+   count matches, so every car that already had six gears drives exactly as it
+   did - this cannot be tested by driving one.
+   -------------------------------------------------------------------- */
+/* where you actually change up, as a fraction of top speed: the midpoint of
+   the overlap between one gear and the next. Derived from GEARS rather than
+   written down again, so the two cannot drift apart. */
+function shiftCurve(){
+  const out = [0];
+  for(let i = 0; i < GEARS.length; i++)
+    out.push(i === GEARS.length - 1 ? 1 : (GEARS[i].to + GEARS[i+1].from) / 2);
+  return out;
+}
+/* read a curve whose samples are spread evenly from 0 to 1, at any point */
+function alongCurve(v, f){
+  const m = v.length - 1;
+  const t = clamp(f, 0, 1) * m;
+  const i = Math.min(m - 1, Math.floor(t));
+  return v[i] + (v[i+1] - v[i]) * (t - i);
+}
+/* and one whose samples sit at 1/6, 2/6 ... 6/6 - which is where a per-gear
+   figure like `ratio` or `pull` lives */
+function acrossGears(v, f){
+  const n = v.length;
+  const t = clamp(f, 0, 1) * n - 1;
+  const i = clamp(Math.floor(t), 0, n - 2);
+  return v[i] + (v[i+1] - v[i]) * clamp(t - i, 0, 1);
+}
 function gearTableFor(k){
   const n = gearCountFor(k);
   if(n >= GEARS.length) return GEARS;
   if(!GEAR_TABLES[n]){
-    const cut = GEARS.slice(0, n).map(g => Object.assign({}, g));
-    cut[n-1] = Object.assign({}, cut[n-1], { to: 1.0 });
-    GEAR_TABLES[n] = cut;
+    const S = shiftCurve();
+    const ratios = GEARS.map(g => g.ratio), pulls = GEARS.map(g => g.pull);
+    const box = [];
+    for(let i = 1; i <= n; i++){
+      const lo = alongCurve(S, (i - 1) / n), hi = alongCurve(S, i / n);
+      /* the gears overlap a little so a shift has somewhere to happen, and the
+         overlap widens up the box exactly as the six-speed's does */
+      const lap = 0.020 + 0.015 * (i / n);
+      box.push({
+        g: i,
+        ratio: +acrossGears(ratios, i / n).toFixed(3),
+        from: i === 1 ? 0 : +(lo - lap).toFixed(3),
+        to:   i === n ? 1 : +(hi + lap).toFixed(3),
+        pull: +acrossGears(pulls, i / n).toFixed(3)
+      });
+    }
+    GEAR_TABLES[n] = box;
   }
   return GEAR_TABLES[n];
 }
@@ -15928,6 +15993,9 @@ requestAnimationFrame(frameLoop);
      were tried against it before the obvious answer, which is to take the cars
      off the road. They come back on the next spawn.
      ------------------------------------------------------------------- */
+  /* the box a given car actually gets, so a harness can compare the bands
+     rather than infer them from how a lap felt (RLG-069) */
+  API.gearBox = function(k){ return gearTableFor(k || optBody); };
   API.clearTraffic = function(){
     traffic.length = 0; cops.length = 0; blocks.length = 0;
     crates.length = 0; fx.length = 0; racers.length = 0;

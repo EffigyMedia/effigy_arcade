@@ -146,7 +146,7 @@ def main():
         res.check(g0['manual'] and g0['plateW'] > 0,
                   'the gate is drawn on a touch device', str(g0))
 
-        worst, widths = [], {}
+        worst, widths, boxes = [], {}, {}
         for key in args.cars.split(','):
             page.evaluate('(k) => window.__probe.road.setBody(k)', key)
             page.wait_for_timeout(140)
@@ -168,9 +168,46 @@ def main():
             # against a number: the element carries the UI scale, so its measured width is
             # not the width in the stylesheet.
             widths.setdefault(g['rails'], []).append((key, g['plateW']))
+            boxes[key] = page.evaluate('(k) => window.__probe.road.gearBox(k)', key)
 
         res.check(not worst, 'no car reaches a gear it does not have, and none loses one',
                   '; '.join(worst))
+
+        # ---- AND A SHORT BOX IS DESIGNED, NOT A LONG ONE CUT OFF (RLG-069) ----
+        # Owner, 2026-08-30: the muscle car's first three gears are good and its fourth is
+        # one long tedious grind. The table was the six-speed's first n gears with the last
+        # one's ceiling forced to the top, so a four-speed's fourth ran from 0.41 to 1.00 -
+        # fifty-nine per cent of the range in one gear, against 0.17 in first.
+        #
+        # THE CHECK IS THE RATIO BETWEEN THE LONGEST AND THE SHORTEST GEAR, not that the
+        # bands grow. They grew on the broken table too - 0.17, 0.18, 0.21, 0.59 is
+        # non-decreasing - so an assertion about growth would have agreed with the build
+        # being complained about. What was wrong was HOW MUCH the top one grew by.
+        spreads = []
+        for key, box in sorted(boxes.items()):
+            if not box:
+                continue
+            bands = [round(g['to'] - g['from'], 3) for g in box]
+            ratio = max(bands) / min(bands)
+            spreads.append((key, len(box), bands, ratio))
+        for key, n, bands, ratio in spreads:
+            print('      %-13s %d-speed bands %s  longest/shortest %.2f'
+                  % (key, n, bands, ratio))
+        bad = [(k, r) for k, n, b, r in spreads if r > 1.6]
+        res.check(not bad,
+                  'no gearbox has one gear carrying the road while the others sprint',
+                  '; '.join('%s at %.2f' % (k, r) for k, r in bad))
+        # and the box still covers everything, with somewhere for each shift to happen
+        holes = []
+        for key, n, bands, _ in spreads:
+            box = boxes[key]
+            if abs(box[0]['from']) > 1e-6 or abs(box[-1]['to'] - 1) > 1e-6:
+                holes.append('%s does not span 0 to 1' % key)
+            for a, b in zip(box, box[1:]):
+                if b['from'] >= a['to']:
+                    holes.append('%s has a gap between %d and %d' % (key, a['g'], b['g']))
+        res.check(not holes, 'and every box covers the whole range, with the gears overlapping',
+                  '; '.join(holes))
         two = [w for _, w in widths.get(2, [])]
         three = [w for _, w in widths.get(3, [])]
         res.check(len(set(two)) <= 1 and len(set(three)) <= 1,

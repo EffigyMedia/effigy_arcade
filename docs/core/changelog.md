@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-6"></a>
+## [0.10.6] - 2026-08-30
+- Fixed: **a short gearbox is designed, not a six-speed with the top gears cut off.** Owner: the
+  muscle car's first three gears are good and its fourth is one long tedious grind. The table was
+  the six-speed's first n gears with the last one's ceiling forced to the top of the range, so a
+  four-speed's fourth ran from 0.41 of top speed to 1.00 - fifty-nine per cent of everything the car
+  can do, in one gear, while the three below it kept their original short bands. The six-speed's own
+  shift points are read as a curve now and a shorter box samples that curve at its own spacing, so
+  four gears take it in four steps rather than in four sixths of one. The muscle car's top gear
+  carries 34% of the range instead of 59%, and a five-speed's carries 28% instead of 42%. **A
+  six-speed is returned untouched and drives exactly as it did**
+  ([RLG-069](../fragments/RLG-069.md)).
+
 <a id="v0-10-5"></a>
 ## [0.10.5] - 2026-08-30
 - Fixed: **the garage answers a tap at once.** Owner, from the device: choosing a colour takes about
