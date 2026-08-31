@@ -386,6 +386,28 @@ function unlocked(key){
 }
 function zUnlocked(){ return unlocked('formula'); }
 let clock = CLOCK_START, nextCP = 0, cpGantries = [], lastBeep = -1, wreckWait = 0;
+/* ---- THE START LINE (RLG-088) ------------------------------------------
+   Owner, 2026-08-30: hitting DRIVE should give a three, two, one, GO
+   countdown, with some flare.
+
+   THE CAR IS HELD, NOT MERELY COVERED. A countdown drawn over a car that is
+   already accelerating is a lie the first frame gives away, so `countIn` gates
+   the throttle, the run clock, the distance and the score. The world is built
+   and drawn behind it - you can see the road you are about to take, which is
+   the point of a start line.
+
+   NEITHER MODE HAD A STANDING START. The circuit builds its field and then
+   moves off exactly as the highway does, so there was no existing race start
+   for this to agree with: one countdown serves both.
+
+   `countPip` is the last number that was sounded, so the pips fire once each
+   rather than sixty times a second.
+   ------------------------------------------------------------------- */
+let countIn = 0, countPip = -1, countFrom = 0;
+/* a run after the first can be started with a tap rather than sat through. It
+   SHORTENS rather than cancels, because the start is still a start - and it is
+   the second run onward, so the first one is always seen whole. */
+let seenStart = false;
 let traffic, cops, blocks, crates, fx, shake, hitFlash, sirenPhase, lastKmh, iframe;
 let bestScore=0, bestDist=0, runs=0;
 const SV = AR && AR.save ? AR.save.get(GAME_ID) : null;
@@ -720,6 +742,38 @@ var snd = {
   },
 
   /* a bright two-note rise — unmistakable over the engine */
+  /* ---- THE START LINE (RLG-088) --------------------------------------
+     THE OPPOSITE OF `tick`, deliberately. That one holds ONE note and gets more
+     insistent, because a clock running out should be ominous. A start is the
+     other thing entirely: the pitch CLIMBS, which the note on `tick` correctly
+     calls a fanfare, and here a fanfare is what is wanted.
+
+     Three pips a tone apart and then a chord on GO, with a noise sweep under it
+     so the release has some air in it rather than being three beeps and a
+     fourth beep.
+     ------------------------------------------------------------------ */
+  startPip: function(n){
+    if(!AR) return;
+    const t = AR.audio.now();
+    if(n > 0){
+      /* 3, 2, 1 - each a whole tone above the last, short and hard */
+      const f = 392 * Math.pow(2, (3 - n) * 2 / 12);
+      AR.sfx.tone({ t, freq: f, dur: 0.16, type:'square',
+                    gain: 0.20, cutoff: 3000, verb: 0.22 });
+      AR.sfx.tone({ t: t + 0.005, freq: f / 2, dur: 0.20, type:'triangle',
+                    gain: 0.13, cutoff: 1100 });
+      return;
+    }
+    /* GO - a major chord that opens out, and a sweep up underneath it */
+    [0, 4, 7, 12].forEach((k, i) =>
+      AR.sfx.tone({ t: t + i * 0.018, freq: 523.25 * Math.pow(2, k / 12),
+                    dur: 0.55, type:'square', gain: 0.16, cutoff: 4200,
+                    verb: 0.40 }));
+    AR.sfx.tone({ t, freq: 130.81, to: 261.63, dur: 0.45, type:'triangle',
+                  gain: 0.20, cutoff: 1400 });
+    AR.sfx.noise({ t, freq: 700, to: 6000, dur: 0.34, gain: 0.09,
+                   filter:'bandpass' });
+  },
   checkpoint: function(){
     if(!AR) return;
     const t = AR.audio.now();
@@ -6587,6 +6641,9 @@ function start(){
   runs++;
   reset();
   snd.begin();
+  /* the count runs after `reset`, which has already put the car at rest */
+  countFrom = countIn = 3.0;
+  countPip = -1;
   state='driving';
   veil.classList.add('hidden');
 }
@@ -9741,7 +9798,20 @@ hornBtn.addEventListener('pointerleave',  ()=>setHorn(false));
 hornBtn.addEventListener('pointercancel', ()=>setHorn(false));
 }
 
-gasBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); setGas(true); });
+/* ---- A SECOND RUN CAN BE STARTED WITH A THUMB (RLG-088) -------------
+   A player who has just crashed and wants another go should not sit through
+   three seconds to get one, or the start becomes a toll on exactly the player
+   who is enjoying it most.
+
+   IT SHORTENS RATHER THAN CANCELS. Dropping straight to GO would take the
+   launch away, which is the thing worth having; a third of a second still
+   reads as a start. And it only works AFTER the first run of a session, so the
+   count is always seen whole once before it can be hurried.
+   ------------------------------------------------------------------- */
+function hurryStart(){
+  if(countIn > 0 && seenStart && countIn > 0.34) countIn = 0.34;
+}
+gasBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); hurryStart(); setGas(true); });
 gasBtn.addEventListener('pointerup',     ()=>setGas(false));
 gasBtn.addEventListener('pointerleave',  ()=>setGas(false));
 gasBtn.addEventListener('pointercancel', ()=>setGas(false));
@@ -9783,6 +9853,26 @@ if(AR && AR.pad) AR.pad.onPress(name=>{
 
 /* ---------- simulation ---------- */
 function step(dt){
+  /* ---- HELD ON THE LINE (RLG-088) ------------------------------------
+     Everything below this runs, so the road, the traffic and the sky are all
+     alive behind the numbers. What does not run is the car: the throttle is
+     ignored, the clock does not start, and nothing is scored. `countIn`
+     reaching zero is the only thing that releases it.
+     ------------------------------------------------------------------ */
+  if(goFor > 0) goFor -= dt;
+  if(countIn > 0){
+    countIn -= dt;
+    const n = Math.max(0, Math.ceil(countIn));
+    if(n !== countPip){ countPip = n; snd.startPip(n); }
+    if(countIn <= 0){
+      countIn = 0;
+      seenStart = true;
+      goFor = 0.85;          /* GO stays up while the car is already moving */
+    }
+    /* held at rest, and the box in neutral-to-first so the launch is real */
+    spd = 0; nosOn = false;
+    return;
+  }
   // --- steering ---
   let kd=0;
   if(keys.ArrowLeft||keys.a) kd-=1;
@@ -13590,7 +13680,115 @@ function draw(){
   vg.addColorStop(0,'rgba(0,0,0,0)');
   vg.addColorStop(1,'rgba(0,0,0,.55)');
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  drawCountIn();
 }
+
+/* ==== THE START LINE, ON THE GLASS (RLG-088) ============================
+   Owner, 2026-08-30: a three, two, one, GO countdown with some flare.
+
+   WHERE THE FLARE COMES FROM, because flare is where a screen like this goes
+   wrong. It is not a bigger font and a colour: it is TIMING. Each number
+   ARRIVES - overshooting its size in the first fifty milliseconds and settling
+   back - rather than fading in, and a ring leaves it as it lands, so the eye
+   reads a hit rather than a label. The numbers are calmer than a person
+   expects and GO is the one that is not, which is what makes GO feel like
+   something.
+
+   IT IS DRAWN LAST, over the vignette and everything else, because it is the
+   only thing on the screen that matters while it is up.
+
+   THE TYPE IS THE HUD'S OWN. A countdown in a second typeface is a countdown
+   borrowed from another game.
+   ======================================================================= */
+function drawCountIn(){
+  if(countIn <= 0 && goFor > 0){ drawGo(); return; }
+  if(countIn <= 0) return;
+  const n = Math.ceil(countIn);
+  /* how far through this one second we are: 0 the instant it lands, 1 as it
+     hands over to the next */
+  const age = 1 - (countIn - (n - 1));
+  const label = String(n);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const cx = W/2, cy = H*0.42;
+  const disp = getComputedStyle(document.body).getPropertyValue('--disp');
+
+  /* ---- THE RING LEAVES AS THE NUMBER LANDS ---------------------------
+     It expands and thins over the first two fifths of the second and is gone
+     for the rest, so it reads as the impact of the number rather than as a
+     halo the number is wearing. */
+  if(age < 0.42){
+    const k = age / 0.42;
+    const r = H*0.06 + k * H*0.20;
+    ctx.globalAlpha = (1 - k) * 0.55;
+    ctx.strokeStyle = 'rgba(255,186,90,1)';
+    ctx.lineWidth = Math.max(1, 7 * (1 - k));
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---- AND THE NUMBER OVERSHOOTS AND SETTLES -------------------------
+     1.35 of its size at the instant it lands, down to 1.0 by a fifth of a
+     second. A number that simply appears at its final size reads as a caption;
+     the overshoot is the whole difference between a label and a hit. It then
+     holds still, and only its last fifth fades - a number that fades the whole
+     time never looks like it was ever there. */
+  const punch = age < 0.20 ? 1.35 - 0.35 * (age / 0.20) : 1.0;
+  const fade = age > 0.80 ? 1 - (age - 0.80) / 0.20 : 1;
+  const size = Math.round(H * 0.17 * punch);
+  ctx.font = '800 ' + size + 'px ' + disp;
+  ctx.globalAlpha = fade;
+  /* a soft warm bloom behind the glyph, so it sits on the road rather than
+     being pasted over it */
+  ctx.shadowColor = 'rgba(255,150,40,0.75)';
+  ctx.shadowBlur = 26;
+  ctx.fillStyle = '#fff3dc';
+  ctx.fillText(label, cx, cy);
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,138,61,0.85)';
+  ctx.strokeText(label, cx, cy);
+  ctx.restore();
+}
+
+/* ---- AND GO OUTLIVES THE COUNT -------------------------------------
+   It is drawn while the car is ALREADY MOVING, which is the point: the word
+   and the launch happen together rather than one after the other. It is
+   bigger than the numbers, it rises as it goes, and its ring is wider and
+   brighter - the numbers were deliberately calm so that this one is not.
+   -------------------------------------------------------------------- */
+function drawGo(){
+  const age = 1 - goFor / 0.85;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const cx = W/2, cy = H*0.42 - age * H*0.05;      /* it lifts as it goes */
+  const disp = getComputedStyle(document.body).getPropertyValue('--disp');
+  if(age < 0.55){
+    const k = age / 0.55;
+    ctx.globalAlpha = (1 - k) * 0.7;
+    ctx.strokeStyle = 'rgba(120,255,200,1)';
+    ctx.lineWidth = Math.max(1, 10 * (1 - k));
+    ctx.beginPath(); ctx.arc(cx, H*0.42, H*0.07 + k * H*0.34, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  const punch = age < 0.16 ? 1.45 - 0.45 * (age / 0.16) : 1.0;
+  const fade = age > 0.55 ? 1 - (age - 0.55) / 0.45 : 1;
+  ctx.font = '800 ' + Math.round(H * 0.155 * punch) + 'px ' + disp;
+  ctx.globalAlpha = fade;
+  ctx.shadowColor = 'rgba(90,255,190,0.8)';
+  ctx.shadowBlur = 34;
+  ctx.fillStyle = '#eafff4';
+  ctx.fillText('GO', cx, cy);
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(90,255,190,0.9)';
+  ctx.strokeText('GO', cx, cy);
+  ctx.restore();
+}
+let goFor = 0;
 
 /* ---------- HUD ---------- */
 const $=id=>document.getElementById(id);
@@ -16043,6 +16241,13 @@ requestAnimationFrame(frameLoop);
   /* the box a given car actually gets, so a harness can compare the bands
      rather than infer them from how a lap felt (RLG-069) */
   API.gearBox = function(k){ return gearTableFor(k || optBody); };
+  /* what the start line is doing: how much of the count is left, which number
+     has been sounded, and whether GO is still on the glass (RLG-088) */
+  API.startLine = function(){
+    return { left:+countIn.toFixed(3), pip:countPip, go:+goFor.toFixed(3),
+             seen:seenStart, clock:+clock.toFixed(2), spd:Math.round(spd),
+             dist:+dist.toFixed(4) };
+  };
   /* the card height every body would ask for, and the one that is reserved.
      A harness needs both to say whether the reservation actually covers the
      fleet, and by how much it overshoots the smallest car (RLG-087). */

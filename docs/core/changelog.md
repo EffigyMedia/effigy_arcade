@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-0"></a>
+## [0.11.0] - 2026-08-30
+- Added: **three, two, one, GO before the car moves.** Owner: hitting DRIVE should give a countdown,
+  with some flare. The car is **held**, not merely covered - the throttle is ignored, the run clock
+  does not start and nothing is scored until GO, because a countdown drawn over a car that is
+  already accelerating is a lie the first frame gives away. The world runs behind it, so you see the
+  road you are about to take. Each number arrives at 1.35 of its size and settles back, with a ring
+  leaving it as it lands; GO is bigger, green, lifts as it goes and stays up while the car is
+  already moving. Three pips a whole tone apart and a major chord on GO - the opposite of the
+  run-out `tick`, which deliberately holds one note because a clock running out should be ominous
+  and a start should not. **After the first run of a session, the throttle shortens the count to a
+  third of a second** rather than cancelling it, so a player who has just crashed is not paying a
+  toll ([RLG-088](../fragments/RLG-088.md)).
+- Added: **`start-test.py`.** It holds the pedal down from before the count begins, because a car
+  nobody is asking to move sits still whether it is held or not - the first version of the check
+  passed on a build with no countdown in it at all ([RLG-088](../fragments/RLG-088.md)).
+
 <a id="v0-10-8"></a>
 ## [0.10.8] - 2026-08-30
 - Changed: **the garage card has two sizes: the regular cars, and the big ones.** Owner, on seeing
