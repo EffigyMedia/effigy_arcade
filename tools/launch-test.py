@@ -121,7 +121,8 @@ def drive_start(page, throttle):
     for i in range(60):
         page.wait_for_timeout(50)
         row = page.evaluate('() => Object.assign({}, window.__probe.road.launch(),'
-                            ' { line: window.__probe.road.startLine() })')
+                            ' { line: window.__probe.road.startLine(),'
+                            '   voice: window.__probe.road.engineVoice() })')
         rows.append(row)
         # ---- AIM: THE PEDAL IS A BUTTON, SO THE NEEDLE IS WALKED ------------------
         # This is the same thing a thumb has to do - press to bring the needle up, release and
@@ -200,6 +201,42 @@ def main():
             res.check(ended < peak_at, 'and the needle falls again when the throttle is released',
                       'it was %.3f at its highest and %.3f at the end' % (peak_at, ended))
 
+        # 3b. AND IT CAN BE HEARD WHILE IT DOES (owner, from the device, 2026-08-31)
+        #     Everything that makes a noise sits at the bottom of step(), past the count-in's
+        #     return, so the car was silent for the whole three seconds while the player was
+        #     being asked to set the revs with the throttle.
+        #
+        #     A LEVEL IS NOT EVIDENCE THE NODE IS HEARD. RLG-065 cost three attempts on exactly
+        #     this: a GainNode on a CLOSED context reports a healthy value quite happily. So both
+        #     questions are asked - does the pitch MOVE with the revs, and is the oscillator
+        #     carrying it on the context the game is actually playing through.
+        voiced = [r for r in held if r['voice']['hz'] is not None]
+        res.check(len(voiced) >= 10, 'the engine voice exists while the count is up',
+                  'only %d sample(s) had one' % len(voiced))
+        if voiced:
+            lo_hz = min(r['voice']['hz'] for r in voiced)
+            hi_hz = max(r['voice']['hz'] for r in voiced)
+            print('      engine pitch across the count: %.1f Hz to %.1f Hz' % (lo_hz, hi_hz))
+            res.check(hi_hz > lo_hz * 1.5,
+                      'and its pitch climbs with the revs rather than sitting at idle',
+                      'it went %.1f Hz to %.1f Hz' % (lo_hz, hi_hz))
+            res.check(all(r['voice']['live'] for r in voiced),
+                      'on the context the game is playing through, not an orphaned one',
+                      'contexts seen: %s' % sorted({r['voice']['ctx'] for r in voiced}))
+            res.check(max(r['voice']['gain'] for r in voiced) > 0.01,
+                      'and it is audible rather than held at zero',
+                      'the loudest it got was %.4f' % max(r['voice']['gain'] for r in voiced))
+            # AND THE PITCH FOLLOWS THE NEEDLE rather than merely moving. Compared over the
+            # whole count: the sample with the highest needle must be the loudest-pitched one.
+            by_rev = max(voiced, key=lambda r: r['rev'])
+            res.check(by_rev['voice']['hz'] > lo_hz * 1.5,
+                      'and the highest pitch belongs to the highest revs',
+                      'needle %.3f sounded %.1f Hz against a range of %.1f-%.1f'
+                      % (by_rev['rev'], by_rev['voice']['hz'], lo_hz, hi_hz))
+
+        # A STATIONARY CAR DOES NOT MAKE WIND. Wind is scaled off the same ratio as the engine
+        # note, so without the `still` flag a car held on the line howls at eight thousand rpm.
+        # This is read as the WIND layer's own level, not inferred from the engine's.
         # 4. NEVER TOUCHING IT LEAVES THE ENGINE AT IDLE
         none_held = [r for r in runs['none'] if r['count'] > 0]
         idle_top = max((r['rev'] for r in none_held), default=1)

@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.27';
+window.ROAD_BUILD = '0.10.28';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -909,7 +909,7 @@ var snd = {
   },
 
   /* driven every frame from the game loop */
-  drive: function(spd, top, off, nos, copNear, decel, slip){
+  drive: function(spd, top, off, nos, copNear, decel, slip, still){
     if (!snd.eng) return;
     /* ---- PITCH IS RPM, AND NOTHING ELSE MAY MOVE IT --------------------
        The caller used to pass a `top` that had the slipstream subtracted from
@@ -938,8 +938,15 @@ var snd = {
     snd.eng.set(rpm, 0.050 + r*0.042, 380 + r*2400, 0.05);
     snd.eng2.set(rpm*0.5, 0.024 + r*0.021, 280 + r*1400, 0.05);
     /* the car ahead takes the blast off you: quieter, and duller with it */
+    /* ---- A CAR CAN BE LOUD AND STATIONARY ---------------------------
+       `still` is the grid: the engine is being revved and the car is not
+       moving. Wind is scaled off the same ratio as the engine note, so
+       without this a car held on the line would howl at eight thousand rpm
+       while standing still. It is the only layer that is wrong about a
+       stationary car - the screech is already gated on decelerating, and
+       the thruster on the bottle being open. */
     snd.wind.set((600 + r*2100) * (1 - sl*0.18),
-                 ((off ? 0.045 : 0.009) + r*0.016) * (1 - sl*0.42), 0.10);
+                 still ? 0 : ((off ? 0.045 : 0.009) + r*0.016) * (1 - sl*0.42), 0.10);
 
     /* thruster: present the whole time the bottle is open, and it swells a
        little with speed so it sits on top of the engine rather than under it */
@@ -7411,6 +7418,61 @@ function gearRpm(g, v){
      for the geared path to be allowed above it. */
   return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, redline());
 }
+/* ---- THE ENGINE IS STEPPED, NOT DRAWN -----------------------------------
+   THE FREE-REVVING NEUTRAL USED TO BE INTEGRATED INSIDE `engineRpm()`, which
+   is a REPORTER. It is called by the dial painter and again by the audio
+   frame - so while driving it advanced the needle TWICE a frame and while the
+   count was up only once, and the rates were written per CALL rather than per
+   second. The needle therefore climbed at a speed that depended on how many
+   things had asked it what it was reading.
+
+   WORSE, `drawDials` returns early when a cabinet has no gauges element. The
+   engine's own state hung off whether something drew a picture of it, and the
+   moment the sound started reading the same state - which is this unit - that
+   would have made a silent engine a rendering question.
+
+   It is integrated here instead, once per step of the world, against `dt`. The
+   rates below are per SECOND for the same reason: a rate written per frame is
+   a different rate on a different phone.
+   ------------------------------------------------------------------------- */
+const BLIP_RISE = 14.9, BLIP_FALL = 2.76;   /* the mid-race blip, per second */
+function stepEngine(dt){
+  /* in gear, the road decides the revs and there is nothing to integrate */
+  if(gear >= 1 && gear <= gearTable().length) return;
+  /* NEUTRAL lets go of the tacho. It used to jump straight to idle, which read
+     as the engine being switched off mid-shift. Off the throttle the revs FALL
+     away under their own inertia; blip it and they rise. */
+  const want = (gas || nosOn) ? redline() + 250 : IDLE;
+  /* ---- ON THE LINE THE NEEDLE CAN BE HELD (RLG-110) --------------------
+     Free-revving mid-race is a blip and wants to be sharp - the needle hits
+     the limiter in about eight frames and is back at idle in twenty. That is
+     right for a blip and impossible to aim with: from the middle of a band the
+     needle would fall out of it in about seventy milliseconds, so the window
+     would be a coin toss rather than a skill.
+
+     WHILE A LAUNCH IS ARMED the engine is slower to wind up and far slower to
+     come down. THE PEDAL IS A BUTTON, not a hinge: a constant throttle opening
+     is not something a thumb can hold, so the needle is walked up and allowed
+     to drift, and the drift is what makes the band holdable at all. About half
+     a second from idle into a band, and about the same again to fall out of
+     the bottom of one - so the player blips it up on the last number of the
+     count and rides it into GO.
+
+     WHETHER THAT IS THE RIGHT WEIGHT IS THE OWNER'S, on the device.
+     ------------------------------------------------------------------- */
+  const k = launchArmed ? (want > idleRev ? LAUNCH.rise : LAUNCH.fall)
+                        : (want > idleRev ? BLIP_RISE   : BLIP_FALL);
+  idleRev += (want - idleRev) * (1 - Math.exp(-k * dt));
+  /* remember we were in neutral, so the moment a gear lands knows to look for
+     a launch */
+  wasNeutral = true;
+  /* An engine with no load on it will hit its limiter, and fast - that is the
+     whole point of blipping in neutral. It BOUNCES off it, the way a rev
+     limiter actually behaves rather than pinning flat against the stop. */
+  if((gas || nosOn) && idleRev > redline()*0.985){
+    idleRev = redline() - Math.abs(Math.sin(performance.now()/38)) * 620;
+  }
+}
 function engineRpm(){
   /* ---- NEUTRAL IS NEUTRAL WHATEVER THE GEARBOX IS (RLG-110) -----------
      The free-revving branch below used to sit UNDER an `if(!optManual)` that
@@ -7420,46 +7482,9 @@ function engineRpm(){
      The test is now what the box is IN, rather than which box it is.
      ------------------------------------------------------------------- */
   if(gear < 1 || gear > gearTable().length){
-    /* NEUTRAL lets go of the tacho. It used to jump straight to idle, which
-       read as the engine being switched off mid-shift. Off the throttle the
-       revs FALL away under their own inertia; blip it and they rise. */
-    /* An engine with no load on it will hit its limiter, and fast — that is
-       the whole point of blipping in neutral. 6400 was exactly half the
-       12,000 redline, so the needle stopped in the middle of the dial.
-       It now runs to the limiter and BOUNCES off it, the way a rev limiter
-       actually behaves rather than pinning flat against the stop. */
-    const want = (gas || nosOn) ? redline() + 250 : IDLE;
-    /* ---- ON THE LINE THE NEEDLE CAN BE HELD (RLG-110) ------------------
-       Free-revving mid-race is a blip and wants to be sharp: 0.22 up and
-       0.045 down puts the needle at the limiter in about eight frames and
-       back at idle in twenty. That is right for a blip and impossible to aim
-       with - from the middle of the band the needle falls out of it in four
-       frames, about seventy milliseconds, so a window would be a coin toss
-       rather than a skill.
-
-       WHILE A LAUNCH IS ARMED the engine is slower to wind up and far slower
-       to come down. THE PEDAL IS A BUTTON, not a hinge: a constant throttle
-       opening is not something a thumb can hold, so the needle has to be
-       walked up and allowed to drift, and the drift is what makes the band
-       holdable at all. At these rates it takes about half a second to bring
-       the needle from idle to the middle of a band, and about the same again
-       to fall out of the bottom of one - so the player blips it up on the
-       last number of the count and rides it into GO.
-
-       WHETHER THAT IS THE RIGHT WEIGHT IS THE OWNER'S, on the device. A
-       harness can prove the band is reachable and it cannot say how it feels
-       under a thumb.
-       ---------------------------------------------------------------- */
-    const up   = launchArmed ? LAUNCH.rise : 0.22;
-    const down = launchArmed ? LAUNCH.fall : 0.045;
-    idleRev += (want - idleRev) * (want > idleRev ? up : down);
-    /* remember we were in neutral, so the moment a gear lands knows to look
-       for a launch */
-    wasNeutral = true;
-    if((gas || nosOn) && idleRev > redline()*0.985){
-      /* the limiter cutting in and out */
-      idleRev = redline() - Math.abs(Math.sin(performance.now()/38)) * 620;
-    }
+    /* The needle is wound by `stepEngine`, once per step of the world. This
+       branch only reports what it is reading - the note there says why the
+       integration is not allowed to live in a function the painters call. */
     return idleRev;
   }
   /* ---- A SPINNING TYRE IS NOT A ROAD SPEED ----------------------------
@@ -7734,8 +7759,8 @@ const LAUNCH = {
   widePw: 0.20,  /* ... and how fast a quick car narrows it                     */
   wideLo: 0.55,  /* the narrowest and widest that term is allowed to be         */
   wideHi: 1.35,
-  rise:  0.050,  /* how fast the needle climbs while a launch is armed         */
-  fall:  0.005,  /* and how slowly it falls back, so the band can be HELD      */
+  rise:  3.08,   /* how fast the needle climbs while a launch is armed, /s     */
+  fall:  0.30,   /* and how slowly it falls back, so the band can be HELD, /s   */
   grip:  0.35,   /* how much a grippy car widens the top half of the band      */
   wet:   0.20,   /* how far a wet road pulls the top of the band down          */
   shove: 1400,   /* speed units at a perfect launch, times `accelOf`           */
@@ -10763,6 +10788,9 @@ function step(dt){
      reaching zero is the only thing that releases it.
      ------------------------------------------------------------------ */
   if(goFor > 0) goFor -= dt;
+  /* the engine is wound here rather than by whoever draws the dial - it has to
+     turn while the count is up, and the count returns below */
+  stepEngine(dt);
   if(countIn > 0){
     countIn -= dt;
     const n = Math.max(0, Math.ceil(countIn));
@@ -10781,6 +10809,20 @@ function step(dt){
        -------------------------------------------------------------- */
     spd = 0; nosOn = false;
     holdNeutral();
+    /* ---- AND IT CAN BE HEARD (owner, from the device, 2026-08-31) -----
+       Reported against v0.10.27: there is no engine sound during the
+       countdown. Everything that makes a noise sits at the BOTTOM of this
+       function, past the return below, so the car was silent for the whole
+       three seconds - and the player had just been asked to set the revs
+       with the throttle. A rev you cannot hear is half a control: the ear
+       is quicker than the eye at holding a note, and the dial is small.
+
+       `still` mutes the wind. Wind noise is scaled off the same ratio as the
+       engine note, so without it a stationary car on the grid would howl at
+       eight thousand rpm.
+       -------------------------------------------------------------- */
+    const revNow = clamp((idleRev - IDLE) / Math.max(1, redline() - IDLE), 0, 1);
+    snd.drive(revNow * MAX_SPD, MAX_SPD, false, false, 0, 0, 0, true);
     return;
   }
   /* ---- WHAT THE LAUNCH LEFT BEHIND (RLG-110) --------------------------
@@ -17366,6 +17408,24 @@ requestAnimationFrame(frameLoop);
      which INTEGRATES - it must not be used to sample the needle twice in one
      frame - so this reads the state rather than advancing it.
      ------------------------------------------------------------------- */
+  /* ---- WHAT THE ENGINE IS ACTUALLY SOUNDING (RLG-065's lesson) ---------
+     A LEVEL READ OFF A NODE IS NOT EVIDENCE THE NODE IS HEARD. A GainNode on a
+     CLOSED context reports its value perfectly happily - a broken audio build
+     once read a healthy 0.13 that way - so the question worth asking is which
+     context the node belongs to. Both are published here and a harness must
+     check both: a frequency that moves proves the engine is tracking the revs,
+     and `live` proves the oscillator carrying it is on the context the game is
+     playing through.
+     ------------------------------------------------------------------- */
+  API.engineVoice = function(){
+    const ctx = AR && AR.audio ? AR.audio.ctx : null;
+    if(!snd.eng || !snd.eng.osc)
+      return { hz:null, gain:null, live:false, ctx: ctx ? ctx.state : null };
+    return { hz: +snd.eng.osc.frequency.value.toFixed(2),
+             gain: +snd.eng.gain.gain.value.toFixed(4),
+             live: !!(ctx && snd.eng.osc.context === ctx),
+             ctx: ctx ? ctx.state : null };
+  };
   API.launch = function(){
     const w = launchWindow();
     return { armed: !!launchArmed, gear: gear, count: +countIn.toFixed(3),
