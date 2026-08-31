@@ -342,7 +342,18 @@ def drive(page, res, seconds, is_circuit):
     if not is_circuit:
         time_of_day_took(page, res)
 
-    hud_before = page.eval_on_selector('#score', 'el => el.textContent')
+    # ---- THE HUD, WHICHEVER HUD THIS MACHINE HAS -----------------------------------------
+    # This read `#score`, which exists in Motorsport and does NOT exist in Interstate - the
+    # Interstate's live figures are `#clock`, `#dist` and `#place`. So `eval_on_selector` threw,
+    # and a throw here does not fail one check: it leaves the function, so EVERY Interstate check
+    # after this line never ran. Speed, the rev limiter, distance travelled, staying on the road,
+    # damage - none of them have been measured on the Interstate for as long as this has been
+    # broken, and the run reported "18/19 passed" while silently covering one game.
+    #
+    # `#hud` is the container both machines have, and its text changes when anything inside it
+    # does. That is the effect the check is named for; `#score` was one machine's implementation
+    # of it.
+    hud_before = hud_text(page)
 
     page.evaluate('() => window.__probe.drive()')
     page.wait_for_timeout(int(seconds * 1000))
@@ -418,7 +429,10 @@ def drive(page, res, seconds, is_circuit):
               f'{wrecks} respawn(s), worst damage {worst}%' if wrecks
               else f'worst damage {worst}%')
 
-    hud_after = page.eval_on_selector('#score', 'el => el.textContent')
+    hud_after = hud_text(page)
+    res.check(hud_before is not None, 'the machine has a HUD to read',
+              f'{len(hud_before)} characters of it' if hud_before
+              else 'no #hud element on the page')
     res.check(hud_after != hud_before, 'the HUD changes',
               f'{hud_before!r} -> {hud_after!r}')
 
@@ -498,6 +512,18 @@ def run_game(browser, base, game, seconds, res):
                   '' if not errors else errors[0][:120])
     finally:
         ctx.close()
+
+
+def hud_text(page):
+    """What the HUD is showing, as one string, or None if there is no HUD at all.
+
+    It never raises. The whole reason this exists is that a selector miss used to throw out of the
+    calling function and take every remaining check with it.
+    """
+    return page.evaluate(r"""() => {
+      const h = document.querySelector('#hud');
+      return h ? h.textContent.replace(/\s+/g, ' ').trim() : null;
+    }""")
 
 
 def main():

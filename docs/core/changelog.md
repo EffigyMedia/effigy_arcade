@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="tooling-260831"></a>
+## [tooling, on 0.10.22] - 2026-08-31
+*No product file changed, so there is no version and no cache bump: a device running 0.10.22 is
+running exactly what this entry was tested against. Bumping for a harness-only change would make
+every installed device re-download a build whose bytes it already has.*
+- Fixed: **a missing selector aborted every Interstate run of `drive-test`.** Reported for weeks as
+  "18/19 passed", it was not one failing check - it was six that never ran. `eval_on_selector` throws
+  when a selector misses, and the throw left the function, taking speed, the rev limiter, distance
+  travelled, staying on the road and damage with it. `#score` exists in Motorsport and not in the
+  Interstate, whose live figures are `#clock`, `#dist` and `#place`, so one game passed and the other
+  died on the same line. It reads `#hud` now - the container both machines have, whose text changes
+  when anything inside it does - through a helper that returns nothing rather than throwing. The
+  Interstate reports peak 152mph, revs never past the limiter, 192,332 units travelled, on the road
+  for 100% of samples and worst damage 13%, none of which had ever been read. 27 of 27
+  ([RLG-103](../fragments/RLG-103.md)).
+
 <a id="v0-10-22"></a>
 ## [0.10.22] - 2026-08-31
 - Changed: **OCEAN is COASTAL.** Five places in `road.js` and fifteen across four harnesses. Nothing
