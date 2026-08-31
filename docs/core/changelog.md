@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-13"></a>
+## [0.10.13] - 2026-08-30
+- Fixed: **the hour is a blend, not a branch.** Owner: going from night to day, and day to night, is
+  a gigantic snap. It was, and only the GROUND was snapping - `nightFall` and `goldenHour` have
+  always returned smooth ramps, and every sky stop already mixes against them. Three places took the
+  same smooth numbers and thresholded them at `> 0.5` and `> 0.25`, so the ground, the sea and the
+  mirror's snow each flipped between three fixed looks in a single frame while the sky above went on
+  crossfading. That is why it read as the whole world jumping rather than as a colour being off.
+  The fractions are used as fractions now, night applied after gold so full night still wins.
+  Measured across a whole day: the worst single frame carried **100% of the ground's colour travel**
+  before, and 3% after ([RLG-091](../fragments/RLG-091.md)).
+- Added: **`hour-test.py`**, which walks the day in 360 steps and compares the biggest single step
+  with the day's whole range. Sampling four times a day would have found three plausible colours and
+  no snap at all - the fault only existed between the samples. The share is measured against the
+  day's own travel rather than a threshold in brightness levels, which would need re-tuning the day
+  anybody changed a biome palette ([RLG-091](../fragments/RLG-091.md)).
+
 <a id="v0-10-12"></a>
 ## [0.10.12] - 2026-08-30
 - Fixed: **the device was serving a half-updated cache, which is a black screen.** Owner: pressing

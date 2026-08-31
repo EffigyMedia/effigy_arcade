@@ -7506,6 +7506,40 @@ function bioAt(idx){ return BIOMES[bioMix(idx) >= 0.5 ? biomeTo : biomeFrom] || 
      un-strobed tone.
    ------------------------------------------------------------------------- */
 const NIGHT_GROUND = [12,22,30], GOLD_GROUND = [150,110,60];
+/* ==== THE HOUR IS A BLEND, NOT A BRANCH (RLG-091) =======================
+   Owner, 2026-08-30: going from night to day, and day to night, is a gigantic
+   snap. It should lerp.
+
+   IT WAS A SNAP, AND ONLY THE GROUND WAS SNAPPING. `nightFall` and
+   `goldenHour` have always returned smooth 0-to-1 ramps, and the SKY reads
+   them properly - every sky stop is a `mix3` against those fractions. Three
+   places then took the same smooth numbers and thresholded them:
+
+       if(nAmt > 0.5)   ... the night tone
+       if(gAmt > 0.25)  ... the golden tone
+       otherwise        ... the day tone
+
+   So the ground flipped between three fixed looks in a single frame while the
+   sky above it went on crossfading. That is worse than either being wrong on
+   its own: it is the reason it reads as the whole world jumping rather than as
+   a colour being slightly off.
+
+   THE THRESHOLDS ARE GONE AND THE FRACTIONS ARE USED AS FRACTIONS. Night is
+   applied after gold, so at full night the result is the night tone whatever
+   gold says - which is what the old ordering did at its extremes, and is why
+   dusk still reads as gold giving way to dark rather than the two fighting.
+   ======================================================================= */
+function hourTint(c, nAmt, gAmt, nStr, gStr){
+  return mix3(mix3(c, GOLD_GROUND, gAmt * gStr), NIGHT_GROUND, nAmt * nStr);
+}
+/* and snow takes the colour of the hour it is lying in, by the same fractions.
+   This was three named constants picked by the same thresholds. */
+function snowHue(nAmt, gAmt){
+  if(nAmt === undefined) nAmt = nightFall();
+  if(gAmt === undefined) gAmt = goldenHour();
+  return mix3(mix3(SNOW_DAY, SNOW_GOLD, gAmt), SNOW_NIGHT, nAmt);
+}
+
 function groundTone(idx, dark, nAmt, gAmt){
   const t = bioMix(idx);
   const B = BIOMES[biomeTo] || BIOMES.FOREST, B0 = BIOMES[biomeFrom] || B;
@@ -7514,9 +7548,9 @@ function groundTone(idx, dark, nAmt, gAmt){
   const raw = dark ? lo : hi;
   if(nAmt === undefined) nAmt = nightFall();
   if(gAmt === undefined) gAmt = goldenHour();
-  if(nAmt > 0.5)   return mixRGB(mixRGB(raw, dark ? 0.62 : 0.55, NIGHT_GROUND), settle*0.85, SNOW_NIGHT);
-  if(gAmt > 0.25)  return mixRGB(mixRGB(raw, dark ? 0.34 : 0.30, GOLD_GROUND), settle*0.85, SNOW_GOLD);
-  return mixRGB(raw, settle * 0.85, SNOW_DAY);
+  /* the same strengths the three branches used, applied as amounts (RLG-091) */
+  const c = hourTint(hexRGB(raw), nAmt, gAmt, dark ? 0.62 : 0.55, dark ? 0.34 : 0.30);
+  return rgb(mix3(c, snowHue(nAmt, gAmt), settle * 0.85));
 }
 
 /* LIFT A COLOUR TOWARD ANOTHER ONE. It reads both colour forms, because its own
@@ -11333,9 +11367,9 @@ function hazeRGB(){
    ------------------------------------------------------------------------- */
 function seaTone(B){
   const n = nightFall(), g = goldenHour();
-  let c = B.sea;
-  if(n > 0.5)      c = mixRGB(c, 0.66, NIGHT_GROUND);
-  else if(g > 0.25) c = mixRGB(c, 0.26, GOLD_GROUND);
+  /* the sea crossed the same two thresholds the ground did, so a coast snapped
+     twice over - once on the land and once on the water (RLG-091) */
+  const c = rgb(hourTint(hexRGB(B.sea), n, g, 0.66, 0.26));
   const rain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
   return rain > 0 ? mixRGB(c, rain * 0.30, WET_DARK) : c;
 }
@@ -14137,7 +14171,9 @@ function drawMirrorFull(mx, my, mw, mh){
   const mRain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
   const mSnowRoad = settle * 0.55, mSnowGround = settle * 0.85;
   const mNight = nightFall(), mGold = goldenHour();
-  const mLight = mNight > 0.5 ? SNOW_NIGHT : mGold > 0.25 ? SNOW_GOLD : SNOW_DAY;
+  /* the same blend the road ahead uses, or the mirror snaps while the road
+     in front of it crossfades (RLG-091) */
+  const mLight = snowHue(mNight, mGold);
   /* a covered road takes its markings under with it, exactly as it does ahead */
   const mPaint = 1 - settle * 0.85;
   let prev = null;
