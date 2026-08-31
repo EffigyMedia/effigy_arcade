@@ -134,22 +134,43 @@ def main():
             print('      the count ran from %.2f down to %.2f over %d samples'
                   % (held[0]['left'], held[-1]['left'], len(held)))
 
-        # ---- 1. THE CAR IS HELD ----------------------------------------------
-        moving = [s for s in held if s['spd'] > 0]
-        res.check(not moving, 'the car does not move while the count is up',
-                  'it reached %d mph-units with %.2f still to go'
-                  % (max((s['spd'] for s in moving), default=0),
-                     max((s['left'] for s in moving), default=0)))
+        # ---- 1. THE CAR IS HELD, AND ON THIS MACHINE THAT MEANS PINNED -------
+        # THIS CHECK USED TO READ "the car does not move", and that was right while every
+        # start was a standing one. Interstate rolls to the line now (RLG-123): the car is
+        # pinned at fifty and the count happens around it, so a car at zero would be the
+        # fault rather than the proof.
+        #
+        # What the check was ever ABOUT survives unchanged - a countdown drawn over a car
+        # that is already ACCELERATING is a lie the first frame gives away. So what is
+        # asserted is that the speed does not move, with the pedal held down throughout.
+        roll = held[0]['roll'] if held else 0
+        spds = [s['spd'] for s in held]
+        print('      the car was pinned at %d units (%d mph) and read %d to %d'
+              % (roll, round(roll / (15333 / 200.0)), min(spds), max(spds)))
+        res.check(max(spds) - min(spds) <= max(2, roll * 0.02),
+                  'the car neither speeds up nor slows down while the count is up',
+                  'it ran from %d to %d with the pedal down' % (min(spds), max(spds)))
+        res.check(abs(spds[0] - roll) <= max(2, roll * 0.02),
+                  'and it is pinned at the speed this machine starts from',
+                  'it read %d against a roll of %d' % (spds[0], roll))
 
-        # AND THE ROAD DOES NOT PASS UNDER IT EITHER. Speed is what the engine reports;
-        # distance is what actually happened. A hold that froze the readout while the world
-        # kept moving would pass the check above and fail the player.
+        # AND THE ROAD PASSES UNDER IT WHILE THE ODOMETER DOES NOT. Two different
+        # questions that a standing start could not tell apart. The road MUST move - a
+        # speed readout over a frozen world is exactly the fault RLG-121 was about - and
+        # the distance must NOT be credited, because distance unlocks cars and the count
+        # is not the player's to spend.
         if len(held) >= 2:
             crept = held[-1]['dist'] - held[0]['dist']
-            print('      distance travelled during the count: %.4f miles' % crept)
+            rolled = held[-1]['pos'] - held[0]['pos']
+            print('      the road passed under it by %d units; the odometer counted %.4f miles'
+                  % (rolled, crept))
             res.check(abs(crept) < 1e-6,
-                      'and the road does not pass under it',
-                      'it covered %.4f miles while held' % crept)
+                      'and no distance is credited for sitting through the count',
+                      'it counted %.4f miles while held' % crept)
+            if roll > 0:
+                res.check(rolled > roll * 0.5,
+                          'while the road really does pass under it',
+                          'it covered %d units, which is not a rolling start' % rolled)
 
         # ---- 2. THE CLOCK DOES NOT START -------------------------------------
         if len(held) >= 2:

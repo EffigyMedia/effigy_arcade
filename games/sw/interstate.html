@@ -893,7 +893,17 @@ body.titling #veil h1{display:none}
    passes almost nothing — which is the point. Every seam it leaves unset
    falls through to the behaviour it always had.
    -------------------------------------------------------------------------- */
-ROAD({ id:'interstate', title:'Redline Interstate' });
+/* ---- AND THE ONE SEAM IT DOES SET (owner, 2026-08-31) ----------------------
+   The rolling start, and it is the main difference between this machine and
+   Motorsport. Interstate is the endless road: you are already driving when the
+   run begins, so the count happens while the car is pinned at fifty and GO
+   changes exactly one thing - who is steering. In a race the whole field rolls
+   to the line at the same fifty, ahead of you.
+
+   Motorsport says nothing here and therefore starts from a grid, standing, on
+   the neutral launch and the rev window - which is what a circuit race is.
+   -------------------------------------------------------------------------- */
+ROAD({ id:'interstate', title:'Redline Interstate', rollStartMph:50 });
 </script>
 
 <div id="rotate"><div><i></i><b>TURN YOUR PHONE</b>

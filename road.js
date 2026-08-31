@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.29';
+window.ROAD_BUILD = '0.10.30';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6943,20 +6943,20 @@ function reset(){
   gear=1; idleRev=IDLE; autoHold=0; autoDownT=0;
   if(typeof knobRail !== 'undefined'){ knobRail=0; knobY=TOP_Y; }
   dmg=0; nos=40; nosOn=false; nosTime=0; bustT=0;
-  /* ---- THE ROLLING START IS OVER, AND THESE TWO LINES ARE ITS REMAINS --
+  /* ---- AND THE ROLLING START IS BACK, AS A SEAM ------------------------
      A run used to begin at speed in second, because a dead stop in first meant
      four seconds of nothing while the car got out of its own way. RLG-088 put
-     a count-in in front of the run instead, and the count-in holds `spd` at
-     zero every frame it is up, so neither of these two values survives to be
-     driven - and RLG-110 now puts the box in NEUTRAL over the top of the gear.
+     a count-in in front of the run and pinned the speed to zero through it, so
+     these two lines stopped meaning anything and sat here describing a start
+     the game no longer had.
 
-     THEY ARE LEFT HERE ON PURPOSE. `CFG.onReset` fires on the next line, a
-     seam is entitled to read the car it is handed, and changing what it sees
-     is not this unit's business. What is corrected is the comment, which
-     described a start the game has not had for some time.
+     They mean something again, and now they answer to the machine: Interstate
+     rolls to the line at `CFG.rollStartMph` and Motorsport stands on a grid.
+     `CFG.onReset` fires on the next line and is entitled to read the car it is
+     handed, so the values are set before it rather than after.
      ------------------------------------------------------------------- */
-  gear = 2;
-  spd = MAX_SPD * 0.155;
+  gear = standingStart() ? 1 : 2;
+  spd = startSpeed();
   if(CFG.onReset) CFG.onReset();
   racers=[]; place=12; finished=false; hasMoved=false;
   curveSegs=[]; hillSegs=[]; signs=[]; bendZ0=0; bendCache=[]; bendT=0; skySmooth=0; pushK=0;
@@ -7778,6 +7778,28 @@ const LAUNCH = {
    lands, and it is what tells the drop-into-gear code that THIS one is a start
    rather than a mid-race blip. The two want different payoffs and a flag is
    cheaper than guessing from the speed. */
+/* ---- WHERE A RUN STARTS FROM, AND IT IS THE MARQUE'S MAIN SPLIT ---------
+   Owner, 2026-08-31: "maybe the whole thing would just make more sense if it
+   was actually a rolling start where the car is just pinned to 50 miles an
+   hour and then the countdown happens and it relinquishes control to the
+   player. During races, you have the whole field of opponents doing the same
+   ahead of you" - and then: "this would also provide the main difference
+   between interstate and motorsport."
+
+   SO IT IS ONE NUMBER ON THE `CFG` SEAM, not a branch that names a machine.
+   INTERSTATE IS THE ENDLESS ROAD: you are already driving when the run
+   begins, the count happens while the car rolls, and GO changes exactly one
+   thing - who is steering. MOTORSPORT IS A CIRCUIT: a race starts from a
+   grid, standing, and that is what the neutral launch and the rev window of
+   [[RLG-110]] are for. Each discipline gets the start that belongs to it.
+
+   Zero means a standing start, so a machine that says nothing gets the grid.
+   ------------------------------------------------------------------------- */
+function rollStartMph(){ return CFG.rollStartMph || 0; }
+function standingStart(){ return rollStartMph() <= 0; }
+/* the held speed in the engine's own units - 200mph is MAX_SPD */
+function startSpeed(){ return MAX_SPD * (rollStartMph() / 200); }
+
 let launchArmed = false, spinT = 0, bogHold = 0;
 let launchNote = '', launchNoteT = 0, launchF = 0;
 /* ---- HOLDING THE BOX IN NEUTRAL -----------------------------------------
@@ -7802,9 +7824,15 @@ function holdNeutral(){
    everything the last launch left behind is cleared here rather than in six
    places, so a second run cannot inherit the first one's wheelspin. */
 function armLaunch(){
-  launchArmed = true;
   spinT = 0; bogHold = 0; bogT = 0;
   launchNote = ''; launchNoteT = 0; launchF = 0;
+  /* ---- A ROLLING START HAS NOTHING TO LAUNCH -------------------------
+     You are already moving and already in gear, so there is no neutral to
+     rev in and no gear to drop. The window belongs to the grid; on the
+     endless road the count is a courtesy rather than a skill.
+     ---------------------------------------------------------------- */
+  if(!standingStart()){ launchArmed = false; return; }
+  launchArmed = true;
   idleRev = IDLE; wasNeutral = false;
   holdNeutral();
 }
@@ -9332,7 +9360,9 @@ function buildField(){
        rival on its own gearbox and its own torque, so from zero they pull
        away exactly as the player's car does.
        ---------------------------------------------------------------- */
-    r.spd   = 0;
+    /* A GRID starts from rest; a ROLLING field is already doing the start
+       speed when the count begins, and holds it until GO. */
+    r.spd   = standingStart() ? 0 : startSpeed();
     /* ---- A LAUNCH IS A SKILL OF ITS OWN, AND IT IS NOT GRID ORDER -----
        Drawn WITHOUT `i`, deliberately. `r.base` above already strings the
        field out by grid position, and a launch spread that followed the same
@@ -9398,6 +9428,21 @@ function laneView(r, reach){
   return out;
 }
 
+/* ---- THE FIELD ROLLING TO THE LINE --------------------------------------
+   Not `stepRacers` with the throttle shut: a rival that is being STEPPED is
+   deciding lanes, reading the cars in front of it and building speed toward
+   its own target, and none of that is a car waiting for a countdown. It holds
+   the same speed the player is pinned to, so the field's positions relative to
+   the player do not change by a yard while the count is up - which is what
+   makes GO change nothing at all.
+   ------------------------------------------------------------------------- */
+function rollField(dt){
+  const v = startSpeed();
+  for(const r of racers){
+    r.spd = v;
+    r.z  += v * dt;
+  }
+}
 function stepRacers(dt){
   const k = Math.min(2.4, dt*60);
   for(const r of racers){
@@ -10830,8 +10875,10 @@ function step(dt){
        throttle was held. Neutral is asserted every frame, so a knob dragged
        during the count cannot take it away before the lights.
        -------------------------------------------------------------- */
-    spd = 0; nosOn = false;
-    holdNeutral();
+    nosOn = false;
+    /* the box is only held in neutral for a grid start - a rolling car is in
+       gear and doing fifty, and `autoGear` below picks which gear that is */
+    if(standingStart()) holdNeutral();
     /* ---- AND IT CAN BE HEARD (owner, from the device, 2026-08-31) -----
        Reported against v0.10.27: there is no engine sound during the
        countdown. Everything that makes a noise sits at the BOTTOM of this
@@ -11074,7 +11121,7 @@ function step(dt){
      of them undefined - and the throttle still has to be READ while the count
      is up, because it is what sets the revs for the launch.
      ------------------------------------------------------------------- */
-  if(held) spd = 0;
+  if(held) spd = startSpeed();
   /* your own brake light, on the same hysteresis every other car uses */
   if((spdWas - spd) / Math.max(dt, 1/240) > 900) brakeLamp = 0.30;
   else if(brakeLamp > 0) brakeLamp -= dt;
@@ -11328,15 +11375,29 @@ function step(dt){
     }
   } else behindT = 0.4;
   if(autoHold > 0) autoHold -= dt;
-  /* held: the grid stands still on the line (RLG-118). Everything else in
-     the world moves around it, which is the whole of RLG-121. */
-  if(mode === 'race' && !finished && !held) stepRacers(dt);
+  /* ---- THE FIELD DOES WHAT YOU DO ------------------------------------
+     On a GRID it stands still on the line ([[RLG-118]]) while everything else
+     in the world moves around it. On a ROLLING start the whole field is doing
+     the same fifty ahead of you, so it holds station rather than racing: the
+     owner's words are "you have the whole field of opponents doing the same
+     ahead of you", and a field that is not yet racing must not have gained a
+     yard when the count reaches zero.
+     ------------------------------------------------------------------- */
+  if(mode === 'race' && !finished){
+    if(!held) stepRacers(dt);
+    else if(!standingStart()) rollField(dt);
+  }
   /* held: the automatic box must not shift out of NEUTRAL while the count is
      up - `autoGear` clamps the gear to 1 on its first line, so without this it
      undid `holdNeutral` every frame and the launch fired on the count's first
      frame instead of on GO. Caught by launch-test the moment the count stopped
      returning early (RLG-110, RLG-121). */
-  if(!optManual && !held) autoGear(dt);
+  /* held: on a GRID the automatic must not shift out of neutral - `autoGear`
+     clamps the gear to 1 on its first line, so without this it undid
+     `holdNeutral` every frame and the launch fired on the count's first frame
+     instead of on GO. On a ROLLING start it must run, because a car doing
+     fifty has to be in the gear that suits fifty. */
+  if(!optManual && (!held || !standingStart())) autoGear(dt);
   /* a gear that cannot pull makes the engine labour, which you hear */
   /* A bogged start labours for the same reason a wrong gear does, so it uses
      the same sound rather than a second one - and it does so on either
@@ -15636,7 +15697,10 @@ let hasMoved = false;
    being used and gone the moment the car is away.
    ------------------------------------------------------------------------- */
 function drawStartPrompt(){
-  const showing = countIn > 0 || launchNoteT > 0;
+  /* only where there IS a launch. A rolling start has no neutral to rev in, so
+     a strip telling the player to rev would be instructions for another game
+     (RLG-123). */
+  const showing = (countIn > 0 && launchArmed) || launchNoteT > 0;
   if(!showing){
     if(spd > MAX_SPD*0.02) hasMoved = true;
     return;
@@ -15777,7 +15841,7 @@ function drawDials(){
 
   const rpm = engineRpm();
   /* the launch window is on the face while the start is live and gone after */
-  const lw = (countIn > 0 || launchNoteT > 0) ? launchWindow() : undefined;
+  const lw = (launchArmed || launchNoteT > 0) ? launchWindow() : undefined;
   face(g, 30, 30, 26, rpm / redline(), (rpm/1000).toFixed(1), 'x1000',
        0.86, '#5ff0d8', '#ff3b5c', undefined, gearLabel(), lw);
   /* ---- THE DIAL HAS TO REACH ------------------------------------------
@@ -17512,6 +17576,8 @@ requestAnimationFrame(frameLoop);
   API.launch = function(){
     const w = launchWindow();
     return { armed: !!launchArmed, gear: gear, count: +countIn.toFixed(3),
+             standing: standingStart(), roll: Math.round(startSpeed()),
+             spd: Math.round(spd), pos: Math.round(pos),
              lo:+w.lo.toFixed(3), peak:+w.peak.toFixed(3), hi:+w.hi.toFixed(3),
              rev:+clamp(idleRev / Math.max(1, redline()), 0, 1).toFixed(3),
              at:+launchF.toFixed(3), note: launchNote,
@@ -17916,6 +17982,11 @@ requestAnimationFrame(frameLoop);
   API.startLine = function(){
     return { left:+countIn.toFixed(3), pip:countPip, go:+goFor.toFixed(3),
              seen:seenStart, clock:+clock.toFixed(2), spd:Math.round(spd),
+             /* `pos` is where the ROAD has got to and `dist` is what the
+                ODOMETER has counted. They are not the same question and a
+                rolling start separates them: the road passes under the car
+                while the count runs, and none of it is the player's yet. */
+             pos:Math.round(pos), roll:Math.round(startSpeed()),
              dist:+dist.toFixed(4) };
   };
   /* the card height every body would ask for, and the one that is reserved.

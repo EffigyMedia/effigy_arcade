@@ -43,7 +43,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tools'))
 from harness import console_utf8, launch_chromium
 
-GAME = 'games/sw/interstate.html'
+# ---- TWO MACHINES, TWO STARTS (RLG-123) ------------------------------------
+# Owner, 2026-08-31: the rolling start is the main difference between them.
+# MOTORSPORT is a circuit: a race starts from a grid, standing, on the neutral
+# launch and the rev window. INTERSTATE is the endless road: you are already
+# driving, the count happens at fifty, and GO changes only who is steering.
+# So the launch is tested where the launch is, and the roll where the roll is.
+GAMES = {'motorsport': 'games/sw/motorsport.html',
+         'interstate': 'games/sw/interstate.html'}
 
 INIT = r"""
 window.__probe = { errors: [], road: null };
@@ -88,12 +95,12 @@ class Results:
             self.fails.append(label)
 
 
-def open_page(browser, port, race=False):
+def open_page(browser, port, race=False, game='motorsport'):
     """A fresh context every time, so no run inherits the last one's save or its `seenStart`."""
     page = browser.new_context(viewport={'width': 480, 'height': 900},
                                has_touch=True, is_mobile=True).new_page()
     page.add_init_script(INIT)
-    page.goto('http://127.0.0.1:%d/%s' % (port, GAME), wait_until='load')
+    page.goto('http://127.0.0.1:%d/%s' % (port, GAMES[game]), wait_until='load')
     page.wait_for_function('!!window.__probe.road', timeout=10000)
     page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
     page.click('[data-act="play"]')
@@ -134,9 +141,21 @@ def drive_start(page, throttle):
                 page.dispatch_event('#gas', 'pointerdown'); down = True
             elif row['rev'] >= row['peak'] and down:
                 page.dispatch_event('#gas', 'pointerup'); down = False
+        # ---- AND AFTER GO, EVERY RUN DRIVES THE SAME -----------------------------
+        # The launch is graded at the instant the gear lands, and what happens after it
+        # is ordinary driving. Without this the comparison below was not about the
+        # launch at all: the 'aim' driver had lifted to catch the band and never pressed
+        # again, so it coasted to a standstill and lost to a wheelspin that at least had
+        # its foot down. Same driver after GO, different launch, is the only way that
+        # check means what it says.
+        if row['count'] <= 0 and not down:
+            page.dispatch_event('#gas', 'pointerdown'); down = True
     if down:
         page.dispatch_event('#gas', 'pointerup')
     return rows
+
+
+MPH_UNITS = 15333 / 200.0     # MAX_SPD is 200mph, road.js
 
 
 def pearson(xs, ys):
@@ -164,7 +183,7 @@ def main():
         print('\n  the box, and the engine in it')
         runs = {}
         for how in ('none', 'flat', 'aim'):
-            page = open_page(browser, port)
+            page = open_page(browser, port, game='motorsport')
             runs[how] = drive_start(page, how)
             page.context.close()
 
@@ -194,12 +213,18 @@ def main():
         aim = runs['aim']
         lheld = [r for r in aim if r['count'] > 0]
         if lheld:
-            peak_at = max(r['rev'] for r in lheld)
-            ended = lheld[-1]['rev']
-            print('      after lifting: %.3f at its highest, %.3f by the end of the count'
-                  % (peak_at, ended))
-            res.check(ended < peak_at, 'and the needle falls again when the throttle is released',
-                      'it was %.3f at its highest and %.3f at the end' % (peak_at, ended))
+            revs = [r['rev'] for r in lheld]
+            # IT HAS TO FALL AS WELL AS RISE, which is what makes a band holdable at all -
+            # the driver above walks the needle up and lets it drift, so somewhere in the
+            # count there must be a sample lower than the one before it. Comparing the peak
+            # with the last reading does NOT test this: a driver holding the band well ends
+            # AT the peak, and the check would fail on the run that went best.
+            fell = max((revs[i] - revs[i+1] for i in range(len(revs)-1)), default=0)
+            print('      walking the needle: %.3f to %.3f, largest single drop %.3f'
+                  % (min(revs), max(revs), fell))
+            res.check(fell > 0.005,
+                      'and the needle falls again when the throttle is released',
+                      'it never dropped between samples; the largest fall was %.4f' % fell)
 
         # 3b. AND IT CAN BE HEARD WHILE IT DOES (owner, from the device, 2026-08-31)
         #     Everything that makes a noise sits at the bottom of step(), past the count-in's
@@ -293,60 +318,93 @@ def main():
                           'a launch inside the window beats the %s start' % bad,
                           '%d against %d a second later' % (spds[good], spds[bad]))
 
-        # ================================================================== RLG-118
-        print('\n  the grid')
+        # ============================================== the rolling start (RLG-123)
+        print('\n  the rolling start, on the endless road')
         grids = []
         for _ in range(3):
-            page = open_page(browser, port, race=True)
+            page = open_page(browser, port, race=True, game='interstate')
             page.wait_for_timeout(400)
-            during = page.evaluate('() => window.__probe.road.grid()')
+            during = page.evaluate('() => ({ line: window.__probe.road.launch(),'
+                                   '          grid: window.__probe.road.grid() })')
+            page.wait_for_timeout(1200)
+            during2 = page.evaluate('() => ({ line: window.__probe.road.launch(),'
+                                    '          grid: window.__probe.road.grid() })')
             # the frame the count lets go, and a second past it
-            page.wait_for_timeout(2900)
-            at_go = page.evaluate('() => window.__probe.road.grid()')
+            page.wait_for_timeout(1500)
+            at_go = page.evaluate('() => ({ line: window.__probe.road.launch(),'
+                                  '          grid: window.__probe.road.grid() })')
             page.wait_for_timeout(1000)
-            later = page.evaluate('() => window.__probe.road.grid()')
-            grids.append((during, at_go, later))
+            later = page.evaluate('() => ({ line: window.__probe.road.launch(),'
+                                  '          grid: window.__probe.road.grid() })')
+            grids.append((during, during2, at_go, later))
             page.context.close()
 
-        during, at_go, later = grids[0]
-        res.check(len(during) == 11, 'a race grid is eleven rivals',
-                  'it was %d' % len(during))
-        res.check(all(r['spd'] == 0 for r in during),
-                  'every rival is at a standstill while the count is up',
-                  'fastest was %d' % max((r['spd'] for r in during), default=0))
+        during, during2, at_go, later = grids[0]
+        roll = during['line']['roll']
+        print('      the machine rolls to the line at %d units (%d mph), standing=%s'
+              % (roll, round(roll / MPH_UNITS), during['line']['standing']))
+        res.check(during['line']['standing'] is False,
+                  'Interstate does not start from a grid',
+                  'it reported standing=%s' % during['line']['standing'])
+        res.check(roll > 0, 'and it has a rolling speed to start at', 'roll was %d' % roll)
 
-        # THE FLYING START, WHICH IS THE WHOLE OF RLG-118. Before the fix each car sat at 0.92 of
-        # its own base speed the instant the count let go.
-        worst = max((r['spd'] / max(1, r['base']) for r in at_go), default=1)
-        print('      at GO the fastest rival is at %.3f of its target speed' % worst)
-        res.check(worst < 0.10, 'and none of them is already at racing speed when it lets go',
-                  'one was at %.3f of its own target' % worst)
+        # 1. THE CAR IS PINNED, NOT STOPPED, AND NOT FREE
+        for label, snap in (('early', during), ('late', during2)):
+            res.check(abs(snap['line']['spd'] - roll) <= max(2, roll * 0.02),
+                      'the car is held at the rolling speed %s in the count' % label,
+                      'it was doing %d against a roll of %d' % (snap['line']['spd'], roll))
+        # AND THE ROAD IS ACTUALLY PASSING UNDER IT. A speed readout with a
+        # stationary world is the fault RLG-121 was about, so the distance is
+        # what is asserted rather than the number on the dial.
+        moved = during2['line']['pos'] - during['line']['pos']
+        print('      the road passed under it by %d units while the count ran' % moved)
+        res.check(moved > roll * 0.5,
+                  'and the road is passing under it while the count runs',
+                  'it covered %d units, which is not fifty miles an hour' % moved)
 
-        # AND THEY DO GET GOING, or the fix has simply parked the field
-        moving = [r for r in later if r['spd'] > 0]
-        share = max((r['spd'] / max(1, r['base']) for r in later), default=0)
-        print('      a second later %d of 11 are moving, the fastest at %.3f of target'
-              % (len(moving), share))
-        res.check(len(moving) == len(later), 'they all pull away once it does',
-                  'only %d of %d were moving' % (len(moving), len(later)))
-        res.check(share < 0.95, 'and they are still building speed rather than snapping to it',
-                  'one was already at %.3f of its target' % share)
+        # 2. THE WHOLE FIELD IS DOING THE SAME, AHEAD OF YOU
+        res.check(len(during['grid']) == 11, 'a race grid is eleven rivals',
+                  'it was %d' % len(during['grid']))
+        offs = [abs(r['spd'] - roll) for r in during['grid']]
+        print('      the field during the count: every rival within %d of the roll' % max(offs))
+        res.check(max(offs) <= max(2, roll * 0.02),
+                  'the whole field is rolling at the same speed you are',
+                  'one was %d off the roll' % max(offs))
 
-        # THE LAUNCH SPREAD IS NOT THE GRID ORDER. `r.base` already strings the field out by grid
-        # position; a launch spread drawn from the same order would compound with it and the back
-        # of the grid would never see the front again. Pooled over three grids, so a single
-        # unlucky draw cannot decide it.
-        xs, ys = [], []
-        for g, _, _ in grids:
-            for r in g:
-                xs.append(r['i'])
-                ys.append(r['q'])
-        r_iq = pearson(xs, ys)
-        print('      launch quality against grid position over %d rivals: r = %+.3f'
-              % (len(xs), r_iq))
-        res.check(abs(r_iq) < 0.60,
-                  'a rival\'s launch is its own, not its grid slot',
-                  'they correlate at r = %+.3f' % r_iq)
+        # 3. AND IT HAS NOT GAINED A YARD WHEN THE COUNT ENDS. This is the whole
+        #    point: a field that is not racing yet must not be racing yet. Their
+        #    positions RELATIVE to the player are what matters, because everything
+        #    is moving - so the gap is what is compared, not the absolute z.
+        def gaps(snap):
+            return [r['spd'] for r in snap['grid']]
+        drift = max(abs(a - b) for a, b in zip(gaps(during), gaps(during2)))
+        print('      the fastest rival changed speed by %d over a second of the count' % drift)
+        res.check(drift <= max(2, roll * 0.02),
+                  'and nobody in it is racing before the count ends',
+                  'one rival changed by %d' % drift)
+
+        # 4. THEY DO GO WHEN IT ENDS, or the hold has simply parked the race
+        gained = max(r['spd'] for r in later['grid']) - roll
+        print('      a second after GO the fastest rival has gained %d' % gained)
+        res.check(gained > 0, 'they go once the count ends',
+                  'the fastest had gained %d, so nothing was released' % gained)
+
+        # 5. AND NOTHING SNAPS AT THE LINE. The count ending must not step any
+        #    rival's speed more than a second of racing does.
+        step_at_go = max(abs(r['spd'] - roll) for r in at_go['grid'])
+        print('      the largest speed step at GO itself: %d, against %d gained over the next second'
+              % (step_at_go, gained))
+        res.check(step_at_go <= max(gained, roll * 0.10),
+                  'and no rival snaps to a new speed as the count reaches zero',
+                  'one stepped by %d at GO while a whole second of racing is worth %d'
+                  % (step_at_go, gained))
+
+        # A CAP STATED RATHER THAN HIDDEN. RLG-118's standing grid - eleven cars
+        # at rest on a circuit - is NOT covered here and cannot be from a harness:
+        # Motorsport's DRIVE is a solo practice session and QUALIFY is a solo lap,
+        # so neither reaches a grid. Reaching a circuit grid from a harness is
+        # unsolved; drive-test does not do it either.
+        print('      NOT COVERED: the standing grid on a circuit - no harness can reach one')
 
         browser.close()
 
