@@ -17307,6 +17307,20 @@ requestAnimationFrame(frameLoop);
      drowned out by hills and bends - an object near the horizon moves mostly
      because the TERRAIN under it does - so a measurement about how something
      approaches has to take the terrain away first. */
+  /* ---- A ROAD OF ONE CONSTANT BEND (RLG-055) ---------------------------
+     `flattenRoad` gives a straight, which is right for a braking run and useless
+     for a cornering one. This gives the other half: every segment at the same
+     curvature, so each car is pushed by the SAME corner. Without it the bodies
+     are compared on whatever bend each happened to meet - the road is generated
+     per load and advances while the run proceeds, which is RLG-062's lesson and
+     it invalidated the first set of numbers this file produced.
+     -------------------------------------------------------------------- */
+  API.bendRoad = function(k){
+    curveSegs.length = 0; hillSegs.length = 0;
+    curveSegs.push({ k: (k === undefined ? 0.6 : k), len: 1e9 });
+    hillSegs.push({ k:0, len: 1e9 });
+    return true;
+  };
   API.flattenRoad = function(){
     curveSegs.length = 0; hillSegs.length = 0;
     curveSegs.push({ k:0, len: 1e9 });
@@ -17453,6 +17467,13 @@ requestAnimationFrame(frameLoop);
     return out;
   };
   API.speedLimit = function(){ return SPEED_LIMIT; };
+  /* how fast the car is right now. `playerX`, `targetX` and `dmg` are already
+     live GETTERS further up - properties, not calls - and a function of the same
+     name written here is silently overwritten by them. That cost a debugging
+     round on the brake measurement: `R.targetX` read as a NUMBER, and at rest
+     that number is zero, so the harness's own "is this API present" guard saw a
+     falsy value and reported the engine had no such call (RLG-055). */
+  API.spdNow = function(){ return spd; };
   API.signalling = function(){
     let now = 0, waiting = 0, never = 0, seen = 0;
     for(const c of traffic){
