@@ -60,9 +60,16 @@ window.__probe = { errors: [], road: null };
 window.addEventListener('error', function(e){ window.__probe.errors.push(String(e.message)); });
 """
 
-# what a clean run looks like. Read from the engine, compared against this.
-CLEAN = {'wet': 0.0, 'wetTarget': 0.0, 'snowy': 0, 'settle': 0.0,
-         'cloud': 0.15, 'storm': 0}
+# ---- WHAT A CLEAN RUN MEANS, AND IT IS NOT "DRY" -------------------------
+# This asserted a dry, clear sky, which was right while `freshWorld` zeroed everything and
+# left the first roll to the drive. It is wrong now: a run ROLLS ITS OWN WEATHER at the
+# reset, so that the player looks at the weather they are about to drive in rather than
+# having it arrive on GO (RLG-090). A fresh run may legitimately start in snow.
+#
+# So the question is not whether the weather is off. It is whether the weather is the NEW
+# run's own: nothing accumulated survives, what is falling is what this run rolled, and
+# nothing is left sitting due.
+SETTLE_MUST_CLEAR = 'settle'
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -128,16 +135,32 @@ def main():
         fresh = page.evaluate('() => window.__probe.road.worldState()')
         print('      and the next run starts at: %s' % fresh)
 
-        wrong = []
-        for k, want in CLEAN.items():
-            got = fresh.get(k)
-            if got is None:
-                wrong.append('%s is missing from worldState' % k)
-            elif abs(float(got) - float(want)) > 1e-6:
-                wrong.append('%s is %s, not %s' % (k, got, want))
-        res.check(not wrong,
-                  'a retry starts with clean weather, a clear sky and nothing settled',
-                  '; '.join(wrong))
+        # 1. NOTHING ACCUMULATED SURVIVES. Settled snow is the clearest case: it is built
+        #    up over a whole run, so carrying it is carrying the last run's history.
+        res.check(abs(float(fresh.get('settle', 1))) <= 1e-6,
+                  'a retry starts with nothing settled on the road',
+                  'settle is %s after a run that ended at %s'
+                  % (fresh.get('settle'), dirty.get('settle')))
+
+        # 2. AND WHAT IS FALLING IS THIS RUN'S OWN ROLL, not the last one's value being
+        #    chased away from. A freshly rolled run starts AT its target rather than
+        #    easing toward it over the first seconds of the drive.
+        res.check(abs(float(fresh.get('wet', 0)) - float(fresh.get('wetTarget', 1))) <= 1e-3,
+                  'and the weather it starts in is the weather it rolled',
+                  'wet %s against a target of %s' % (fresh.get('wet'), fresh.get('wetTarget')))
+
+        # 3. AND NOTHING IS LEFT SITTING DUE, which is what put a change on GO.
+        due = [k for k in ('wetIn', 'cloudIn', 'biomeIn') if float(fresh.get(k, 1)) <= 0]
+        res.check(not due, 'and nothing is due the moment it starts', ', '.join(due))
+
+        # 4. THE LAST RUN'S SPECIFIC STATE IS GONE. Dirtied to deep snow and a storm sky;
+        #    a new run that reproduced those exact numbers would be continuing, not starting.
+        carried = [k for k in ('settle', 'storm')
+                   if abs(float(fresh.get(k, 0)) - float(dirty.get(k, 0))) <= 1e-6
+                   and abs(float(dirty.get(k, 0))) > 0.1]
+        res.check(not carried,
+                  'and the run before it left nothing behind',
+                  'these came across unchanged: %s' % ', '.join(carried))
 
         # AND THE PLACE AGREES WITH ITSELF. The complaint was two pieces of state
         # disagreeing, so a run that starts mid-transition is the same fault again.

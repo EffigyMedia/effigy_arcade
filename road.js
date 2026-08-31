@@ -7718,6 +7718,31 @@ function freshWorld(){
   /* and the place, which chooses itself outright rather than transitioning */
   biomeStarted = 0; biomeNext = 0;
   openBiome();
+  /* ---- AND IT SETTLES BEFORE THE COUNT, NOT ON GO (RLG-090) ----------
+     Owner, 2026-08-31: there is still a pop on GO - can the state not be
+     started on load and persisted through the countdown and the drive start.
+
+     It can, and that is the fix. A counter left at zero means A ROLL IS DUE,
+     and the count-in returns from `step()` before any of them run - so the
+     first frame after GO rolled the weather and the cloud in front of the
+     player. The biome had exactly this fault and was fixed one version ago;
+     these are the same bug twice more, in the two counters beside it.
+
+     THE ROLLS HAPPEN HERE INSTEAD, so the run begins with the weather it is
+     going to have, and the player looks at it for three seconds before being
+     let go. `rollWeather` and `rollSky` are the same code the steppers run -
+     lifted out so they can be called from both places rather than copied.
+
+     THEN THE COUNTERS ARE ARMED to a full interval, because a run that has
+     just chosen its weather is not also a run that is due to change it.
+     ---------------------------------------------------------------- */
+  rollSky();
+  rollWeather();
+  /* and what was rolled is where it starts, rather than being chased toward
+     from clear and dry over the first seconds of the drive */
+  wet = wetTarget;
+  cloud = cloudTarget;
+  storm = snowy ? wet * 0.35 : wet;
 }
 
 /* ---- THE OPENING PLACE IS CHOSEN BEFORE THE FIRST FRAME (RLG-088) ----
@@ -7938,16 +7963,20 @@ let boltT = 0, boltNext = rnd(6, 18), boltMag = 0, thunderIn = -1;
    kept because the SOUND needs it and the magnitude cannot carry it: two
    different distances can want the same level and a different roll-off. */
 let boltFar = 0;
+/* one roll of the cover, and how long until the next. Called by the stepper
+   when its counter runs out, and by `freshWorld` so a run does not start with
+   one already due (RLG-090). */
+function rollSky(){
+  const B = bio();
+  /* a place with weather in it is a place with cloud in it - the same roll
+     the rain uses, read as a tendency rather than as an event */
+  const base = clamp((B.rain + B.snow) * 1.6, 0.05, 0.75);
+  cloudTarget = clamp(base * rnd(0.35, 1.5), 0.02, 1);
+  cloudNext = rnd(25, 70);
+}
 function stepSky(dt){
   cloudNext -= dt;
-  if(cloudNext <= 0){
-    const B = bio();
-    /* a place with weather in it is a place with cloud in it - the same roll
-       the rain uses, read as a tendency rather than as an event */
-    const base = clamp((B.rain + B.snow) * 1.6, 0.05, 0.75);
-    cloudTarget = clamp(base * rnd(0.35, 1.5), 0.02, 1);
-    cloudNext = rnd(25, 70);
-  }
+  if(cloudNext <= 0) rollSky();
   /* rain and snow need a sky to fall out of */
   const need = Math.max(wet, snowy ? wet : 0) * 0.9;
   const want = Math.max(cloudTarget, need);
@@ -8005,23 +8034,28 @@ function boltFlash(){
   return clamp(flicker * boltMag, 0, 1);
 }
 
+/* ---- THE BIOME DECIDES WHAT FALLS ---------------------------------
+   A desert has a 4% chance of rain and none at all of snow; a tundra
+   snows more often than not. The roll is against the biome, so weather
+   belongs to a place rather than to a slider.
+
+   Lifted out of the stepper so `freshWorld` can roll once at the reset and a
+   run does not begin with a roll already due (RLG-090). */
+function rollWeather(){
+  if(optWeather === 'dry'){ wetTarget = 0; snowy = 0; wetNext = rnd(35, 80); return; }
+  const B = bio();
+  const r = Math.random();
+  if(r < B.snow)              { wetTarget = rnd(0.45, 1.0); snowy = 1; }
+  else if(r < B.snow + B.rain){ wetTarget = rnd(0.35, 0.95); snowy = 0; }
+  else                        { wetTarget = 0; }
+  if(optWeather === 'wet' && wetTarget === 0){ wetTarget = rnd(0.5,0.9); snowy = B.snow > B.rain ? 1 : 0; }
+  wetNext = rnd(35, 80);
+}
 function stepWeather(dt){
   stepSky(dt);
   if(optWeather === 'dry'){ wet = wetTarget = 0; return; }
   wetNext -= dt;
-  if(wetNext <= 0){
-    /* ---- THE BIOME DECIDES WHAT FALLS ---------------------------------
-       A desert has a 4% chance of rain and none at all of snow; a tundra
-       snows more often than not. The roll is against the biome, so weather
-       belongs to a place rather than to a slider. */
-    const B = bio();
-    const r = Math.random();
-    if(r < B.snow)              { wetTarget = rnd(0.45, 1.0); snowy = 1; }
-    else if(r < B.snow + B.rain){ wetTarget = rnd(0.35, 0.95); snowy = 0; }
-    else                        { wetTarget = 0; }
-    if(optWeather === 'wet' && wetTarget === 0){ wetTarget = rnd(0.5,0.9); snowy = B.snow > B.rain ? 1 : 0; }
-    wetNext = rnd(35, 80);
-  }
+  if(wetNext <= 0) rollWeather();
   /* ---- SNOW ACCUMULATES. IT DOES NOT SETTLE TO A LEVEL ------------------
      Owner, 2026-08-29: "a snow coverage increase where over time it gets more
      and more slick and the white overlay becomes more and more opaque."
@@ -16445,6 +16479,13 @@ requestAnimationFrame(frameLoop);
   API.traceScenery = function(on){ sceneTrace = on ? [] : null; return !!sceneTrace; };
   /* where the camera is down the road, so a trace can be turned into a distance */
   API.roadPos = function(){ return pos; };
+  /* what the skyline is being told to do, and what it is doing. The parallax
+     is driven by the bend a long way ahead and chased frame to frame, so a
+     twitch can be in either the input or the chase (RLG-062). */
+  API.skyTrace = function(){
+    return { pos:+pos.toFixed(2), want:+bendPx(pos + 30000).toFixed(4),
+             smooth:+skySmooth.toFixed(4), z0:bendZ0, segs:curveSegs.length };
+  };
   /* debug only: a dead straight, dead flat road. Perspective questions are
      drowned out by hills and bends - an object near the horizon moves mostly
      because the TERRAIN under it does - so a measurement about how something
@@ -16465,7 +16506,13 @@ requestAnimationFrame(frameLoop);
     return { wet:+wet.toFixed(3), wetTarget:+wetTarget.toFixed(3),
              snowy:snowy, settle:+settle.toFixed(3),
              cloud:+cloud.toFixed(3), storm:storm,
-             biome:biome, from:biomeFrom, to:biomeTo };
+             biome:biome, from:biomeFrom, to:biomeTo,
+             /* HOW LONG UNTIL EACH OF THESE CHANGES AGAIN. A counter at zero
+                means a roll is DUE, which is what saved a change up to happen
+                on GO - so this is the field that answers the question directly
+                rather than by comparing pictures (RLG-090). */
+             wetIn:+wetNext.toFixed(2), cloudIn:+cloudNext.toFixed(2),
+             biomeIn:Math.round(biomeNext) };
   };
   /* what the start line is doing: how much of the count is left, which number
      has been sounded, and whether GO is still on the glass (RLG-088) */

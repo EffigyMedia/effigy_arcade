@@ -204,6 +204,57 @@ def main():
                   'the world the player looks at during the count is the one they drive into',
                   'it went %s' % ' then '.join(dict.fromkeys(places)))
 
+        # ---- 7. AND NOTHING IS SAVED UP TO HAPPEN ON GO (RLG-090) ------------
+        # Owner, 2026-08-31: there is still a pop on GO - can the state not be started on
+        # load and persisted through the countdown and the drive start.
+        #
+        # A COUNTER LEFT AT ZERO MEANS A ROLL IS DUE. The count-in returns from step()
+        # before the world runs, so anything due was deferred to the first frame after GO
+        # and happened in front of the player. The biome had this fault and was fixed; the
+        # weather and the cloud had it too, in the two counters beside it.
+        #
+        # So this compares the world at the START of the count with the world after GO. It
+        # is deliberately not a check on any one field: the question is whether ANYTHING
+        # was saved up, and a list would only cover what somebody remembered to add.
+        page2 = browser.new_context(viewport={'width': 480, 'height': 900},
+                                    has_touch=True, is_mobile=True).new_page()
+        page2.add_init_script(INIT)
+        page2.goto('http://127.0.0.1:%d/%s' % (port, GAME), wait_until='load')
+        page2.wait_for_function('!!window.__probe.road', timeout=10000)
+        page2.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
+        page2.click('[data-act="play"]')
+        page2.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+        page2.click('[data-act="drive"]')
+        page2.wait_for_timeout(200)
+        during = page2.evaluate('() => window.__probe.road.worldState()')
+        page2.wait_for_timeout(4200)          # past GO, and a moment beyond it
+        after = page2.evaluate('() => window.__probe.road.worldState()')
+        print('      during the count: %s' % during)
+        print('      after GO:         %s' % after)
+        # the place, what is falling, and the sky it falls out of. `wet` and `settle` move
+        # on their own once the car is driving, so what is compared is what was CHOSEN.
+        keys = ('biome', 'from', 'to', 'snowy', 'wetTarget', 'storm')
+        def same(a, b):
+            if isinstance(a, str) or isinstance(b, str):
+                return a == b
+            return abs(float(a) - float(b)) <= 1e-6
+        moved = [k for k in keys if not same(during.get(k, 0), after.get(k, 0))]
+        res.check(not moved,
+                  'the world the player waits in is the world they are let go into',
+                  'these changed at GO: %s' % ', '.join(moved))
+
+        # AND THE DIRECT QUESTION, WHICH IS NOT A LOTTERY. Comparing the two pictures only
+        # catches this when the deferred roll happens to produce weather - it came up dry
+        # one run in three and the check passed on a broken build. A counter at zero means
+        # a roll is DUE, so asking the counters answers it every time.
+        due = [k for k in ('wetIn', 'cloudIn', 'biomeIn') if float(during.get(k, 1)) <= 0]
+        print('      time until the next change, during the count: '
+              'weather %s, cloud %s, biome %s'
+              % (during.get('wetIn'), during.get('cloudIn'), during.get('biomeIn')))
+        res.check(not due,
+                  'and nothing is sitting due, waiting for the count to end',
+                  'these were already due while the car was held: %s' % ', '.join(due))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()

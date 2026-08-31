@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-16"></a>
+## [0.10.16] - 2026-08-31
+- Fixed: **the world settles before the count, not on GO.** Owner: there is still a pop on GO - can
+  the state not be started on load and persisted through the countdown and the drive start. It can,
+  and that was the fix. A counter left at zero means **a roll is due**, and the count-in returns from
+  the frame update before the world runs - so the first frame after GO rolled the weather and the
+  cloud in front of the player. The biome had exactly this fault and was fixed in 0.10.11; these are
+  the same bug twice more, in the two counters sitting beside it. The rolls happen at the reset now,
+  the run starts at what it rolled rather than easing toward it, and both counters are armed to a
+  full interval ([RLG-090](../fragments/RLG-090.md)).
+- Changed: **`retry-test` no longer asserts a fresh run is dry.** That was right while the reset
+  zeroed everything and left the first roll to the drive, and it is wrong now that a run rolls its
+  own weather up front - a new run may legitimately start in snow. It asks the questions that
+  actually mean "a new run": nothing accumulated survives, what is falling is what this run rolled,
+  nothing is left due, and the previous run's values did not come across
+  ([RLG-090](../fragments/RLG-090.md)).
+
 <a id="v0-10-15"></a>
 ## [0.10.15] - 2026-08-30
 - Fixed: **the mirror walks the world, not the car.** Owner: scenery in the rear-view absolutely
