@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.34';
+window.ROAD_BUILD = '0.10.35';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -317,6 +317,12 @@ const CLOCK_START = 60, CLOCK_BONUS = 20, CP_MILES = 2;
    old one. Both flashes take their number from the value now.
    ------------------------------------------------------------------------ */
 const CLOCK_UNIT = 'SEC', WRECK_SECS = 2.0;
+/* How long a gauge stays lit after something goes into it. Long enough to
+   catch out of the corner of an eye at speed, short enough not to sit there
+   as a second state the player has to learn to ignore. */
+const GAIN_FOR = 0.85;
+let gainT = 0, nosGainT = 0;
+let cratesTaken = 0;
 function timeAward(secs){
   return (secs < 0 ? '\u2212' : '+') + Math.abs(secs) + ' ' + CLOCK_UNIT;
 }
@@ -11134,6 +11140,10 @@ function step(dt){
   }
   if(bogHold > 0) bogHold = Math.max(0, bogHold - dt);
   if(launchNoteT > 0) launchNoteT = Math.max(0, launchNoteT - dt);
+  /* the gauges' own afterglow, aged with everything else rather than on a
+     timer of its own, so a paused game does not burn through it */
+  if(gainT > 0)    gainT    = Math.max(0, gainT - dt);
+  if(nosGainT > 0) nosGainT = Math.max(0, nosGainT - dt);
   // --- steering ---
   let kd=0;
   if(keys.ArrowLeft||keys.a) kd-=1;
@@ -12308,22 +12318,58 @@ function step(dt){
       const gained = awardNos(25);
       let secs = 0;
       if(clockRuns()){ clock += (secs = CRATE_SECS); lastBeep = -1; }
-      const won = [];
-      if(healed) won.push('REPAIRED \u2212' + healed + '%');
-      if(gained) won.push('NOS +' + gained + '%');
-      if(secs)   won.push(timeAward(secs));
-      /* ---- AND A CRATE WITH NOTHING TO GIVE IS LEFT WHERE IT IS ---------
-         Untimed, undamaged, and either no bottle or a full one: there is
-         genuinely nothing to hand over. Consuming it silently would be the
-         invisible reward again AND would destroy something the player might
-         want later, so it is not taken. The box stays on the shoulder, which
-         is at least legible - it is still a crate.
+      /* ---- ONE LINE, ONE SHAPE (RLG-126) --------------------------------
+         Owner, 2026-08-31: a unified short line, and let the gauges show it
+         too. Every clause is a PLUS of a named amount, so three awards read as
+         one sentence rather than as three formats stacked together.
+
+         `REPAIRED \u221225%` IS GONE and it is worth saying why, because it was
+         chosen deliberately a few hours earlier and then seen next to two
+         other clauses. A minus sign on a reward is a small lie the eye has to
+         undo, and it was the only clause of the three that counted DOWN - the
+         line said "minus, plus, plus" for three things that are all gains. It
+         was honest about `dmg` counting up and it read wrong, which is the
+         whole of what "obnoxious" meant here.
          ---------------------------------------------------------------- */
-      if(!won.length){ c.got = false; continue; }
-      snd.threaded();
-      fx.push({txt: won.join('  '),
-               x:W/2, y:H*0.62, vy:-60, age:0, life:1.2});
-      burst(c, '#3ddc84');
+      const won = [];
+      if(healed) won.push('+' + healed + ' HEALTH');
+      if(gained) won.push('+' + gained + ' NOS');
+      if(secs)   won.push(timeAward(secs));
+      /* ---- AND THE CRATE IS ALWAYS TAKEN --------------------------------
+         Owner, 2026-08-31: "leaving a crate on the side of the road for later
+         doesn't make any sense cause you'll never see it again. You should
+         just collect it and get nothing."
+
+         RIGHT, AND THE VERSION BEFORE THIS ONE LEFT IT STANDING. The argument
+         for leaving it was that the player might want it later - which is
+         true of a circuit and false of an endless road, where you pass a
+         thing once. So it was keeping a box for a moment that cannot arrive,
+         in front of a player who has already driven over it.
+         ---------------------------------------------------------------- */
+      if(won.length){
+        snd.threaded();
+        fx.push({txt: won.join('  '),
+                 x:W/2, y:H*0.62, vy:-60, age:0, life:1.2});
+        burst(c, '#3ddc84');
+        /* ---- AND THE GAUGES SAY IT WHERE THE RESOURCE LIVES -------------
+           A line in the middle of the screen is read once and gone. The clock
+           and the bottle are what the player watches for the rest of the run,
+           so a gain lights the thing it went into: you learn where to look
+           rather than what to read. Damage has no gauge on this machine at
+           all, so the line is the only place a repair can be said. */
+        if(secs)   gainT = GAIN_FOR;
+        if(gained) nosGainT = GAIN_FOR;
+      }
+      /* ---- COUNTED WHERE THE CRATE IS GENUINELY GONE --------------------
+         A harness cannot tell "collected" from "driven past and culled" by
+         counting what is left on the road: a crate the car drives past is
+         spliced out 1,500 units later either way, so the count reads zero for
+         both. This counts the one thing that differs, and it sits AFTER the
+         decision above so a version that declines to take the box does not
+         reach it. The check that a crate paying nothing is still taken passed
+         vacuously until this existed.
+         ---------------------------------------------------------------- */
+      cratesTaken++;
     }
   }
 
@@ -16346,6 +16392,8 @@ function hud(){
     if(on){
       $('clock').textContent = Math.ceil(clock);
       cw.classList.toggle('low', clock <= 5);
+      /* and it lights when something is put INTO it (RLG-126) */
+      cw.classList.toggle('gain', gainT > 0);
     }
   }
   /* the bottle empties as you burn it */
@@ -16397,6 +16445,8 @@ function hud(){
   nitroBtn.disabled = nos<=8;
   brakeBtn.disabled = state!=='driving';
   nitroBtn.classList.toggle('hot', nosOn);
+  /* and it lights when something is put INTO it (RLG-126) */
+  nitroBtn.classList.toggle('gain', nosGainT > 0);
 }
 
 /* ---------- loop ---------- */
@@ -18206,6 +18256,20 @@ requestAnimationFrame(frameLoop);
      the question at all. It sits with `setWet`, `setSpd` and `setBody`.
      ------------------------------------------------------------------- */
   API.setTimed = function(v){ timedRun = !!v; return timedRun; };
+  /* crates still on the road that nobody has taken. A crate that paid nothing
+     must still be COLLECTED (owner, 2026-08-31) - you pass a thing once on an
+     endless road - and a count is the only way to tell "taken" from "left". */
+  API.cratesTaken = function(){ return cratesTaken; };
+  API.cratesLeft = function(){
+    let n = 0; for(const c of crates) if(!c.got) n++; return n;
+  };
+  /* what the two gauges are currently saying, so a harness can see the light
+     rather than infer it from the state that should have caused it */
+  API.gauges = function(){
+    const cw = document.getElementById('clockWrap');
+    const nb = document.getElementById('nitro');
+    return { clock: cw ? cw.className : '', nos: nb ? nb.className : '' };
+  };
   API.clockRuns = function(){ return clockRuns(); };
   API.parkCrate = function(dz){
     crates.length = 0;
@@ -18223,6 +18287,9 @@ requestAnimationFrame(frameLoop);
   /* damage, so the REPAIRED branch can be reached without staging a crash -
      the branch that must not mention a bottle the car has not got */
   API.setDmg = function(v){ dmg = clamp(v, 0, 99); return dmg; };
+  /* the bottle's level, so a check about the TRICKLE can start below full - the
+     checks above it fill the bottle, and a full one cannot be seen to fill */
+  API.setNos = function(v){ nos = clamp(v, 0, 100); return nos; };
   API.nos = function(){ return Math.round(nos); };
   API.hasNos = function(){ return hasNos(); };
   API.simTime = function(){ return +simT.toFixed(5); };

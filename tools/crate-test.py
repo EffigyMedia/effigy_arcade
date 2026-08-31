@@ -102,7 +102,8 @@ def take_crate(page, body, dmg, timed=True):
         R.clearTraffic(); R.parkCrate(900); }""",
                   {'body': body, 'dmg': dmg, 'timed': timed})
     before = page.evaluate("""() => { const R = window.__probe.road;
-        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, has: R.hasNos() }; }""")
+        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, has: R.hasNos(),
+                 taken: R.cratesTaken() }; }""")
     for _ in range(40):
         page.evaluate("() => { const R = window.__probe.road;"
                       " R.setSpd(R.MAX_SPD * 0.5); R.setTarget(0); }")
@@ -110,7 +111,9 @@ def take_crate(page, body, dmg, timed=True):
         if page.evaluate("() => window.__probe.road.lastFx()"):
             break
     after = page.evaluate("""() => { const R = window.__probe.road;
-        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, fx: R.lastFx() }; }""")
+        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, fx: R.lastFx(),
+                 left: R.cratesLeft(), gauges: R.gauges(),
+                 taken: R.cratesTaken() }; }""")
     return before, after
 
 
@@ -197,7 +200,7 @@ def main():
         res.check(after['dmg'] < before['dmg'],
                   'a damaged car with no bottle is repaired',
                   'dmg went %d to %d' % (before['dmg'], after['dmg']))
-        res.check('REPAIRED' in after['fx'] and 'NOS' not in after['fx'],
+        res.check('HEALTH' in after['fx'] and 'NOS' not in after['fx'],
                   'and told about the repair, and not about a bottle it has not got',
                   after['fx'])
         # AND IT IS PAID IN SECONDS TOO, because the clock is running and RLG-125 makes each
@@ -207,8 +210,14 @@ def main():
         res.check(after['clock'] - before['clock'] > 1,
                   'and paid in seconds as well, because every award is its own',
                   'the clock went %.2f to %.2f' % (before['clock'], after['clock']))
-        res.check('SEC' in after['fx'] and 'REPAIRED' in after['fx'],
+        res.check('SEC' in after['fx'] and 'HEALTH' in after['fx'],
                   'and told about both', after['fx'])
+        # ONE SHAPE. Every clause is a PLUS of a named amount - the repair used to read
+        # `REPAIRED -25%`, which was the only clause of three that counted DOWN, so the line
+        # said "minus, plus, plus" for three things that are all gains.
+        res.check(after['fx'].count('+') == len([w for w in after['fx'].split('  ') if w]),
+                  'and every clause of the line is a gain, in one shape',
+                  after['fx'])
 
         # ---- 4b. AND NO SECONDS IN A MODE THAT DOES NOT COUNT THEM (RLG-125) ----
         # Owner, 2026-08-31: "time isn't even always needed - if we're not in time mode, time
@@ -229,15 +238,55 @@ def main():
                   % (after['clock'] - before['clock']))
         res.check('SEC' not in after['fx'],
                   'and does not claim to have paid any', after['fx'])
-        res.check('REPAIRED' in after['fx'],
+        res.check('HEALTH' in after['fx'],
                   'while still paying what the mode does use', after['fx'])
         page.evaluate("() => window.__probe.road.setTimed(true)")
+
+        # ---- 4c. A CRATE THAT PAYS NOTHING IS STILL TAKEN (RLG-126) -------------
+        # Owner, 2026-08-31: "leaving a crate on the side of the road for later doesn't make
+        # any sense cause you'll never see it again. You should just collect it and get
+        # nothing." The version before this left it standing, on the argument that the player
+        # might want it later - true of a circuit, false of an endless road where you pass a
+        # thing once.
+        before, after = take_crate(page, WITHOUT[0], 0, timed=False)
+        print('      %-8s nothing to give: %r   crates left on the road: %d'
+              % (WITHOUT[0], after['fx'], after['left']))
+        # COUNTING WHAT IS LEFT CANNOT ANSWER THIS. A crate the car drives past is spliced
+        # out 1,500 units later either way, so `cratesLeft` reads 0 whether it was collected
+        # or merely passed - and this check passed with the defect reintroduced until the
+        # engine started counting the crates it actually TAKES.
+        res.check(after['taken'] == before['taken'] + 1,
+                  'a crate with nothing to give is collected anyway',
+                  'the collected count went %d to %d, so it was driven past rather than taken'
+                  % (before['taken'], after['taken']))
+        res.check(not after['fx'].strip(),
+                  'and says nothing, because there is nothing to say', after['fx'])
+        page.evaluate("() => window.__probe.road.setTimed(true)")
+
+        # ---- 4d. AND THE GAUGES LIGHT UP WHERE THE AWARD WENT (RLG-126) ---------
+        # A line in the middle of the screen is read once and gone; the clock and the bottle
+        # are what the player watches for the rest of the run. This reads the CLASS the
+        # element is actually carrying rather than inferring it from the state that should
+        # have set it - the gauge lighting is the thing under test, not the award.
+        before, after = take_crate(page, WITH_BOTTLE, 60, timed=True)
+        print('      %-8s gauges after a crate: clock %r, bottle %r'
+              % (WITH_BOTTLE, after['gauges']['clock'], after['gauges']['nos']))
+        res.check('gain' in after['gauges']['clock'],
+                  'the clock lights when seconds go into it',
+                  'its class was %r' % after['gauges']['clock'])
+        res.check('gain' in after['gauges']['nos'],
+                  'and the bottle lights when the charge does',
+                  'its class was %r' % after['gauges']['nos'])
 
         # ---- 5. AND THE BOTTLE DOES NOT TRICKLE INTO A CAR THAT HAS NOT GOT ONE --
         # The deepest instance of the same fault, and the one no pickup would ever show: the
         # bottle refills on its own over a run, and that ran for every car in the fleet.
         for body, want in ((WITH_BOTTLE, True), (WITHOUT[0], False)):
-            page.evaluate("(k) => { const R = window.__probe.road; R.setBody(k); }", body)
+            # DRAINED FIRST. The checks above this one fill the bottle, and a full bottle
+            # cannot be watched filling - the first version of this read 100 to 100 and
+            # called it a failure to trickle.
+            page.evaluate("(k) => { const R = window.__probe.road; R.setBody(k); R.setNos(20); }",
+                          body)
             n0 = page.evaluate("() => window.__probe.road.nos()")
             page.wait_for_timeout(2500)
             n1 = page.evaluate("() => window.__probe.road.nos()")

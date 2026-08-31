@@ -67,6 +67,26 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #clockWrap b{font-size:30px;color:#ffb347;letter-spacing:.02em;
   text-shadow:0 0 18px rgba(255,179,71,.55)}
 #clockWrap.low b{color:#ff5a4a;text-shadow:0 0 22px rgba(255,90,74,.75)}
+/* ---- A GAUGE LIGHTS WHEN SOMETHING GOES INTO IT (RLG-126) -----------------
+   A line in the middle of the screen is read once and gone; the clock and the
+   bottle are what the player watches for the rest of the run. Lighting the
+   thing the award went INTO teaches where to look rather than what to read,
+   and it is the same mechanism the clock already uses to say it is running out
+   - a class, and the colour it carries. `.gain` beats `.low` because a
+   transform and a colour are different properties, so a top-up on the last
+   five seconds reads as both at once, which is exactly what it is. */
+#clockWrap.gain b{
+  color:#7dffb0;text-shadow:0 0 24px rgba(125,255,176,.85);
+  transform:scale(1.12);
+}
+#clockWrap b{ transition:color .18s linear, text-shadow .18s linear, transform .18s ease-out;
+              display:inline-block }
+#nitro.gain i{
+  filter:brightness(1.5) saturate(1.15);
+  box-shadow:inset 0 3px 0 rgba(255,255,255,.6), inset 0 -6px 10px rgba(0,0,0,.35),
+             0 0 14px rgba(125,255,235,.75), 0 4px 12px -3px #000;
+}
+#nitro i{ transition:filter .18s linear, box-shadow .18s linear }
 
 #pursuit{
   width:fit-content;margin:10px auto 0;font-size:9.5px;font-weight:700;letter-spacing:.28em;
@@ -219,19 +239,20 @@ body.nonos #nitro, body.nonos #nosWrap{ display:none !important }
   clip-path:polygon(100% 0, 0 22%, 0 78%, 100% 100%);
 }
 #nitro.on::after{ filter:brightness(1.5) }
-/* a strap band across the middle, so it reads as a bottle not a pill */
-/* the label, as on the real bottle */
+/* ---- THE LABEL IS THE BOTTLE'S OWN (owner, 2026-08-31) --------------------
+   The strap band that used to cross the middle is GONE. It was there so the
+   shape read as a bottle rather than a pill, and the word does that job better:
+   a dark bar sat over the charge gauge, so the one thing the bottle exists to
+   show was interrupted by decoration at 52% of its own length.
+
+   AND THE WORD IS BIGGER. It was 9px on a 30px bottle, which is a caption
+   rather than a label - a real bottle carries its name across the barrel. */
 #nitro b{
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
   text-align:center;pointer-events:none;z-index:2;
-  font-family:var(--disp);font-size:9px;font-weight:800;
-  letter-spacing:.16em;color:#eafffb;
-  text-shadow:0 1px 0 rgba(0,0,0,.55), 0 0 6px rgba(120,255,235,.45);
-}
-#nitro i::before{
-  content:"";position:absolute;left:52%;top:-1px;width:9px;height:calc(100% + 2px);
-  background:rgba(10,40,42,.55);border-left:1px solid rgba(160,255,240,.30);
-  border-right:1px solid rgba(160,255,240,.30);
+  font-family:var(--disp);font-size:15px;font-weight:800;
+  letter-spacing:.14em;color:#eafffb;
+  text-shadow:0 1px 0 rgba(0,0,0,.6), 0 0 7px rgba(120,255,235,.5);
 }
 /* the horn: a chrome boss on the wheel, left of the pedals */
 #horn{
