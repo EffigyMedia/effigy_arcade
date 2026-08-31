@@ -200,6 +200,47 @@ def main():
                       'and it does rebuild the car whose colour changed',
                       'the player sprite was not rebuilt (%r)' % after['player'])
 
+        # ---- AND THE CARD HOLDS STILL BETWEEN CARS (RLG-087) ----------------
+        # Owner, 2026-08-30: set the car render to the same static height, using the tallest
+        # car as the reference, so switching cars does not collapse and expand the layout.
+        # It moved between 79 and 90 px across the cars a player starts with - small, which
+        # is the complaint rather than a defence of it: a large change reads as a transition
+        # and a small one reads as the page failing to hold still.
+        fits = page.evaluate('() => window.__probe.road.garageFits()')
+        each = {k: v for k, v in fits['each'].items() if v}
+        tall = max(each, key=lambda k: each[k])
+        low = min(each, key=lambda k: each[k])
+        print('      the tallest card is %s at %d px, the shortest %s at %d, reserved %d'
+              % (tall, each[tall], low, each[low], fits['reserved']))
+        res.check(fits['reserved'] >= max(each.values()),
+                  'the reservation covers the tallest car in the fleet',
+                  '%d reserved against %s needing %d'
+                  % (fits['reserved'], tall, each[tall]))
+        # AND IT IS THE TALLEST, NOT MERELY BIG ENOUGH. A reservation with slack over every
+        # car would pass the check above while wasting the difference on all of them.
+        res.check(fits['reserved'] == max(each.values()),
+                  'and it is exactly that car, with nothing spare on top',
+                  '%d reserved where %d was needed' % (fits['reserved'], max(each.values())))
+
+        # and the drawn card really is that height whichever car is loaded
+        heights = []
+        for _ in range(4):
+            h = page.evaluate("""() => {
+                const c = document.getElementById('gcar');
+                return c ? Math.round(parseFloat(c.style.height) || c.height) : null;
+            }""")
+            if h:
+                heights.append(h)
+            nxt = page.query_selector('#veil [data-act="next"]')
+            if not nxt:
+                break
+            nxt.click()
+            page.wait_for_timeout(240)
+        print('      the drawn card across four cars: %s' % heights)
+        res.check(len(set(heights)) == 1,
+                  'the drawn card does not change height when the car does',
+                  'it measured %s' % heights)
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()

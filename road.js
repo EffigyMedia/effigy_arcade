@@ -14583,6 +14583,93 @@ function paintSwatches(){
     '" style="background:' + PAINT[k].body + '" aria-label="' + k + '"></button>'
   ).join('') + '</div>';
 }
+/* Where the PAINT is inside a sprite, as opposed to where the canvas is. A
+   sprite is a canvas with a car somewhere in it, and every question about how
+   big that car looks is a question about the paint. Cached on the sprite, so
+   the pixels are read once per sprite and never again. */
+function spriteInk(img){
+  if(img.__box) return img.__box;
+  let bx = { x:0, y:0, w:img.width, h:img.height };
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const gg = c.getContext('2d');
+    gg.drawImage(img, 0, 0);
+    const d = gg.getImageData(0, 0, c.width, c.height).data;
+    let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+    for(let y = 0; y < c.height; y++){
+      for(let x = 0; x < c.width; x++){
+        if(d[(y*c.width + x)*4 + 3] > 8){
+          if(x < x0) x0 = x;
+          if(x > x1) x1 = x;
+          if(y < y0) y0 = y;
+          if(y > y1) y1 = y;
+        }
+      }
+    }
+    if(x1 >= 0) bx = { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
+  } catch(e){ /* a tainted canvas would throw; the box is the sprite */ }
+  img.__box = bx;
+  return bx;
+}
+
+/* the card's own geometry, in one place, because the height is now decided by
+   a car that is not the one on screen */
+const GARAGE_TOP = 6, GARAGE_HALF = 150, GARAGE_PAD = 12, GARAGE_DEEP = 150;
+/* how tall the pair of pictures is for whichever car is loaded right now */
+function garageFit(){
+  const back = SP.player, front = SP.playerFront;
+  if(!back) return null;
+  const pair = front ? [back, front] : [back];
+  const boxes = pair.map(spriteInk);
+  const maxW = Math.max.apply(null, boxes.map(b => b.w));
+  const maxH = Math.max.apply(null, boxes.map(b => b.h));
+  const sc = Math.min((GARAGE_HALF - GARAGE_PAD*2) / maxW,
+                      (GARAGE_DEEP - GARAGE_TOP) / maxH);
+  return { boxes: boxes, sc: sc, h: Math.ceil(GARAGE_TOP + maxH*sc + 6) };
+}
+/* ---- THE CARD IS ONE HEIGHT, AND IT IS THE TALLEST CAR'S (RLG-087) ----
+   Owner, 2026-08-30: set the car render to the same static height, using the
+   tallest car as the reference, so switching cars does not collapse and expand
+   the layout. Measured across the cars a player starts with, it moved between
+   79 and 90 pixels - small, which is the complaint rather than a defence of it.
+   A large change reads as a transition; a small one reads as the page failing
+   to hold still.
+
+   THIS REVERSES A DELIBERATE DECISION AND THE REASONING IS WORTH KEEPING. The
+   height was a constant once, and was made per-car because a card sized for the
+   tallest vehicle left a band of nothing under a low one. That is true and it
+   is still the cost. What has changed is the owner weighing the two against
+   each other with the thing in front of them: eleven pixels of dead space under
+   a roadster is cheaper than eleven pixels of movement every time a thumb moves
+   between cars.
+
+   AND IT IS MEASURED, NOT DECLARED. The reservation is the largest card any
+   BODY in the game produces, computed once by loading each in turn and then
+   putting the player's own car back. A number typed here instead would be
+   right until somebody added a taller car, and then wrong silently - which is
+   the fault the pedal box's hard-coded 58 had.
+
+   The car still hangs from the ceiling line, by RLG-081's top alignment, so
+   whatever is spare falls underneath it where a floor would be.
+   ------------------------------------------------------------------- */
+let garageReserve = 0;
+function garageCardHeight(){
+  if(garageReserve) return garageReserve;
+  const was = optBody;
+  let tall = 0;
+  for(const k of Object.keys(BODY)){
+    optBody = k;
+    buildPlayer();
+    const fit = garageFit();
+    if(fit) tall = Math.max(tall, fit.h);
+  }
+  optBody = was;
+  buildPlayer();
+  garageReserve = tall || (GARAGE_TOP + (GARAGE_DEEP - GARAGE_TOP) + 6);
+  return garageReserve;
+}
+
 function drawGarageCar(){
   const cv = document.getElementById('gcar');
   if(!cv) return;
@@ -14612,83 +14699,12 @@ function drawGarageCar(){
      from both ends and stands on the same floor, which is the whole of what
      the owner asked for.
      ------------------------------------------------------------------- */
-  const bounds = (img) => {
-    if(img.__box) return img.__box;
-    let bx = { x:0, y:0, w:img.width, h:img.height };
-    try {
-      const c = document.createElement('canvas');
-      c.width = img.width; c.height = img.height;
-      const gg = c.getContext('2d');
-      gg.drawImage(img, 0, 0);
-      const d = gg.getImageData(0, 0, c.width, c.height).data;
-      let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
-      for(let y = 0; y < c.height; y++){
-        for(let x = 0; x < c.width; x++){
-          /* ---- THE CAR, NOT ITS SHADOW ---------------------------------
-             This counted anything above alpha 24, which includes the soft
-             ground shadow - and the two painters draw different shadows, so
-             the two ends were aligned on their shadows while their TYRES sat
-             at different heights. That is what the owner saw as still
-             misaligned after the boxes were made to agree.
-
-             170 is above any shadow and below nothing solid: bodywork is drawn
-             at full opacity, so what this finds is where the car actually
-             meets the road. */
-          if(d[(y*c.width + x)*4 + 3] > 170){
-            if(x < x0) x0 = x; if(x > x1) x1 = x;
-            if(y < y0) y0 = y; if(y > y1) y1 = y;
-          }
-        }
-      }
-      if(x1 >= 0) bx = { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
-    } catch(e){ /* a tainted canvas would throw; the box is the sprite */ }
-    img.__box = bx;
-    return bx;
-  };
-
-  /* ---- THE PAINTERS ALREADY AGREE. MEASURE, DO NOT CORRECT --------------
-     Two attempts at this were wrong in the same way: both assumed the front
-     and the rear disagreed about how big the car is, and set about correcting
-     it. Measured, they do not disagree. Every rig body draws its front and its
-     rear into the SAME canvas at the SAME top row - a COUPE is rows 37 to 164
-     from behind and 37 to 167 from the front - and a supercar's two ends are
-     143 rows tall in both of their different canvases.
-
-     What differs is where each view is WIDEST: a rear is widest at its
-     shoulder, about seven tenths of the way down, and a front is widest at its
-     bumper, about nine tenths. Normalising the two to a common WIDTH therefore
-     scales two different features to the same size and pulls the whole car
-     with them - which is what made the front nine per cent bigger and its
-     roofline sit high.
-
-     So: ONE scale for the pair, and each placed by its own content bottom.
-     Nothing is corrected, because there is nothing to correct.
-     ------------------------------------------------------------------- */
-  /* ---- ALIGNED AT THE TOP, BY THE OWNER'S INSTRUCTION -------------------
-     Bottom alignment puts the two cars on one ground line, which is the
-     physical way to think about it and is what a road does. It is not what
-     reads as aligned here, and the owner has said so plainly: the two ends
-     carry different amounts of car BELOW the body - a front view shows wheels
-     and a bumper where a rear view has a valance to the floor - so a shared
-     floor line pushes the front's roof up and the pair looks wrong however
-     exactly the floor agrees.
-
-     The ROOF is the line a person compares. Both cars now hang from it, and
-     whatever each has underneath falls where it falls.
-     ------------------------------------------------------------------- */
-  const TOP = 6, HALF = 150, PAD = 12, DEEP = 150;
-  const pair = front ? [back, front] : [back];
-  const boxes = pair.map(bounds);
-  const maxW = Math.max.apply(null, boxes.map(b => b.w));
-  const maxH = Math.max.apply(null, boxes.map(b => b.h));
-  const sc = Math.min((HALF - PAD*2) / maxW, (DEEP - TOP) / maxH);
-  /* ---- THE CARD IS AS TALL AS THE CARS IN IT ----------------------------
-     The height was a constant, so a card sized for the tallest vehicle in the
-     game left a band of nothing under a low one - and a band of nothing on a
-     phone is a screen's worth of scroll. It is measured now, after the scale
-     is known and before anything is drawn.
-     ------------------------------------------------------------------- */
-  const CARD_H = Math.ceil(TOP + maxH*sc + 6);
+  const TOP = GARAGE_TOP;
+  const fit = garageFit();
+  if(!fit) return;
+  const boxes = fit.boxes, sc = fit.sc;
+  /* the card is the tallest car's card, whichever car is in it (RLG-087) */
+  const CARD_H = garageCardHeight();
   cv.width = 300*dpr; cv.height = CARD_H*dpr;
   cv.style.width = '300px'; cv.style.height = CARD_H + 'px';
   g2.setTransform(dpr,0,0,dpr,0,0);
@@ -15996,6 +16012,19 @@ requestAnimationFrame(frameLoop);
   /* the box a given car actually gets, so a harness can compare the bands
      rather than infer them from how a lap felt (RLG-069) */
   API.gearBox = function(k){ return gearTableFor(k || optBody); };
+  /* the card height every body would ask for, and the one that is reserved.
+     A harness needs both to say whether the reservation actually covers the
+     fleet, and by how much it overshoots the smallest car (RLG-087). */
+  API.garageFits = function(){
+    const was = optBody, out = {};
+    for(const k of Object.keys(BODY)){
+      optBody = k; buildPlayer();
+      const f = garageFit();
+      out[k] = f ? f.h : null;
+    }
+    optBody = was; buildPlayer();
+    return { each: out, reserved: garageCardHeight() };
+  };
   API.clearTraffic = function(){
     traffic.length = 0; cops.length = 0; blocks.length = 0;
     crates.length = 0; fx.length = 0; racers.length = 0;

@@ -14,6 +14,18 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-7"></a>
+## [0.10.7] - 2026-08-30
+- Fixed: **the garage card holds one height, whichever car is in it.** Owner: switching cars
+  collapsed and expanded the layout by a small amount, which is annoying. It moved between 78 and
+  90 px across the cars a player starts with. The card is now the tallest card any body in the game
+  produces - measured by loading each in turn and putting the player's own car back, rather than
+  typed in, so a taller car added later cannot silently overflow it. The car still hangs from the
+  ceiling line, so the spare falls underneath it where a floor would be. **This reverses a
+  deliberate decision**: the height was made per-car precisely to avoid a band of nothing under a
+  low one, and the owner has now weighed the two with the thing in front of them
+  ([RLG-087](../fragments/RLG-087.md)).
+
 <a id="v0-10-6"></a>
 ## [0.10.6] - 2026-08-30
 - Fixed: **a short gearbox is designed, not a six-speed with the top gears cut off.** Owner: the
