@@ -413,6 +413,92 @@ def drive(page, res, seconds, is_circuit):
               'the revs never pass the limiter',
               f'peak {worst_over*100:.1f}% of redline')
 
+    # ---- EXCEPT ON THE BOTTLE, WHICH IS THE ONE THING THAT LIFTS IT (RLG-127) ----
+    # Owner, 2026-08-31: "I want to justify it by allowing the engine to turn a little
+    # faster than it's mechanically supposed to." The check above is the invariant and this
+    # is its one exception, deliberately measured in the same place so the two cannot be
+    # read apart - a limiter with an exception nobody tests is a limiter with a hole.
+    #
+    # THE SPEED IS NOT CHECKED SEPARATELY BECAUSE IT IS NOT A SEPARATE NUMBER. A gear's
+    # speed ceiling is its rev limiter expressed as a speed, so lifting the limiter by a
+    # tenth lifts that ceiling by the same tenth and the extra speed is earned through the
+    # gearing the car already has. Both are read here.
+    # A CEILING IS MEASURED FROM ABOVE, ON AN EMPTY ROAD. Three earlier versions of this
+    # got it wrong and each way is worth keeping.
+    #
+    # LETTING THE CAR COAST after forcing it fast read 52% of top end - no throttle was
+    # held, so it fell away from the ceiling rather than onto it. STARTING BELOW and asking
+    # it to climb read 0.4%: 0.94 to 1.10 of top end is a 17% gain in the one place
+    # acceleration is weakest, where the torque curve gives 6% at the limiter. And leaving
+    # THE TRAFFIC ON read 35%, because a car driven at 1.3x its own top speed through
+    # civilian traffic hits something - the samples showed speed dropping 18,613 to 4,137
+    # between two frames, which is a collision and not a ceiling.
+    #
+    # So: the road is swept every frame, the throttle is HELD, the speed is forced ABOVE
+    # the ceiling while the revs are read, and then the forcing stops and the car settles
+    # back DOWN onto it. And `nosOn` is READ rather than assumed - the bottle is topped up
+    # a frame before the button is pressed, because `nitroBtn.disabled` is rewritten by the
+    # HUD each frame from `nos` and pressing it in the same tick presses a disabled button.
+    TOP = ('() => window.__probe.road.spd / (window.__probe.road.MAX_SPD'
+           ' * window.__probe.road.BODY[window.__probe.road.bodyKey()].vmax)')
+    # `holdNos` keeps the bottle open for the measurement. The real BUTTON is still
+    # pressed below and checked, so the control path is covered - but a synthetic
+    # pointerdown stays held on one machine and not the other, and chasing that measures
+    # the event plumbing rather than the engine.
+    HOLD = ('() => { const R = window.__probe.road;'
+            ' R.setNos(100); R.holdNos(true); R.clearTraffic();'
+            ' R.setWet(0); R.setSnow(0); }')
+    page.evaluate(HOLD)
+    page.wait_for_timeout(140)
+    page.dispatch_event('#gas', 'pointerdown')
+    page.dispatch_event('#nitro', 'pointerdown')
+    page.wait_for_timeout(120)
+    on_bottle = page.evaluate('() => !!window.__probe.road.nosState().nosOn')
+    nos_over = 0.0
+    for _ in range(8):
+        page.evaluate(HOLD)
+        page.evaluate('() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD * 1.30)')
+        page.wait_for_timeout(90)
+        rr = revs_never_exceed_redline(page)
+        if rr and rr.get('redline'):
+            nos_over = max(nos_over, rr['revs'] / rr['redline'])
+    # now stop forcing and let it fall onto the ceiling, throttle down and bottle open
+    nos_top = 9.9
+    for _ in range(26):
+        page.evaluate(HOLD)
+        page.wait_for_timeout(90)
+        if page.evaluate('() => !!window.__probe.road.nosState().nosOn'):
+            nos_top = min(nos_top, page.evaluate(TOP))
+    page.dispatch_event('#nitro', 'pointerup')
+    page.dispatch_event('#gas', 'pointerup')
+    page.evaluate('() => window.__probe.road.holdNos(false)')
+    res.check(on_bottle, 'the bottle can be held open for the check',
+              'the nitrous button did not take, so nothing below is about the bottle')
+    res.check(nos_over > 1.05,
+              'and the bottle is the one thing that lifts it',
+              f'peak {nos_over*100:.1f}% of redline with the bottle open, which is no lift')
+    res.check(nos_over <= 1.11,
+              'and it lifts it by a tenth and no more',
+              f'peak {nos_over*100:.1f}% of redline')
+    res.check(nos_top < 9,
+              'and a reading was taken with the bottle actually open',
+              'no sample had the bottle open, so the number below means nothing')
+    res.check(1.04 < nos_top < 1.13,
+              'so the car settles a tenth above its own top end while the bottle is open',
+              f'it settled at {nos_top*100:.1f}% of its declared top end')
+
+    # AND IT COMES BACK DOWN. The lift is a thing you HOLD, not a thing you reach and keep -
+    # `overRun` is gated on the bottle being shut precisely so that is true.
+    back = 0.0
+    for _ in range(10):
+        page.wait_for_timeout(90)
+        rr = revs_never_exceed_redline(page)
+        if rr and rr.get('redline'):
+            back = max(back, rr['revs'] / rr['redline'])
+    res.check(back <= 1.001,
+              'and the limiter is back the moment the bottle is shut',
+              f'peak {back*100:.1f}% of redline after release')
+
     moved = samples[-1]['pos'] - samples[0]['pos']
     res.check(moved > 0, 'the road moves under the car', f'{moved:,.0f} units')
 

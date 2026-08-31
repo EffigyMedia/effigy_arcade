@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.35';
+window.ROAD_BUILD = '0.10.36';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -7355,6 +7355,28 @@ function zeroSixty(key){
    which is the only way a number like this stays true.
    ------------------------------------------------------------------------- */
 let FLEET_TOP = 1.0;
+/* ---- THE BOTTLE LETS THE ENGINE OVERSPEED (RLG-127) ---------------------
+   Owner-decided 2026-08-31: "the old rule says not to arbitrarily increase
+   speed, but I want to justify it by allowing the engine to turn a little
+   faster than it's mechanically supposed to."
+
+   THAT IS THE WHOLE MECHANISM AND IT IS WHY THE SPEED IS NOT A SECOND NUMBER.
+   The bottle raises the LIMITER, by a tenth, for as long as it is open. The
+   gearing does not change - a gear's speed ceiling is its rev limiter
+   expressed as a speed, so lifting the limiter lifts that ceiling by exactly
+   the same tenth and the extra speed is EARNED through the gears the car
+   already has rather than granted beside them.
+
+   IT IS THE ONLY THING THAT LIFTS THE LIMITER, and it lifts it only while the
+   button is down: `overRun` sheds hard the moment the bottle closes, and it is
+   gated on `!nosOn` precisely so this is a thing you HOLD rather than a thing
+   you reach and keep.
+   ------------------------------------------------------------------------ */
+const NOS_REV = 1.10;
+/* how much the engine is allowed to overspeed right now: a tenth on the
+   bottle, and nothing at all otherwise */
+function nosStretch(){ return nosOn ? NOS_REV : 1; }
+function revCeiling(){ return redline() * nosStretch(); }
 function fleetTop(){
   let m = 1.0;
   for(const k in BODY) if(BODY[k] && BODY[k].vmax > m) m = BODY[k].vmax;
@@ -7543,7 +7565,14 @@ function gearRpm(g, v){
      A rev limiter is not a suggestion. The neutral path a few lines down models
      the limiter properly, cutting in and out BELOW the line; there was no reason
      for the geared path to be allowed above it. */
-  return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, redline());
+  /* ---- AND THE ONE THING THAT LIFTS IT IS THE BOTTLE (RLG-127) ------
+     The clamp is `revCeiling()` rather than `redline()`. The two are the same
+     number unless the bottle is open, and the note on `NOS_REV` says why that
+     is the honest way round: the gearing is fixed, so at a given road speed
+     the engine turns at a fixed rpm - what the bottle changes is how far it is
+     ALLOWED to turn, and the speed follows from the gearing rather than being
+     handed over separately. */
+  return clamp(IDLE + (v / ceiling) * (redline() - IDLE), IDLE, revCeiling());
 }
 /* ---- THE ENGINE IS STEPPED, NOT DRAWN -----------------------------------
    THE FREE-REVVING NEUTRAL USED TO BE INTEGRATED INSIDE `engineRpm()`, which
@@ -11221,7 +11250,10 @@ function step(dt){
      of it — so you MUST shift to go faster, which is what a gearbox is.
      -------------------------------------------------------------------------- */
   /* the car's own top end, and the gear's ceiling within it */
-  const carTop = MAX_SPD * bodyStat('vmax');
+  /* the car's own top end - and a tenth more of it while the bottle is open,
+     because the limiter is lifted by that much and a gear's speed ceiling IS
+     its limiter expressed as a speed (RLG-127) */
+  const carTop = MAX_SPD * bodyStat('vmax') * nosStretch();
   const gearCap = (optManual && gear >= 1 && gear <= gearTable().length)
                 ? carTop * gearTable()[gear-1].to
                 : carTop;
@@ -11283,15 +11315,29 @@ function step(dt){
             : overRun ? MAX_SPD * bodyStat('vmax')
             : !onGas  ? 0
             : (offRoad ? OFF_SPD
-               /* ---- NITROUS IS POWER, NOT A HIGHER CEILING ---------------
-                  I had it raising top speed, which is wrong: more oxygen means
-                  more power in the gear you are in, so you climb the rev bands
-                  faster and reach the SAME ceiling sooner. What sets top speed
-                  is aero drag, and a bottle does nothing about that.
+               /* ---- AND NITROUS DOES RAISE THE CEILING, BY A TENTH -------
+                  Owner, 2026-08-31: "let's allow NOS room to exceed final gear
+                  redline limit by 10%, whatever speed that earns you. That way
+                  NOS is still useful at max tach."
 
-                  So NOS is out of this expression entirely — it lives in the
-                  acceleration rate below, at 2.6x. The car's own `vmax` is the
-                  only thing that decides how fast it will ultimately go. */
+                  THIS REVERSES A NOTE THAT USED TO SIT HERE, and the note was
+                  wrong on the physics as well as on the game. It said top
+                  speed is set by aero drag and a bottle does nothing about
+                  that - but top speed is where POWER BALANCES drag, not where
+                  drag acts alone, so more power really does move it. A tenth
+                  is a modest, honest figure for that.
+
+                  THE GAME REASON IS THE ONE THAT DECIDED IT. In the final gear
+                  `gearCap` IS `carTop`, so a bottle aimed at `carTop` bought
+                  nothing at all in the one place a player most wants it - flat
+                  out, needle on the limiter, nothing left to shift into. A
+                  resource that does nothing in the situation you are saving it
+                  for is a dead button.
+
+                  IT IS NOT FREE SPEED. `overRun` above sheds hard the moment
+                  the bottle closes - it is gated on `!nosOn` precisely so this
+                  is a thing you HOLD rather than a thing you reach and keep.
+                  ---------------------------------------------------------- */
                : nosOn  ? carTop
                /* ---- THE TOW RAISES THE AERO CEILING, NOT THE GEAR ------
                   `gearCap * slip` let the slipstream lift the speed at which
@@ -11647,7 +11693,12 @@ function step(dt){
      The fleet's own maximum plus a tenth: the tenth is the slipstream, which
      raises the aero ceiling by up to 4.5%, plus room for a frame of overshoot.
      -------------------------------------------------------------------- */
-  spd = clamp(spd, 0, MAX_SPD * (FLEET_TOP * 1.10));
+  /* the headroom is whichever of the two ceiling-raisers reaches higher - the
+     bottle at `NOS_REV` or the slipstream at 4.5% - plus a frame of overshoot.
+     It was a flat 1.10, which was exactly the bottle's new ceiling on the
+     fastest car in the fleet, so the COMET would have been clamped at the very
+     speed the bottle is supposed to earn it. */
+  spd = clamp(spd, 0, MAX_SPD * FLEET_TOP * (Math.max(NOS_REV, 1.045) + 0.05));
   if(offRoad){
     shake = Math.max(shake, 0.22);
     targetX = clamp(targetX, -1.18, 1.18);
@@ -18290,6 +18341,27 @@ requestAnimationFrame(frameLoop);
   /* the bottle's level, so a check about the TRICKLE can start below full - the
      checks above it fill the bottle, and a full one cannot be seen to fill */
   API.setNos = function(v){ nos = clamp(v, 0, 100); return nos; };
+  /* ---- A TEST CAN HOLD THE BOTTLE OPEN (RLG-127) ------------------------
+     A synthetic `pointerdown` on the button works on one machine and does not
+     stay held on the other, and chasing that measures the event plumbing
+     rather than the engine. The BUTTON path is still exercised - the check
+     that the bottle can be opened at all presses the real control - and this
+     holds it open for the measurement itself, which is what `setSpd`,
+     `setWet`, `setTow` and `setBody` all exist to do for their own quantities.
+     It refuses on a car with no bottle, so it cannot fake the one thing
+     RLG-107 is about.
+     ------------------------------------------------------------------- */
+  API.holdNos = function(v){ nosOn = !!v && hasNos(); return nosOn; };
+  /* the bottle's state as the engine sees it: whether it is OPEN, how much is
+     left, and what that is currently doing to the ceiling. `drive-test` reads
+     `nosOn` from here rather than assuming a button press took - a synthetic
+     press stays held on one machine and not the other, and a measurement that
+     assumes the control worked measures nothing when it did not. */
+  API.nosState = function(){
+    return { nosOn:nosOn, nos:Math.round(nos), spd:Math.round(spd),
+             stretch:nosStretch(),
+             carTop:Math.round(MAX_SPD*bodyStat('vmax')*nosStretch()) };
+  };
   API.nos = function(){ return Math.round(nos); };
   API.hasNos = function(){ return hasNos(); };
   API.simTime = function(){ return +simT.toFixed(5); };

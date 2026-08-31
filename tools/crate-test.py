@@ -104,16 +104,35 @@ def take_crate(page, body, dmg, timed=True):
     before = page.evaluate("""() => { const R = window.__probe.road;
         return { nos: R.nos(), clock: R.clock, dmg: R.dmg, has: R.hasNos(),
                  taken: R.cratesTaken() }; }""")
+    # ---- IT DRIVES THE WHOLE WAY AND WATCHES WHILE IT DOES -------------------------
+    # Two earlier versions of this raced, in opposite directions. The first STOPPED as
+    # soon as `lastFx()` said something - and the case where a crate pays NOTHING never
+    # produces a flash, so it relied on the loop timing out, and a flash still alive from
+    # the previous case ended it early instead, before the car had reached its crate. It
+    # failed about one run in five. The second drove the full two seconds and then read the
+    # flash, by which time it had EXPIRED - a flash lives 1.2 seconds and the drive is 2.4.
+    #
+    # So it drives the whole way every time and SAMPLES AS IT GOES, keeping the first thing
+    # said and the gauges as they were when it was said. Neither the flash nor the gauge
+    # light is a state that persists; both have to be caught while they are up.
+    seen_fx, seen_gauges = '', {'clock': '', 'nos': ''}
     for _ in range(40):
         page.evaluate("() => { const R = window.__probe.road;"
                       " R.setSpd(R.MAX_SPD * 0.5); R.setTarget(0); }")
         page.wait_for_timeout(60)
-        if page.evaluate("() => window.__probe.road.lastFx()"):
-            break
+        now = page.evaluate("() => { const R = window.__probe.road;"
+                            " return { fx: R.lastFx(), g: R.gauges() }; }")
+        if now['fx'] and not seen_fx:
+            seen_fx = now['fx']
+        if 'gain' in now['g']['clock'] and 'gain' not in seen_gauges['clock']:
+            seen_gauges['clock'] = now['g']['clock']
+        if 'gain' in now['g']['nos'] and 'gain' not in seen_gauges['nos']:
+            seen_gauges['nos'] = now['g']['nos']
     after = page.evaluate("""() => { const R = window.__probe.road;
-        return { nos: R.nos(), clock: R.clock, dmg: R.dmg, fx: R.lastFx(),
-                 left: R.cratesLeft(), gauges: R.gauges(),
-                 taken: R.cratesTaken() }; }""")
+        return { nos: R.nos(), clock: R.clock, dmg: R.dmg,
+                 left: R.cratesLeft(), taken: R.cratesTaken() }; }""")
+    after['fx'] = seen_fx
+    after['gauges'] = seen_gauges
     return before, after
 
 
@@ -268,6 +287,9 @@ def main():
         # are what the player watches for the rest of the run. This reads the CLASS the
         # element is actually carrying rather than inferring it from the state that should
         # have set it - the gauge lighting is the thing under test, not the award.
+        # DRAINED FIRST, or there is no charge to gain and nothing to light. The cases above
+        # this one fill the bottle, and a gauge cannot be seen receiving what it already has.
+        page.evaluate("() => window.__probe.road.setNos(20)")
         before, after = take_crate(page, WITH_BOTTLE, 60, timed=True)
         print('      %-8s gauges after a crate: clock %r, bottle %r'
               % (WITH_BOTTLE, after['gauges']['clock'], after['gauges']['nos']))
