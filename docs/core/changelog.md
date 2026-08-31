@@ -14,6 +14,34 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-21"></a>
+## [0.10.21] - 2026-08-31
+- Fixed: **the sea runs to the horizon as one body of water.** Owner: the ocean drawn into the
+  background should run to the horizon seamlessly. The ruling supposed the background met the horizon
+  at the wrong ANGLE; measured, the angle was never what could be seen - across 13 bands in 40 places
+  the straight line it replaces creased by at most 2.0 times the edge's own curvature, which is the
+  quantisation of the reading. The fault was a COLOUR. The band above the furthest drawn slice is
+  painted before `drawHaze()` so the distance wash falls on it; the road's own sea is painted after
+  and gets none, and `seaTone` had no distance term at all where the land has receded properly since
+  RLG-059. So the water changed colour at the join by up to 45 in summed RGB - a pale blue meeting a
+  dark green-grey. The sea recedes toward the haze's own colour now, from the same function
+  `drawHaze` asks. Median step across the join 21.94 without it, 1.57 with
+  ([RLG-093](../fragments/RLG-093.md)).
+- Changed: **the background shoreline is the drawn shoreline carried on, not a straight line.** It
+  walks in the same steps the road walks in, asking `proj` and `roadsideAt` the same questions the
+  drawn slices ask, so there is no second construction for a first one to disagree with. Kept because
+  it is the right construction and it is what was asked for; the record says plainly that it changed
+  nothing measurable. A first attempt estimated the tangent from the last two slices and measured
+  WORSE - at the far end of the draw two slices are a fraction of a pixel apart vertically, so the
+  slope is a small number over a smaller one, and on a 13-pixel band it bent 13x where the straight
+  line sat at 2 ([RLG-093](../fragments/RLG-093.md)).
+- Added: **`tools/seajoin-test.py`.** It sweeps the recession inside single frames rather than across
+  runs, because the road is generated per load and the day is always turning - two runs differ in the
+  road, the hour and the sea's colour at once, which is RLG-062's lesson. The value 0.25 is a clean
+  minimum with the curve rising on both sides. It reports the crease measurement and gates on
+  neither construction's shape, because where the band is shallow there is no unbroken edge to read
+  and a check that cannot fail is not a check ([RLG-093](../fragments/RLG-093.md)).
+
 <a id="v0-10-20"></a>
 ## [0.10.20] - 2026-08-31
 - Fixed: **the skyline's parallax is chased in seconds, not in frames.** This is the other half of the

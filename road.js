@@ -7800,6 +7800,38 @@ let biomeStarted = 0;
    the sea on alternating sides sixty times a second.
    ------------------------------------------------------------------------- */
 let seaSide = 1;
+/* debug only, and it exists to REINTRODUCE the defect. True draws the far band's
+   shore as a straight line to the vanishing point, which is what it was before
+   RLG-093. Reverting the engine cannot falsify the check - the instrument reads
+   `farSea().curved`, which does not exist on that build. */
+/* ---- HOW FAR PAST THE DRAWN ROAD THE SHORELINE IS CARRIED (RLG-093) ----
+   The band between the furthest drawn slice and the horizon is a few pixels
+   tall and covers an enormous distance, so the steps are coarse and there are
+   not many: 24 of them, each 12 segments long, which is about twice the draw
+   distance again. Past that the projection has converged on the vanishing point
+   and every further point lands on the same pixel.
+   ------------------------------------------------------------------------ */
+const FAR_SEA_STEPS = 24, FAR_SEA_STEP = 12;
+/* ---- HOW MUCH HAZE THE WATER HAS TAKEN BY THE END OF THE DRAW ----------
+   MEASURED, NOT CHOSEN, and swept inside single frames because this world
+   cannot be compared across runs: the road is generated per load and the day is
+   always turning, so two runs differ in the road, the hour and the sea's own
+   colour at once. `API.seaHaze` moves it live, so six values were read from the
+   SAME band at the SAME hour, six bands by four hours each.
+
+     value   median step at the join   worst   samples under 10
+      0.00            21.88             40.70        4 of 15
+      0.15             9.43             17.93        9 of 16
+      0.25             2.46              8.34       16 of 16
+      0.34             9.08             29.63        8 of 16
+      0.45            20.52             52.28        5 of 15
+      0.60            36.39             65.08        2 of 13
+
+   A clean minimum with the curve rising on both sides of it, which is what
+   makes 0.25 a measurement rather than a fit. 0.00 is the shipping behaviour.
+   ------------------------------------------------------------------------ */
+let SEA_HAZE = 0.25;
+let seaStraight = false;
 /* ONE PLACE ROLLS IT, and that is not tidiness. The harness hook that places a
    biome change was written to set the from/to pair directly, so it never rolled
    the side - and the check for "the side is rolled" came back 40 out of 40 on
@@ -11581,13 +11613,47 @@ function hazeRGB(){
    night and golden mixes the ground does, and rain darkens it - a grey sea under
    a grey sky is most of what makes a wet coast read as one.
    ------------------------------------------------------------------------- */
-function seaTone(B){
+/* ---- THE SEA RECEDES, AND UNTIL NOW IT DID NOT (RLG-093) ----------------
+   Owner, 2026-08-31: the ocean drawn into the background should run to the
+   horizon seamlessly and read as one body of water.
+
+   IT READ AS TWO, AND THE SEAM IS TONAL RATHER THAN GEOMETRIC. The band above
+   the furthest drawn slice is painted inside `drawSky`, BEFORE `drawHaze()`, so
+   the distance wash falls on it. The road's own sea is painted after, so it gets
+   none - and `seaTone` had no distance term at all, one flat colour from the
+   bumper to the end of the draw. So the water changed colour at the join, by up
+   to 45 in summed RGB: rgb(64,80,103) above the line against rgb(49,73,81)
+   below it, which is a pale blue meeting a dark green-grey.
+
+   THE ANGLE WAS NOT THE PROBLEM, AND IT WAS MEASURED BEFORE IT WAS BELIEVED.
+   The ruling supposed the background met the horizon at the wrong angle, and
+   that was built first: the shoreline is carried on rather than straightened,
+   which is the right construction and is kept. But across 13 bands in 40 places
+   the straight line creased by at most 2.0 times the edge's own curvature -
+   pixel quantisation - so the geometry was never what anybody could see. What
+   was visible was the colour.
+
+   SO THE SEA TAKES DISTANCE. `far` is 0 at the bumper and 1 at the end of the
+   draw, and the water washes toward the haze's own colour as it goes - the same
+   colour `drawHaze` uses, asked for from the same function, so the two cannot
+   drift apart. That is what the land has always had through `groundTone`, and
+   its absence is why the sea alone showed a line.
+   ------------------------------------------------------------------------ */
+function seaTone(B, far){
   const n = nightFall(), g = goldenHour();
   /* the sea crossed the same two thresholds the ground did, so a coast snapped
      twice over - once on the land and once on the water (RLG-091) */
-  const c = rgb(hourTint(hexRGB(B.sea), n, g, 0.66, 0.26));
+  let c = rgb(hourTint(hexRGB(B.sea), n, g, 0.66, 0.26));
   const rain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
-  return rain > 0 ? mixRGB(c, rain * 0.30, WET_DARK) : c;
+  if(rain > 0) c = mixRGB(c, rain * 0.30, WET_DARK);
+  if(far > 0){
+    /* SEA_HAZE is what the far band gets from `drawHaze` by the time it reaches
+       the horizon. Matching it is the whole point, so it is a tunable with a
+       committed default rather than a number inside this expression. */
+    const t = Math.min(1, far) * SEA_HAZE;
+    if(t > 0.002) c = mixRGB(c, t, hazeRGB());
+  }
+  return c;
 }
 
 function groundBase(mix, atIdx){
@@ -11939,6 +12005,17 @@ function drawSky(){
    grey by day. Everything hazy in the scene reads from this, so they can never
    disagree with each other or with the sky again.
    -------------------------------------------------------------------------- */
+/* the haze's colour on its own, so anything that has to RECEDE toward it can ask
+   for it rather than carry a second copy of the day cycle (RLG-093). */
+function hazeRGB(){
+  const n = nightFall(), g2 = goldenHour();
+  const day   = [152, 162, 182];
+  const golden= [214, 138,  92];
+  const night = [ 58,  70, 108];
+  const mix = (x,y,t) => x + (y-x)*t;
+  let r = mix(day[0], golden[0], g2), gg = mix(day[1], golden[1], g2), b = mix(day[2], golden[2], g2);
+  return [mix(r, night[0], n), mix(gg, night[1], n), mix(b, night[2], n)];
+}
 function hazeTint(a){
   const n = nightFall(), g2 = goldenHour();
   /* day - golden - night, mixed in that order */
@@ -12416,7 +12493,9 @@ function drawRoad(){
                             : shN;
         if(seaSide < 0 ? (shF > 0 || shN > 0) : (shF < W || shN < W)){
           const edge = seaSide < 0 ? 0 : W;
-          ctx.fillStyle = seaTone(sB);
+          /* `fade` is 1 at the bumper and 0 at the end of the draw, so the
+             distance the water has receded through is its complement */
+          ctx.fillStyle = seaTone(sB, 1 - fade);
           /* ---- AND IT OVERLAPS THE SLICE BEHIND IT BY A PIXEL --------
              Every slice paints the ground full width and then paints its water
              back over it, so the top row of each fill is antialiased against
@@ -14101,16 +14180,72 @@ function draw(){
          costs nothing, and no hill can confuse it.
          ---------------------------------------------------------- */
       const sh = W/2 + viewShift + bendPx(fFar*SEG);
+      /* ---- THE BAND IS THE SAME SHORELINE, CARRIED ON (RLG-093) ----
+         Owner, 2026-08-31: the ocean drawn into the background - can the angle
+         it is drawn at be interpolated from the slice segment's ocean, so it
+         runs to the horizon seamlessly and reads as one body of water.
+
+         IT MET THE JOIN CORRECTLY AND LEFT IT AT THE WRONG ANGLE. Both
+         endpoints were already right - the band starts at `sa`, the shore of
+         the furthest drawn slice, and ends at the vanishing point, which is
+         exact. Between them was a STRAIGHT line, while the shoreline below the
+         join follows the terrain and arrives with a slope of its own. The
+         positions agreed and the directions did not, so the water had a crease
+         in it, and on a steeply falling road the crease is sharp.
+
+         AND THE ANSWER IS NOT TO ESTIMATE THE ANGLE. That was tried here and
+         MEASURED WORSE. A tangent from the last two slices, turned into a
+         quadratic: at the far end of the draw two neighbouring slices are a
+         fraction of a pixel apart vertically, so the slope is a small number
+         divided by a smaller one. On a 13-pixel band it put the crease at 13
+         times the edge's own curvature where the straight line had been at 2.
+         An unstable estimate of a quantity is worse than not using it.
+
+         SO THERE IS NO SECOND CONSTRUCTION AT ALL. The band walks on in the
+         same steps the road walks in, asking `proj` and `roadsideAt` the same
+         questions the drawn slices ask, until it reaches the horizon. The
+         shoreline is one polyline computed one way from the bumper to the
+         skyline; the join stops being a join, and a crease has nowhere to form
+         because there are no longer two shapes to disagree.
+
+         IT NEEDS NO SANITY GUARD, WHICH IS THE POINT. The note above records an
+         extrapolation that was wrong a third of the time, and whose guard - the
+         nearer slice must sit lower on the screen - is not true on a climbing
+         road, so the band was skipped and the coast ran out at the skyline.
+         Walking forward emits the points the projection gives; a point that
+         does not sit between the horizon and the shore already drawn is simply
+         not added. The failure mode is a shorter walk, never a missing sea.
+         ------------------------------------------------------------- */
       const edge = seaSide < 0 ? 0 : W;
-      ctx.fillStyle = seaTone(fB);
+      /* NO RECESSION HERE. This band is painted before `drawHaze`, so the wash
+         is applied to it as paint rather than mixed into its colour. Asking for
+         both would haze it twice and put the seam back the other way round. */
+      ctx.fillStyle = seaTone(fB, 0);
       ctx.beginPath();
       ctx.moveTo(sh, horizon);
+      let walked = 0;
+      if(!seaStraight){
+        /* far to near, so the path runs from the horizon down to the join and
+           arrives at `sa` last - the direction the moveTo above starts in */
+        let lastY = horizon;
+        for(let k = FAR_SEA_STEPS; k >= 1; k--){
+          const q = proj(0, (fFar + k*FAR_SEA_STEP) * SEG);
+          if(!q || !q.ok) continue;
+          if(!(q.y > lastY + 0.25 && q.y < fa.y - 0.25)) continue;
+          ctx.lineTo(q.x + seaSide * roadsideAt(q, fB.beach), q.y);
+          lastY = q.y;
+          walked++;
+        }
+      }
       ctx.lineTo(sa, fa.y);
       ctx.lineTo(edge, fa.y);
       ctx.lineTo(edge, horizon);
       ctx.closePath();
       ctx.fill();
       farSea.drew = true; farSea.shore = +sh.toFixed(1); farSea.near = +sa.toFixed(1);
+      /* how many points of continued shoreline the band got. Zero is the
+         straight line, which is what this replaces. */
+      farSea.walked = walked;
     }
   }
   /* ---- HAZE IS ATMOSPHERE BEHIND THE ROAD, NOT A FILM OVER IT ----------
@@ -17176,6 +17311,14 @@ requestAnimationFrame(frameLoop);
   /* what the far band decided this frame, for a harness that has to answer why
      the sea did or did not reach the horizon */
   API.farSea = function(){ return farSea; };
+  /* which side the water is on, so a check reads it rather than assuming (RLG-093) */
+  API.seaSide = function(){ return seaSide; };
+  API.seaStraight = function(on){ seaStraight = !!on; return seaStraight; };
+  /* how much haze the water has taken by the end of the draw. Live, so the value
+     can be SWEPT inside one frame - the road is generated per load and the day is
+     always turning, so two runs cannot be compared and a value chosen across them
+     would be chosen from noise (RLG-062, RLG-093). */
+  API.seaHaze = function(v){ if(typeof v === 'number') SEA_HAZE = v; return SEA_HAZE; };
   API.headsLit = function(){ const n = headsLit; headsLit = 0; return n; };
   API.scenerySides = function(){
     return { left:sceneSides.left, right:sceneSides.right,
