@@ -71,6 +71,11 @@ RACER_MAX = 0.09          # "rarely", and "very very rare" for the supercars to 
 SPORTY_LIFT = 2.0
 ORDINARY = ('sedan', 'van', 'truck', 'taxi', 'pickup')
 SPORTY = ('coupe', 'tuner', 'muscle')
+# the supercars the owner allowed into traffic, and the FORMULA is deliberately not among them
+SUPERS = ('stallion', 'matador', 'crest')
+# "very very rare", said twice. The old rogue was 2.8% of traffic and this is a different order of
+# magnitude, so the ceiling is set an order below it rather than beside it.
+SUPER_MAX = 0.012
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -231,6 +236,43 @@ def main():
         res.check(best['overLimit'] > 0,
                   'and at least one of them is genuinely over the limit',
                   'nothing on the road ever exceeded %.0f mph' % (limit * 200))
+        print()
+
+        # ---- THE SUPERCARS IN TRAFFIC (RLG-054) ---------------------------------------------
+        # Owner, 2026-08-29: the supercars, not the formula, as very very rare traffic in their
+        # muted colours, inheriting the raised Speeder chance. Owner, 2026-08-31: no personality
+        # shows on a car other than through its behaviour, and a traffic Racer wears traffic paint.
+        print('  the supercars in traffic')
+        types = page.evaluate('(n) => window.__probe.road.sampleTypes(n)', 40000)
+        tot = sum(types.values())
+        supers = sum(types.get(k, 0) for k in SUPERS)
+        print('      %d of %d spawns, about one car in %d'
+              % (supers, tot, round(tot / supers) if supers else 0))
+        res.check(0 < supers / tot <= SUPER_MAX,
+                  'a supercar in traffic is very very rare, and does happen',
+                  '%.3f%% of spawns, wanted above nothing and under %.1f%%'
+                  % (supers / tot * 100, SUPER_MAX * 100))
+        res.check('formula' not in types and not any(
+                      k in types for k in ('vector', 'apex', 'comet')),
+                  'and the formula car is not one of them',
+                  'a formula body reached the traffic pool')
+
+        # THE PAINT IS THE ONLY THING THAT SAYS IT IS NOT A RIVAL, so it is the thing to measure.
+        # Not "was it handed the right palette" - what the sprite actually came out as.
+        for body in SUPERS:
+            traf = page.evaluate('([w,k,i]) => window.__probe.road.spriteInk(w,k,i)',
+                                 ['traffic', body, 3])
+            rival = page.evaluate('([w,k,i]) => window.__probe.road.spriteInk(w,k,i)',
+                                  ['rival', body.upper() + '|CYAN', 0])
+            if not traf or not rival:
+                res.check(False, 'the %s exists in both traffic and rival paint' % body,
+                          'traffic %s, rival %s' % (bool(traf), bool(rival)))
+                continue
+            print('      %-9s traffic saturation %.3f   against the same body as a rival %.3f'
+                  % (body, traf['sat'], rival['sat']))
+            res.check(traf['sat'] < rival['sat'],
+                      'a %s in traffic is muted against the same car as a rival' % body,
+                      'traffic %.3f is not below rival %.3f' % (traf['sat'], rival['sat']))
         print()
 
         errs = page.evaluate("() => window.__probe.errors")

@@ -5015,6 +5015,39 @@ function buildFleet(){
     TRAFFIC_SP[kind] = TRAFFIC_PAINT.map((c,i2) =>
       sprite(size[0], size[1], paintRig(rig, trafficPaint(i2))));
   }
+  /* ---- AND THE SUPERCARS THAT ARE SOMEBODY'S CAR (RLG-054) --------------
+     Owner, 2026-08-29: "we should make the supercars, not including the formula,
+     very very rare traffic cars in their muted colors", and "they should inherit
+     the increased percentage of being a speeder".
+
+     THE SAME SHAPE, THE SAME PAINTER, A DIFFERENT PALETTE. These are built
+     exactly as a rival is - `paintCar` with the body's own shape record - except
+     that the colour comes from `trafficPaint` rather than from the saturated
+     rival list. That is the whole difference, and it is deliberately the whole
+     difference: RLG-044 rules that colour is a CLASS signal, and the owner
+     confirmed on 2026-08-31 that no personality shows on a car other than
+     through its behaviour, and that a traffic Racer wears traffic paint.
+
+     AND NO STRIPES, WHICH COSTS NOTHING BECAUSE RIVALS HAVE NONE EITHER.
+     `stripes` is an option the painter is given, and the rival cache does not
+     pass it. A striped supercar in silver would read as a rival in an odd
+     colour, which is the exact failure this feature has to avoid.
+
+     NOT THE FORMULA. It has no business on a public road and no indicators
+     either (RLG-052), and the owner excluded it by name.
+     -------------------------------------------------------------------- */
+  for(const bk of SUPER_TRAFFIC){
+    const rs = BODY[bk];
+    if(!rs || rs.rig) continue;
+    const key = bk.toLowerCase();
+    TRAFFIC_SP[key] = TRAFFIC_PAINT.map((c,i2) =>
+      sprite(220,168, paintCar(Object.assign({
+        cabin:true, spoiler:true, shape:rs, bodyKey:bk,
+        bodyTop:rs.bodyTop, cabinTop:rs.cabinTop,
+        lamp:'#d61b3c', lamp2:'#ff7a86'
+      }, trafficPaint(i2)))));
+  }
+
   /* ---- AND THEIR FRONTS -------------------------------------------------
      The mirror shows oncoming cars, so it needs the noses. Same paints, same
      shapes, one sprite each — cached at build time like the rears rather than
@@ -5043,6 +5076,14 @@ function buildFleet(){
                : kind === 'muscle' ? [210,158] : [200,164];
     FRONT_SP[kind] = TRAFFIC_PAINT.map((c,i2) =>
       sprite(size[0], size[1], paintRigFront(rig, trafficPaint(i2))));
+  }
+
+  /* the supercars' faces, on the same terms as their tails */
+  for(const bk of SUPER_TRAFFIC){
+    const rs = BODY[bk];
+    if(!rs || rs.rig) continue;
+    FRONT_SP[bk.toLowerCase()] = TRAFFIC_PAINT.map((c,i2) =>
+      sprite(230,215, paintFront(Object.assign({ bodyType:bk }, rs, trafficPaint(i2)))));
   }
 
   /* the taxi has ONE colour, because a cab is yellow */
@@ -6485,7 +6526,11 @@ function spawnBehind(){
      condition. This list is road-car rigs only, so the rule holds today by
      construction - it is written here so the rare-supercar work does not
      quietly widen it. */
-  const t = roll<0.10 ? 'truck'  : roll<0.24 ? 'van'
+  /* the same gate as the main spawner. A type added to one table and not the
+     other appears in half the traffic and nowhere else - which is precisely what
+     the note above this table warns about (RLG-054). */
+  const t = Math.random() < SUPER_IN_TRAFFIC ? superType()
+          : roll<0.10 ? 'truck'  : roll<0.24 ? 'van'
           : roll<0.40 ? 'pickup' : roll<0.52 ? 'coupe'
           : roll<0.58 ? 'tuner'  : roll<0.66 ? 'muscle'
           : roll<0.72 ? 'taxi'
@@ -6508,8 +6553,10 @@ function spawnBehind(){
     mind: mindFor(behindCruise),
     type: t,
     w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
-     : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
-    len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
+     : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285
+     : SUPER_W[t] || 0.275,
+    len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420
+       : SUPER_W[t] ? 360 : 380,
     near:false, drift: rnd(-1,1)*0.0002, fromBehind:true, paintN: (Math.random()*10)|0
   });
 }
@@ -6576,8 +6623,10 @@ function spawnWave(z){
       mind: mind,
       type: t,
       w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
-       : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
-      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
+       : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285
+       : SUPER_W[t] || 0.275,
+      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420
+         : SUPER_W[t] ? 360 : 380,
       near: false, drift: rnd(-1,1)*0.0002, paintN: (Math.random()*10)|0
     });
     traffic[traffic.length-1].spd = traffic[traffic.length-1].cruise;
@@ -6631,11 +6680,37 @@ const CIVILIAN = 0, SPEEDER = 1, RACER = 2;
 /* what each vehicle can actually do, as a fraction of MAX_SPD. This is the CAR,
    and it is the only thing in here that reads the body. */
 const TYPE_VMAX = { truck:0.34, van:0.50, pickup:0.52, taxi:0.55,
-                    sedan:0.58, sedan2:0.58, coupe:0.66, tuner:0.74, muscle:0.78 };
+                    sedan:0.58, sedan2:0.58, coupe:0.66, tuner:0.74, muscle:0.78,
+                    /* A SUPERCAR IN TRAFFIC GETS THE SUPERCAR'S STATS (RLG-042).
+                       It is slow because the person driving it is going to work,
+                       not because the car was made slower for being traffic. */
+                    stallion:0.95, matador:0.92, crest:0.90 };
 /* who drives what. A sports car raises the odds of a driver being a Speeder -
    RLG-045 ruled that, and it is a statement about the person who chose the car
    rather than about the car. The Civilian/Speeder split is RLG-045's 90/10. */
-const SPORTY = { coupe:1, tuner:1, muscle:1 };
+const SPORTY = { coupe:1, tuner:1, muscle:1,
+                 /* and a supercar INHERITS the raised Speeder chance, which the
+                    owner asked for by name. It is a statement about the person
+                    who chose to drive one (RLG-045, RLG-054). */
+                 stallion:1, matador:1, crest:1 };
+/* ---- VERY VERY RARE, AND WRITTEN AS ITS OWN ROLL (RLG-054) -------------
+   The owner said "very very rare" twice, which is the specification. The old
+   rogue was one in five tuners and muscle cars - about 2.8% of all traffic - and
+   the ruling says this is a different order of magnitude that "should be written
+   as such rather than folded into the same roll". So it is a gate BEFORE the
+   type table rather than a slice of it: about one car in a hundred and seventy.
+
+   NOT THE FORMULA. The owner excluded it by name, and RLG-052 records why - it
+   has no indicators, because it has no business on a public road.
+   -------------------------------------------------------------------- */
+const SUPER_TRAFFIC = ['STALLION', 'MATADOR', 'CREST'];
+const SUPER_IN_TRAFFIC = 0.006;
+/* low and wide, and shorter than a saloon. It doubles as the test for "is this
+   one of them" wherever a width or a length is chosen. */
+const SUPER_W = { stallion:0.27, matador:0.285, crest:0.265 };
+function superType(){
+  return SUPER_TRAFFIC[(Math.random() * SUPER_TRAFFIC.length) | 0].toLowerCase();
+}
 function rollMind(t){
   const fast = !!SPORTY[t];
   if(Math.random() < (fast ? 0.05 : 0.01)) return RACER;
@@ -17292,6 +17367,41 @@ requestAnimationFrame(frameLoop);
      computed the odds itself would agree with a copy of the code rather than with
      the code, and rarity needs a sample far larger than the road ever holds -
      a Racer is about one car in fifty (RLG-054). */
+  /* how often a supercar turns up in traffic, sampled from the engine's own gate.
+     "Very very rare" is the specification, and a rate near one in a hundred and
+     seventy cannot be measured against the thirty cars the road holds (RLG-054). */
+  API.sampleTypes = function(n){
+    const out = {};
+    for(let i = 0; i < (n || 20000); i++){
+      const roll = Math.random();
+      const t = Math.random() < SUPER_IN_TRAFFIC ? superType()
+              : roll<0.12 ? 'truck'  : roll<0.26 ? 'van'
+              : roll<0.42 ? 'pickup' : roll<0.53 ? 'coupe'
+              : roll<0.59 ? 'tuner'  : roll<0.67 ? 'muscle'
+              : roll<0.73 ? 'taxi'
+              : roll<0.86 ? 'sedan'  : 'sedan2';
+      out[t] = (out[t] || 0) + 1;
+    }
+    return out;
+  };
+  /* the ink of a traffic sprite against the same body's rival sprite, so a check
+     can ask whether a supercar in traffic is actually MUTED rather than trust
+     that it was handed the right palette (RLG-044, RLG-054) */
+  API.spriteInk = function(which, key, i){
+    const tbl = which === 'traffic' ? TRAFFIC_SP : which === 'front' ? FRONT_SP : null;
+    const img = tbl ? (tbl[key] || [])[i|0] : RIVAL_SP[key];
+    if(!img) return null;
+    const g = img.getContext('2d');
+    const d = g.getImageData(0, 0, img.width, img.height).data;
+    let r=0, gg=0, b=0, n=0;
+    for(let k=0;k<d.length;k+=4){ if(d[k+3] > 40){ r+=d[k]; gg+=d[k+1]; b+=d[k+2]; n++; } }
+    if(!n) return null;
+    r/=n; gg/=n; b/=n;
+    const mx = Math.max(r,gg,b), mn = Math.min(r,gg,b);
+    /* saturation as the eye reads it: how far the colour is from grey */
+    return { r:Math.round(r), g:Math.round(gg), b:Math.round(b), px:n,
+             sat: +(mx ? (mx-mn)/mx : 0).toFixed(4) };
+  };
   API.sampleMinds = function(t, n){
     const out = { civilian:0, speeder:0, racer:0, cruise:[] };
     for(let i = 0; i < (n || 2000); i++){
@@ -17622,8 +17732,10 @@ requestAnimationFrame(frameLoop);
       z: pos + PLAYER_Z + (dz === undefined ? 0 : dz), lane: 1, x: dx || 0,
       spd: 0, cruise: 0, type: t,
       w: t==='truck' ? 0.32 : t==='van' ? 0.275 : t==='pickup' ? 0.29
-       : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285 : 0.275,
-      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420 : 380,
+       : (t==='coupe'||t==='tuner') ? 0.26 : t==='muscle' ? 0.285
+       : SUPER_W[t] || 0.275,
+      len: t==='truck' ? 520 : t==='van' ? 410 : t==='pickup' ? 420
+         : SUPER_W[t] ? 360 : 380,
       near:false, drift:0, fromBehind:false, paintN:0
     });
     return { x: traffic[0].x, w: traffic[0].w, len: traffic[0].len };

@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-25"></a>
+## [0.10.25] - 2026-08-31
+- Added: **supercars appear as very rare traffic, in traffic paint.** Owner, 2026-08-29, extending the
+  personalities ruling; and owner, 2026-08-31, settling the question it had left open on its first
+  day - no personality shows on a car other than through its behaviour, and a traffic Racer wears
+  traffic paint. A traffic supercar is built exactly as a rival is, with the colour coming from the
+  muted list instead of the saturated one, and that is deliberately the whole difference. Measured off
+  the sprites' own pixels, saturation runs 0.113 to 0.162 as traffic against 0.532 to 0.634 as a
+  rival - a four-fold difference, which is the thing the ruling said had to be right. The gate sits
+  before the type table in BOTH spawners rather than as a slice of one, so its rarity is a number a
+  reader can find: 230 of 40,000 spawns, about one car in 174 against the old rogue's one in 36. Not
+  the FORMULA, and the check asserts its absence. They inherit the raised Speeder chance, which is the
+  sentence that could not be built until the personalities existed, and they get the supercar's
+  stats - slow because the driver is going to work ([RLG-054](../fragments/RLG-054.md)).
+
 <a id="v0-10-24"></a>
 ## [0.10.24] - 2026-08-31
 - Added: **every NPC driver has a personality - Civilian, Speeder or Racer.** One system for traffic
