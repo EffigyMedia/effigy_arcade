@@ -346,6 +346,9 @@ const COP_PAINT = {
    is not currently looking at - the fleet sheet asks about all of them at once,
    and the garage asks about the one in front of the player.
    ------------------------------------------------------------------------ */
+/* how often a race opponent wears stripes. A chance rather than a rule: at 1.0
+   every grid is a team, and at 0 the signal does not exist (RLG-117). */
+let RIVAL_STRIPES = 0.35;
 const STRIPE_BODIES = { STALLION:1, MATADOR:1, CREST:1,
                         ROADSTER:1, TUNER:1, MUSCLE:1,
                         tuner:1, muscle:1 };
@@ -4802,12 +4805,16 @@ let TRAFFIC_SP = {}, FRONT_SP = {};
    not be retried sixty times a second.
    ------------------------------------------------------------------------- */
 const RIVAL_FRONT_SP = {};
-function rivalFront(bodyKey, paintKey){
-  const k = (bodyKey || '') + '|' + (paintKey || '');
+function rivalFront(bodyKey, paintKey, striped){
+  /* A CAR STRIPED FROM BEHIND AND PLAIN FROM THE FRONT IS TWO CARS. This cache
+     is lazy where the rear one is eager, so the flag joins the key rather than
+     doubling a loop - each cache keeps the policy it already had (RLG-117). */
+  const st = striped && stripesOn(bodyKey);
+  const k = (bodyKey || '') + '|' + (paintKey || '') + (st ? '|S' : '');
   if(RIVAL_FRONT_SP[k] !== undefined) return RIVAL_FRONT_SP[k];
   const rs = BODY[bodyKey], pt = PAINT[paintKey];
   if(!rs || !pt) return (RIVAL_FRONT_SP[k] = null);
-  const L = { lamp:'#d61b3c', lamp2:'#ff7a86', player:true, marque:rs.rear };
+  const L = { lamp:'#d61b3c', lamp2:'#ff7a86', player:true, marque:rs.rear, stripes:st };
   const rz = rs.rig ? rigBox(rs.rig) : null;
   RIVAL_FRONT_SP[k] = rs.rig
     ? sprite(rz[0], rz[1], paintRigFront(rs.rig, Object.assign({}, L, pt)))
@@ -4952,6 +4959,28 @@ function buildFleet(){
 
          A rig body goes through `paintRig`, the same painter its NPC version
          uses. */
+      /* ---- AND A STRIPED ONE, FOR THE BODIES THAT CARRY THEM (RLG-117)
+         Owner, 2026-08-31: "Actual racers should have a chance to use stripes -
+         not the racer's personality, but race opponents."
+
+         ONLY THE BODIES `STRIPE_BODIES` NAMES, which is the same list the
+         player's own car is allowed stripes on. A formula car is not on it, and
+         the painter refuses stripes on one anyway - two guards, and the second
+         is the one that would survive somebody editing the list.
+
+         Eager rather than lazy, because the cache around it is eager and a
+         second policy in one table is the thing that drifts. Six bodies against
+         the whole paint list, built once at boot. */
+      if(stripesOn(bk)) RIVAL_SP[bk+'|'+k+'|S'] = rs.rig
+        ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1], paintRig(rs.rig, Object.assign({
+            player:true, marque:rs.rear, stripes:true,
+            lamp:'#d61b3c', lamp2:'#ff7a86'
+          }, PAINT[k])))
+        : sprite(220,168, paintCar(Object.assign({
+            cabin:true, spoiler:true, shape:rs, bodyKey:bk, stripes:true,
+            bodyTop:rs.bodyTop, cabinTop:rs.cabinTop,
+            lamp:'#d61b3c', lamp2:'#ff7a86'
+          }, PAINT[k])));
       RIVAL_SP[bk+'|'+k] = rs.rig
         ? sprite(rigBox(rs.rig)[0], rigBox(rs.rig)[1], paintRig(rs.rig, Object.assign({
             player:true, marque:rs.rear,
@@ -8986,6 +9015,17 @@ function buildField(){
     r.x = LANE_X[r.lane];
     r.paint = pool[i % pool.length];
     r.body  = deck[i];
+    /* ---- SOME OF THEM ARE STRIPED (RLG-117) --------------------------
+       A chance, not a rule, so a grid is a mix rather than a livery. Rolled
+       here with the paint and the body because it is part of what this car IS
+       for the whole race - rolled per frame it would flicker, and rolled per
+       race for all of them it would be a team.
+
+       And it is the CLASS signal seen from the other end. RLG-044 rules colour
+       says class and RLG-054 has just put supercars into traffic in muted
+       paint; a striped car is unambiguously an opponent, which makes the muted
+       one unambiguously not. */
+    r.striped = stripesOn(deck[i]) && Math.random() < RIVAL_STRIPES;
     const B = BODY[r.body];
     r.vmax  = MAX_SPD * B.vmax;
     r.pull  = accelOf(r.body);
@@ -13345,7 +13385,8 @@ function emitBucket(n){
          Interstate made into a circuit racer. That was the whole idea, and the
          angled views were solving a problem the design did not have to have.
          ------------------------------------------------------------- */
-      const box = drawSprite(RIVAL_SP[(r.body||'MATADOR')+'|'+r.paint] || SP.player,
+      const box = drawSprite(RIVAL_SP[(r.body||'MATADOR')+'|'+r.paint+(r.striped?'|S':'')]
+                          || RIVAL_SP[(r.body||'MATADOR')+'|'+r.paint] || SP.player,
                              r.x, r.z, r.w, r.wreck>0?0.85:1);
       noteSprite(r);
       if(box){
@@ -15082,7 +15123,7 @@ function drawMirrorFull(mx, my, mw, mh){
         ? (it.o.superc ? (SP.superCopFront || null) : (FRONT_SP.cop || [])[0] || null)
       : (it.o.type && FRONT_SP[it.o.type])
         ? FRONT_SP[it.o.type][(it.o.paintN|0) % FRONT_SP[it.o.type].length]
-      : it.o.body ? rivalFront(it.o.body, it.o.paint)
+      : it.o.body ? rivalFront(it.o.body, it.o.paint, it.o.striped)
       : null;
 
     if(fs){
@@ -17665,6 +17706,27 @@ requestAnimationFrame(frameLoop);
     return (w2 < 1.2 || w2 > W*3.4) ? null : w2;
   };
   API.rivalSprite = function(k){ return RIVAL_SP[k]; };
+  /* who on the grid is wearing stripes, and what body they are in. A check that
+     only counted them could not tell "some are striped" from "the formula cars
+     got stripes", which is the one thing that must not happen (RLG-117). */
+  API.gridStripes = function(){
+    const out = { seen:0, striped:0, bodies:{}, badBody:[] };
+    for(const r of racers){
+      out.seen++;
+      const b = out.bodies[r.body] || (out.bodies[r.body] = { seen:0, striped:0 });
+      b.seen++;
+      if(r.striped){
+        out.striped++; b.striped++;
+        if(!stripesOn(r.body)) out.badBody.push(r.body);
+      }
+    }
+    return out;
+  };
+  /* the roll itself, so rarity can be sampled without running a hundred races */
+  API.stripeChance = function(v){
+    if(typeof v === 'number') RIVAL_STRIPES = v;
+    return RIVAL_STRIPES;
+  };
   /* the road's own vehicles, by name - `truck`, `van`, `cop` and so on. It
      exists so a harness can ask whether a garage tap REBUILT one, by marking
      the object and looking for the mark afterwards. A sprite is a canvas, so

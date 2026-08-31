@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-26"></a>
+## [0.10.26] - 2026-08-31
+- Added: **race opponents have a chance of wearing stripes.** Owner, correcting what the request could
+  have meant before it could be built wrong: race opponents, not cars with the Racer personality -
+  stripes on those would be the exact failure RLG-054 spent two paragraphs warning against. It is the
+  class signal read from the other end: a striped car is unambiguously an opponent, which is what
+  makes the muted supercar in traffic unambiguously not. A chance rather than a rule, and both bounds
+  matter - at nothing the signal does not exist, at everything a grid is a team. Measured over 30
+  grids and 330 cars: 121 striped, 37% against a 35% chance, spread across all three bodies. Rolled
+  with the paint and the body, because it is part of what the car is for the whole race. A formula car
+  never wears them, guarded twice, and the check asserts the effect rather than either guard
+  ([RLG-117](../fragments/RLG-117.md)).
+- Changed: **`rivalFront` takes the stripe flag, because a car striped from behind and plain from the
+  front is two cars.** The rear cache is eager and the front one lazy, so the striped variants are
+  built in the boot loop and the flag joins the lazy key - each cache keeps the policy it already had.
+  The fault this avoids only shows in the mirror ([RLG-117](../fragments/RLG-117.md)).
+
 <a id="v0-10-25"></a>
 ## [0.10.25] - 2026-08-31
 - Added: **supercars appear as very rare traffic, in traffic paint.** Owner, 2026-08-29, extending the

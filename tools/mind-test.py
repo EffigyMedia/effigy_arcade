@@ -275,6 +275,65 @@ def main():
                       'traffic %.3f is not below rival %.3f' % (traf['sat'], rival['sat']))
         print()
 
+        # ---- AND THE OTHER END OF THE CLASS SIGNAL (RLG-117) --------------------------------
+        # Owner, 2026-08-31: "Actual racers should have a chance to use stripes - not the racer's
+        # personality, but race opponents." A striped car is unambiguously an opponent, which is
+        # what makes the muted supercar above unambiguously not one. The two are one signal read
+        # from both ends, so they are checked in one file.
+        print('  stripes on the grid')
+        chance = page.evaluate("() => window.__probe.road.stripeChance()")
+        print('      the chance is %.0f%%' % (chance * 100))
+
+        # SAMPLED OVER MANY GRIDS, because one grid of a handful of cars says nothing about a
+        # chance. `restart` runs the same path a real race start takes.
+        # AND IT HAS TO BE A RACE. Racers exist only in race mode - the first version of this
+        # section ran in DRIVE, formed no grid at all, and reported "0 of 0" as a failure of the
+        # feature rather than of the harness.
+        page.evaluate("() => window.__probe.road.setMode('race')")
+        grids, striped, seen, bad = 0, 0, 0, []
+        bodies = {}
+        for _ in range(30):
+            page.evaluate("() => window.__probe.road.restart()")
+            page.wait_for_timeout(60)
+            g = page.evaluate("() => window.__probe.road.gridStripes()")
+            if not g['seen']:
+                continue
+            grids += 1
+            striped += g['striped']
+            seen += g['seen']
+            bad += g['badBody']
+            for b, v in g['bodies'].items():
+                e = bodies.setdefault(b, [0, 0])
+                e[0] += v['seen']
+                e[1] += v['striped']
+        res.check(grids > 5 and seen > 30,
+                  'enough grids were formed to judge a chance',
+                  '%d grids, %d cars' % (grids, seen))
+        if seen:
+            print('      %d cars over %d grids, %d striped (%.0f%%)'
+                  % (seen, grids, striped, striped / seen * 100))
+            for b in sorted(bodies):
+                print('        %-9s %d of %d striped' % (b, bodies[b][1], bodies[b][0]))
+
+        # A CHANCE IS NOT A RULE, in either direction. Both bounds matter: at nothing the signal
+        # does not exist, and at everything a grid is a team rather than a field.
+        res.check(0 < striped < seen,
+                  'some opponents wear stripes and some do not',
+                  '%d of %d - a chance should produce both' % (striped, seen))
+        res.check(not bad,
+                  'and no body wears stripes that is not allowed them',
+                  'these did: %s' % ', '.join(sorted(set(bad))))
+
+        # THE ONE THING THAT MUST NOT HAPPEN. A formula car has no stripes - it is not in the
+        # allowed list, and the painter refuses them on one anyway. Two guards, and this asserts
+        # the effect rather than either guard.
+        formula = [b for b in bodies if b in ('VECTOR', 'APEX', 'COMET')]
+        res.check(all(bodies[b][1] == 0 for b in formula),
+                  'and a formula car never does',
+                  'striped formula cars appeared: %s'
+                  % ', '.join('%s %d' % (b, bodies[b][1]) for b in formula if bodies[b][1]))
+        print()
+
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
         browser.close()
