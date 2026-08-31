@@ -241,6 +241,13 @@ def main():
         # mean two things changing at once and no way to say which did it.
         print('  the windows')
         page.evaluate("() => window.__probe.road.setPhase(0.25)")
+        # AND THE WINDOW CLOCK IS HELD, so a sample is taken at exactly the time it was set to.
+        # Without the hold the clock keeps running while the read happens, so each sample lands at
+        # `t` plus a hundred-odd milliseconds of wall clock - and a window sitting on the edge of
+        # its cycle flips between two samples that were meant to be identical. The frozen-clock
+        # control below went red on about one run in three for exactly that reason, reporting a
+        # defect that was in the harness.
+        page.evaluate("() => window.__probe.road.holdWindowClock(true)")
         page.wait_for_timeout(200)
         night = []
         for t in WINDOW_CLOCK:
@@ -293,6 +300,8 @@ def main():
                   'with the window clock held still nothing switches, so the check reads time',
                   '%d columns changed with the clock frozen' % still)
         print('        with the clock held at 120s: %d columns changed' % still)
+
+        page.evaluate("() => window.__probe.road.holdWindowClock(false)")
         print()
 
         # ---- and the same check, with the defect put back ------------------------------------

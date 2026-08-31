@@ -6074,6 +6074,11 @@ function buildSkyline(){
    because the day is 240 seconds long and a window that switched on a
    day-fraction would cycle four times an hour of game time by accident. */
 let winClock = 0;
+/* debug only: stop the window clock where it is. A check that sets the clock and then
+   reads the sheet is otherwise sampling at `t` plus however long the read took, and a
+   window sitting on the edge of its cycle flips between two such samples - which reads
+   as the pattern moving when nothing changed but the wall clock (RLG-095). */
+let winHold = false;
 /* at most this often, in seconds. A repaint is 120 fills into a 1024x220 canvas,
    and a burst of windows all changing in one frame must not cost more than one. */
 const WIN_REPAINT = 0.35;
@@ -6109,19 +6114,15 @@ function paintWindows(g, w, h, plan){
    repainting the canvas is the part worth avoiding, and most frames have nothing
    to repaint.
 
-   CALLED FROM `drawSky`, WITH A FIXED FRAME STEP, AND NOT FROM THE STEP LOOP.
-   Two reasons, and the second is the one that decides it. The step loop returns
-   early when the run is over or the car is wrecked, so a city would freeze on
-   the results screen. And the TITLE draws a skyline without running a step at
-   all - `skySmooth` above is chased on a fixed step for exactly that reason, and
-   the note there says so: a title screen and a run both call this at the same
-   rate. A window's cycle is between 26 and 190 seconds, so the difference
-   between a fixed step and a real one is not visible in it. What would be
-   visible is a dead city on the menu.
+   CALLED FROM `drawSky`, NOT FROM THE STEP LOOP. Two reasons, and the second is
+   the one that decides it. The step loop returns early when the run is over or
+   the car is wrecked, so a city would freeze on the results screen. And the
+   TITLE draws a skyline without running a step at all - which is why `drawSky`
+   measures its own elapsed time, and why that measurement is shared with the
+   skyline's chase rather than taken twice (RLG-096).
    ------------------------------------------------------------------------ */
-function stepWindows(){
-  const dt = 1/60;
-  winClock += dt;
+function stepWindows(dt){
+  if(!winHold) winClock += dt;
   if(winRepaintDue > 0){ winRepaintDue -= dt; return; }
   for(const key in skylineCache){
     const entry = skylineCache[key];
@@ -6767,7 +6768,11 @@ function reset(){
   spd = MAX_SPD * 0.155;
   if(CFG.onReset) CFG.onReset();
   racers=[]; place=12; finished=false; hasMoved=false;
-  curveSegs=[]; hillSegs=[]; signs=[]; bendZ0=0; bendCache=[]; bendT=0; skySmooth=0; pushK=0; rebuildBend();
+  curveSegs=[]; hillSegs=[]; signs=[]; bendZ0=0; bendCache=[]; bendT=0; skySmooth=0; pushK=0;
+  /* the sky's own clock starts again with the road, so the first frame of a run
+     measures one frame rather than the gap since the last one (RLG-096) */
+  skyLast=0;
+  rebuildBend();
   /* and the field itself: `buildField` only ever ADDS, so a race left eleven
      cars on the road that TEST DRIVE then inherited */
   racers = [];
@@ -11639,6 +11644,53 @@ function skyStops(){
   ];
 }
 
+/* ---- ONE STEP FOR EVERYTHING DRAWSKY DRIVES (RLG-096) -------------------
+   `drawSky` runs on the title as well as in a run, and the title has no step
+   loop - so anything it animates has to measure its own elapsed time. This is
+   that measurement, taken once a frame and shared, so the skyline's chase and
+   the city's windows cannot drift apart.
+
+   CLAMPED AT AN EIGHTH OF A SECOND. A backgrounded tab comes back with a gap of
+   seconds in it; letting that through would snap the skyline across the glass on
+   the frame the player returns, which is the pop this ruling exists to remove.
+   ------------------------------------------------------------------------ */
+let skyLast = 0;
+/* ---- THE LONGEST STEP THE SKY WILL ACCEPT ------------------------------
+   An eighth of a second, which is 8fps. A backgrounded tab comes back with a gap
+   of SECONDS in it, and an unclamped chase would snap the city across the glass
+   on the frame the player returns - the pop this is meant to remove.
+
+   IT IS A CEILING, AND BELOW IT THE CHASE IS DELIBERATELY NOT TIME-CORRECT. A
+   game running under 8fps has lost more than a horizon, and a lagging skyline is
+   the right failure there. `tools/skychase-test.py` reads this and refuses to
+   measure below it, because a run throttled past the clamp measures the clamp
+   and reports it as a frame-counting chase - which is what its first version did.
+   ------------------------------------------------------------------------ */
+const SKY_STEP_MAX = 0.125;
+/* debug only, and it exists to REINTRODUCE the defect. True puts the chase back on
+   a fixed fraction per FRAME, which is what this was before RLG-096. Reverting the
+   engine cannot falsify the check - the instrument that displaces the chase and
+   reads its target does not exist on that build - so the fault is put back instead. */
+let skyChaseFrames = false;
+/* frames drawn, for a check that has to report the rate it measured at */
+let skyFrames = 0;
+/* what the parallax chase is converging on this frame - `-bendPx(pos+30000)*0.55`,
+   not the raw bend. Published so a check cannot measure against the wrong number. */
+let skyTarget = 0;
+function skyStep(){
+  skyFrames++;
+  const now = performance.now();
+  const dt = skyLast ? (now - skyLast) / 1000 : 1/60;
+  skyLast = now;
+  return Math.min(SKY_STEP_MAX, Math.max(0.001, dt));
+}
+/* A per-frame lerp fraction, restated as a per-second rate. `k` is what the
+   fraction was at 60fps, so every number tuned under the old form keeps its
+   meaning and no value in this file had to be re-chosen. */
+function chase(k, dt){
+  return 1 - Math.pow(1 - k, dt * 60);
+}
+
 function drawSky(){
   const n = nightFall(), gold = goldenHour();
   /* day sky under night sky, crossfaded; the golden band on top of both */
@@ -11772,11 +11824,42 @@ function drawSky(){
      A skyline that far off barely moves: 0.55, and chased slower so it drifts
      rather than snaps. */
   const skyWant = -bendPx(pos + 30000) * 0.55;
-  /* drawSky has no dt, so the chase uses a fixed frame step — a title screen
-     and a run both call this at the same rate */
-  skySmooth += (skyWant - skySmooth) * 0.045;
-  /* the city's own clock, on the same fixed step and for the same reason (RLG-095) */
-  stepWindows();
+  /* published for `skyTrace`, because a check that displaces the chase has to know
+     what it is converging ON. The trace used to report the raw `bendPx` and a
+     harness reading THAT measured a residual against a number the chase never
+     approaches - which passed, at 34 out of 100 after a second and a half of a
+     chase that should have been at 1.9 (RLG-096). */
+  skyTarget = skyWant;
+  /* ---- THE CHASE IS IN SECONDS, NOT IN FRAMES (RLG-096) ---------------
+     This was `skySmooth += (skyWant - skySmooth) * 0.045` - a fixed fraction per
+     FRAME. That is a time constant of about 22 frames, which is 0.37 seconds at
+     60fps and 0.18 at 120. So how fast the city answers a corner was decided by
+     the refresh rate of the device it was running on, and a phone at 120Hz got a
+     different skyline from the one this was tuned against.
+
+     WORSE THAN A WRONG NUMBER, IT IS AN UNSTEADY ONE. The frame rate is not
+     constant within a single run: fps-test measures FOREST at 45 to 60 on one
+     unchanged build. A chase whose rate follows the frame rate speeds up and
+     slows down as the scenery thickens, which is a horizon that surges and lags
+     for no reason on screen - and it is the kind of fault that produces a jitter
+     report nobody can reproduce, because reproducing it needs the reporter's
+     frame rate.
+
+     `chase()` converts the same 0.045 into a per-second rate, so 22 frames at
+     60fps stays 0.37 seconds at any rate. THE TUNED NUMBER IS UNCHANGED: at
+     exactly 60fps this is the same value it has always been, which is what makes
+     this a fix rather than a retune.
+
+     The step is measured here rather than taken from the game loop because
+     `drawSky` is called on the TITLE as well, where no step runs at all - which
+     is the reason the fixed fraction was here in the first place. It is clamped
+     because a backgrounded tab returns a gap of seconds, and an unclamped chase
+     would snap the city across the glass on the frame the player comes back.
+     -------------------------------------------------------------------- */
+  const sdt = skyStep();
+  skySmooth += (skyWant - skySmooth) * (skyChaseFrames ? 0.045 : chase(0.045, sdt));
+  /* the city's own clock, on the same step, so there is one clock and not two */
+  stepWindows(sdt);
   const skyShift = skySmooth;
   let ox = ((-camX*W*0.018) + skyShift) % dw;
   if(ox>0) ox -= dw;
@@ -16599,6 +16682,9 @@ requestAnimationFrame(frameLoop);
     if(typeof t === 'number'){ winClock = t; winRepaintDue = 0; }
     return +winClock.toFixed(2);
   };
+  /* hold the window clock still, so a sample is taken at exactly the time it was set
+     to rather than at that time plus the read (RLG-095) */
+  API.holdWindowClock = function(on){ winHold = !!on; return winHold; };
   /* whether the world thinks it is dark enough for lights at all. The windows'
      own clocks decide which are on WITHIN this; they never overrule it. */
   API.lampsOn = function(){ return +lampsOn().toFixed(3); };
@@ -16799,8 +16885,21 @@ requestAnimationFrame(frameLoop);
   /* what the skyline is being told to do, and what it is doing. The parallax
      is driven by the bend a long way ahead and chased frame to frame, so a
      twitch can be in either the input or the chase (RLG-062). */
+  /* displace the skyline's chase, so a check can watch it come back. The chase
+     converges on `bendPx(pos + 30000)`, which is CONSTANT while the car is
+     parked - so pushing the value away from it and timing the return measures
+     the chase rate and nothing else (RLG-096). */
+  API.setSkySmooth = function(v){ skySmooth = v; return skySmooth; };
+  /* how many frames drawSky has drawn, so a check can tell a slow frame rate
+     from a stopped one and can say what rate it actually measured at */
+  API.skyFrames = function(){ return skyFrames; };
+  /* the longest step the sky's chase accepts, in seconds. Published so a check
+     can refuse to measure below it rather than measure the clamp (RLG-096). */
+  API.skyStepMax = function(){ return SKY_STEP_MAX; };
+  API.skyChaseFrames = function(on){ skyChaseFrames = !!on; return skyChaseFrames; };
   API.skyTrace = function(){
     return { pos:+pos.toFixed(2), want:+bendPx(pos + 30000).toFixed(4),
+             target:+skyTarget.toFixed(4),
              smooth:+skySmooth.toFixed(4), z0:bendZ0, segs:curveSegs.length };
   };
   /* debug only: a dead straight, dead flat road. Perspective questions are

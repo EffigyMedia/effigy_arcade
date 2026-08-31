@@ -14,6 +14,37 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-20"></a>
+## [0.10.20] - 2026-08-31
+- Fixed: **the skyline's parallax is chased in seconds, not in frames.** This is the other half of the
+  owner's report - RLG-094 was the popping, this is the jitter, and it was found by measuring rather
+  than by reading. The chase was a fixed fraction per FRAME: a time constant of about 22 frames, so
+  0.37 seconds at 60fps and 0.18 at 120. How fast the city answered a corner was decided by the
+  refresh rate of the device. Worse, the frame rate is not constant within one run - fps-test measures
+  FOREST between 45 and 60 on one unchanged build - so the chase sped up and slowed down as the
+  scenery thickened, which is a horizon that surges for no reason on screen and cannot be reproduced
+  without the reporter's frame rate. Displaced by 100 pixels and given a second and a half of wall
+  clock, the old form left 1.45 at 61fps and 33.12 at 16; the new one leaves 1.42 and 1.23. The tuned
+  number did not move - `chase()` restates the same 0.045 as a per-second rate, so at 60fps it is
+  exactly what it always was. The step is measured in `drawSky` because the title draws a skyline
+  without running a step loop, and clamped at an eighth of a second so a backgrounded tab cannot snap
+  the city across the glass on the frame the player returns ([RLG-096](../fragments/RLG-096.md)).
+- Added: **`tools/skychase-test.py`.** It parks the car so the chase has a fixed target, displaces
+  the value, and compares how far it comes back in equal wall-clock time at full speed and with the
+  CPU throttled. It refuses to measure below the engine's own step clamp, which it reads rather than
+  copies - its first version throttled past the clamp and failed a build that was already correct.
+  Falsified by putting the fixed per-frame fraction back, which makes the two residuals differ by 96
+  per cent ([RLG-096](../fragments/RLG-096.md)).
+- Fixed: **`skyline-test.py`'s frozen-clock control was flaky, about one run in three.** Setting the
+  window clock did not stop it, so each sample landed at the time it was set to plus however long the
+  read took, and a window on the edge of its cycle flipped between two samples meant to be identical.
+  The clock can be held now and the whole window section is sampled at exact times
+  ([RLG-095](../fragments/RLG-095.md)).
+- Fixed: **`skyTrace` published the raw bend rather than what the chase converges on.** The chase
+  targets `-bendPx * 0.55`; a check measuring its residual against `bendPx` compares the value with a
+  number it never approaches, which is how the first run of the chase test read 34 left of 100 and
+  passed ([RLG-096](../fragments/RLG-096.md)).
+
 <a id="v0-10-19"></a>
 ## [0.10.19] - 2026-08-31
 - Added: **the city's windows switch on and off on their own clocks.** Owner: the skyline does not
