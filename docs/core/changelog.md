@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-8"></a>
+## [0.10.8] - 2026-08-30
+- Changed: **the garage card has two sizes: the regular cars, and the big ones.** Owner, on seeing
+  the single card: the lorry and the van are a bummer, so standardize it for the regular cars and
+  expand it only for the extra large vehicles. One reservation made every car pay for the lorry -
+  the fleet runs LORRY 150, VAN 115, then PICKUP 112 down to ROADSTER 78, so a roadster sat above
+  72 px of air to accommodate one vehicle most players never choose. Ordinary cars now reserve 112
+  and the two oversized ones reserve 150, so a card never changes size between two ordinary cars -
+  which was the complaint - and does change when you scroll onto something the size of a lorry,
+  which reads as the vehicle being different. `big` is declared on the body rather than inferred
+  from a height, because a rule like "anything over 120 px" would silently re-tier a car the day
+  somebody adjusted a sprite ([RLG-087](../fragments/RLG-087.md)).
+
 <a id="v0-10-7"></a>
 ## [0.10.7] - 2026-08-30
 - Fixed: **the garage card holds one height, whichever car is in it.** Owner: switching cars

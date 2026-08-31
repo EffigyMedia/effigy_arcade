@@ -208,21 +208,34 @@ def main():
         # and a small one reads as the page failing to hold still.
         fits = page.evaluate('() => window.__probe.road.garageFits()')
         each = {k: v for k, v in fits['each'].items() if v}
-        tall = max(each, key=lambda k: each[k])
-        low = min(each, key=lambda k: each[k])
-        print('      the tallest card is %s at %d px, the shortest %s at %d, reserved %d'
-              % (tall, each[tall], low, each[low], fits['reserved']))
-        res.check(fits['reserved'] >= max(each.values()),
-                  'the reservation covers the tallest car in the fleet',
-                  '%d reserved against %s needing %d'
-                  % (fits['reserved'], tall, each[tall]))
-        # AND IT IS THE TALLEST, NOT MERELY BIG ENOUGH. A reservation with slack over every
-        # car would pass the check above while wasting the difference on all of them.
-        res.check(fits['reserved'] == max(each.values()),
-                  'and it is exactly that car, with nothing spare on top',
-                  '%d reserved where %d was needed' % (fits['reserved'], max(each.values())))
+        big = {k for k in each if fits['big'].get(k)}
+        small = {k for k in each if k not in big}
+        res.check(bool(big) and bool(small),
+                  'the fleet has both ordinary cars and oversized ones',
+                  'big=%s' % sorted(big))
+        want_s = max(each[k] for k in small)
+        want_b = max(each[k] for k in big) if big else want_s
+        print('      ordinary cars want up to %d px (%s), the big ones up to %d px (%s)'
+              % (want_s, max(small, key=lambda k: each[k]),
+                 want_b, max(big, key=lambda k: each[k]) if big else '-'))
+        print('      reserved: %d for the ordinary cars, %d for the big ones'
+              % (fits['reserved']['small'], fits['reserved']['big']))
+        # EXACTLY the tallest of its own tier, not merely big enough. A reservation with
+        # slack over every car would satisfy a covers-them-all check while wasting the
+        # difference on all of them - which is the fault the single tier had.
+        res.check(fits['reserved']['small'] == want_s,
+                  'the ordinary cars reserve exactly their own tallest',
+                  '%d reserved where %d was needed' % (fits['reserved']['small'], want_s))
+        res.check(fits['reserved']['big'] == want_b,
+                  'and the big ones reserve exactly theirs',
+                  '%d reserved where %d was needed' % (fits['reserved']['big'], want_b))
+        # AND THE TIERS ARE WORTH HAVING. If the biggest ordinary car were as tall as the
+        # lorry there would be nothing to separate, and this check would be theatre.
+        res.check(fits['reserved']['big'] > fits['reserved']['small'],
+                  'and the two tiers are actually different sizes',
+                  'both are %d' % fits['reserved']['small'])
 
-        # and the drawn card really is that height whichever car is loaded
+        # and the drawn card holds still while the car is an ordinary one
         heights = []
         for _ in range(4):
             h = page.evaluate("""() => {
@@ -236,10 +249,14 @@ def main():
                 break
             nxt.click()
             page.wait_for_timeout(240)
-        print('      the drawn card across four cars: %s' % heights)
+        print('      the drawn card across four ordinary cars: %s' % heights)
         res.check(len(set(heights)) == 1,
-                  'the drawn card does not change height when the car does',
+                  'the drawn card does not change height between ordinary cars',
                   'it measured %s' % heights)
+        res.check(not heights or heights[0] == fits['reserved']['small'],
+                  'and it is the ordinary reservation, not the big one',
+                  'drawn at %s, reserved %d'
+                  % (heights[0] if heights else None, fits['reserved']['small']))
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))

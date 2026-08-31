@@ -2152,7 +2152,9 @@ const BODY = {
   'PICKUP': { rig:'pickup', gears:4, wide:0.045, arch:1.05, horn:0.84,
                redline:7000, pitch:0.70, rear:'GENERIC', mass:2150, hp:220, grip:0.52, launch:1.04, mech:1.08, vmax:0.47,
                note:'PICKUP \u00B7 CARRIES THINGS, SLOWLY' },
-  'VAN': { rig:'van',    gears:4, wide:0.060, arch:1.00, horn:0.78,
+  /* `big` is the garage's word, not the road's: it says this vehicle does not
+     fit the card the other cars share, so it gets the taller one (RLG-087) */
+  'VAN': { rig:'van', big:true, gears:4, wide:0.060, arch:1.00, horn:0.78,
                redline:6500, pitch:0.58, rear:'GENERIC', mass:2400, hp:140, grip:0.48, launch:1.17, mech:1.06, vmax:0.43,
                note:'VAN \u00B7 A BOX WITH A STEERING WHEEL' },
     /* ---- FOUR SPEEDS, AND A LORRY DOES 80 ---------------------------------
@@ -2160,7 +2162,7 @@ const BODY = {
      car and the cruiser get more. And a lorry's ceiling is 80mph, not 104:
      `vmax` is a fraction of 200, so 0.40.
      -------------------------------------------------------------------- */
-  'LORRY': { rig:'truck',  gears:4, wide:0.120, arch:1.10, horn:0.52,
+  'LORRY': { rig:'truck', big:true, gears:4, wide:0.120, arch:1.10, horn:0.52,
                redline:5000, pitch:0.42, rear:'GENERIC', mass:14000, hp:420, grip:0.42, launch:1.11, mech:0.95, vmax:0.4,
                note:'LORRY \u00B7 NOTHING GETS OUT OF ITS WAY TWICE' },
   'CREST': { bodyTop:0.40, cabinTop:0.10, cabW:0.48, cabOff:0, roofR:0.30,
@@ -14653,21 +14655,50 @@ function garageFit(){
    The car still hangs from the ceiling line, by RLG-081's top alignment, so
    whatever is spare falls underneath it where a floor would be.
    ------------------------------------------------------------------- */
-let garageReserve = 0;
-function garageCardHeight(){
-  if(garageReserve) return garageReserve;
+/* ---- AND THERE ARE TWO SIZES, NOT ONE (RLG-087) ----------------------
+   Owner, 2026-08-30, on seeing the first version: the lorry and the van are a
+   bummer, so standardize it for the regular cars and expand it only for the
+   extra large vehicles.
+
+   ONE RESERVATION MADE EVERY CAR PAY FOR THE LORRY. The fleet runs LORRY 150,
+   VAN 115, and then PICKUP 112 down to ROADSTER 78 - so a single card sized to
+   the tallest put 72 pixels of air above a roadster to accommodate one vehicle
+   most players will never choose.
+
+   Two tiers fix that without giving the movement back: a card never changes
+   size between two ordinary cars, which is what the complaint was, and it does
+   change when you scroll onto something the size of a lorry - which reads as
+   the vehicle being different rather than as the page failing to hold still.
+
+   `big` IS DECLARED ON THE BODY, NOT INFERRED FROM THE HEIGHT. A rule that
+   said "anything over 120 pixels is big" would silently re-tier a car the day
+   somebody adjusted a sprite, and the tier is a statement about what the
+   vehicle IS. It is two words in the table and the harness checks the fleet
+   against it.
+   -------------------------------------------------------------------- */
+const garageReserve = { big: 0, small: 0 };
+function isBigBody(k){ return !!(BODY[k] && BODY[k].big); }
+function garageCardHeight(k){
+  const tier = isBigBody(k === undefined ? optBody : k) ? 'big' : 'small';
+  if(garageReserve[tier]) return garageReserve[tier];
   const was = optBody;
-  let tall = 0;
-  for(const k of Object.keys(BODY)){
-    optBody = k;
+  let tall = { big: 0, small: 0 };
+  for(const b of Object.keys(BODY)){
+    optBody = b;
     buildPlayer();
     const fit = garageFit();
-    if(fit) tall = Math.max(tall, fit.h);
+    if(fit){
+      const t = isBigBody(b) ? 'big' : 'small';
+      tall[t] = Math.max(tall[t], fit.h);
+    }
   }
   optBody = was;
   buildPlayer();
-  garageReserve = tall || (GARAGE_TOP + (GARAGE_DEEP - GARAGE_TOP) + 6);
-  return garageReserve;
+  const floor = GARAGE_TOP + (GARAGE_DEEP - GARAGE_TOP) + 6;
+  garageReserve.small = tall.small || floor;
+  /* a fleet with no oversized vehicle in it still has to answer the question */
+  garageReserve.big = Math.max(tall.big || floor, garageReserve.small);
+  return garageReserve[tier];
 }
 
 function drawGarageCar(){
@@ -14704,7 +14735,7 @@ function drawGarageCar(){
   if(!fit) return;
   const boxes = fit.boxes, sc = fit.sc;
   /* the card is the tallest car's card, whichever car is in it (RLG-087) */
-  const CARD_H = garageCardHeight();
+  const CARD_H = garageCardHeight(optBody);
   cv.width = 300*dpr; cv.height = CARD_H*dpr;
   cv.style.width = '300px'; cv.style.height = CARD_H + 'px';
   g2.setTransform(dpr,0,0,dpr,0,0);
@@ -16016,14 +16047,17 @@ requestAnimationFrame(frameLoop);
      A harness needs both to say whether the reservation actually covers the
      fleet, and by how much it overshoots the smallest car (RLG-087). */
   API.garageFits = function(){
-    const was = optBody, out = {};
+    const was = optBody, out = {}, big = {};
     for(const k of Object.keys(BODY)){
       optBody = k; buildPlayer();
       const f = garageFit();
       out[k] = f ? f.h : null;
+      big[k] = isBigBody(k);
     }
     optBody = was; buildPlayer();
-    return { each: out, reserved: garageCardHeight() };
+    garageCardHeight(was);
+    return { each: out, big: big,
+             reserved: { small: garageReserve.small, big: garageReserve.big } };
   };
   API.clearTraffic = function(){
     traffic.length = 0; cops.length = 0; blocks.length = 0;
