@@ -5905,21 +5905,33 @@ function skylineFor(key){
    without being rebuilt every frame */
 function skyBucket(){ return Math.round(phase() * 40); }
 
-function buildSkyline(){
-  const w = 1024, h = 220;
-  const B = bio();
-  /* the sky where it meets the ground: what distance washes a silhouette
-     toward, and the reason the skyline changes colour at dusk on its own */
-  const haze = hexRGB(skyStops()[3]);
-  const base = B.name === 'TUNDRA' ? [200,214,230] : [21,12,34];
-  const mixTo = (t) => 'rgb(' + Math.round(base[0] + (haze[0]-base[0])*t) + ','
-                              + Math.round(base[1] + (haze[1]-base[1])*t) + ','
-                              + Math.round(base[2] + (haze[2]-base[2])*t) + ')';
-  /* far to near: how much haze, how tall, and how spread out */
-  const BANDS = [ {haze:0.70, tall:0.55, gap:1.35},
-                  {haze:0.42, tall:0.78, gap:1.15},
-                  {haze:0.12, tall:1.00, gap:1.00} ];
+/* ---- THE CITY IS THE PLACE'S, NOT THE HOUR'S (RLG-094) ------------------
+   The plan - where every building, peak and tree stands, how wide and how tall,
+   and which of a tower's windows exist - was built inside `buildSkyline`, from
+   `Math.random()`, every time that function ran. And RLG-080 made that function
+   run whenever the hour BUCKET moves, which is one fortieth of a 240-second day:
+   EVERY SIX SECONDS, ten times a minute, for as long as the game is running.
 
+   So the entire horizon was replaced by a different horizon ten times a minute,
+   in both the windscreen and the mirror at the same instant, because both draw
+   from the same cache. That is the popping. It is not a parallax fault and no
+   amount of smoothing the offset could have touched it: the city was not moving
+   wrongly, it was being rebuilt as a different city.
+
+   THE TWO THINGS WERE FUSED AND THEY ARE NOT THE SAME THING. What the place
+   looks like is a property of the PLACE and must never change while you are in
+   it. What colour it is at this moment is a property of the HOUR and must change
+   all day - which is exactly what RLG-080 was for, and it is kept: the tint is
+   still mixed in at build time, so there is still no wash over the frame.
+
+   Splitting them is what makes the fault unrepeatable rather than fixed. The
+   plan is cached per biome and has nowhere else to come from, so a later change
+   to the painting cannot reach the shapes even by accident.
+   ------------------------------------------------------------------------- */
+const skylinePlans = {};
+function skylinePlanFor(B, w, h, BANDS){
+  const hit = skylinePlans[B.name];
+  if(hit) return hit;
   const plans = BANDS.map(band => {
     const plan = [];
     let x = 0;
@@ -5954,8 +5966,12 @@ function buildSkyline(){
            back cannot be picked out, and drawing one there is a shimmer */
         if(band.haze < 0.2){
           for(let k = 0; k < bh/16; k++){
+            /* the third entry is whether this window burns warm or cold, rolled ONCE
+               with the window. Rolled at paint time it was re-rolled every bucket,
+               so a lit city flickered between amber and blue every six seconds. */
             if(Math.random() < 0.42)
-              wins.push([x + rint(3, Math.max(4, bw-6)), h - bh + rint(4, Math.max(5, bh-8))]);
+              wins.push([x + rint(3, Math.max(4, bw-6)), h - bh + rint(4, Math.max(5, bh-8)),
+                         Math.random() < 0.22 ? 1 : 0]);
           }
         }
       }
@@ -5964,6 +5980,26 @@ function buildSkyline(){
     }
     return plan;
   });
+  skylinePlans[B.name] = plans;
+  return plans;
+}
+
+function buildSkyline(){
+  const w = 1024, h = 220;
+  const B = bio();
+  /* the sky where it meets the ground: what distance washes a silhouette
+     toward, and the reason the skyline changes colour at dusk on its own */
+  const haze = hexRGB(skyStops()[3]);
+  const base = B.name === 'TUNDRA' ? [200,214,230] : [21,12,34];
+  const mixTo = (t) => 'rgb(' + Math.round(base[0] + (haze[0]-base[0])*t) + ','
+                              + Math.round(base[1] + (haze[1]-base[1])*t) + ','
+                              + Math.round(base[2] + (haze[2]-base[2])*t) + ')';
+  /* far to near: how much haze, how tall, and how spread out */
+  const BANDS = [ {haze:0.70, tall:0.55, gap:1.35},
+                  {haze:0.42, tall:0.78, gap:1.15},
+                  {haze:0.12, tall:1.00, gap:1.00} ];
+
+  const plans = skylinePlanFor(B, w, h, BANDS);
 
   skyline = sprite(w, h, (g) => {
     g.clearRect(0, 0, w, h);
@@ -5979,7 +6015,7 @@ function buildSkyline(){
     g.clearRect(0, 0, w, h);
     for(const b of plans[2]){
       for(const wp of b.wins){
-        g.fillStyle = Math.random() < 0.22 ? 'rgba(190,225,255,.95)' : 'rgba(255,190,110,.95)';
+        g.fillStyle = wp[2] ? 'rgba(190,225,255,.95)' : 'rgba(255,190,110,.95)';
         g.fillRect(wp[0], wp[1], 2, 3);
       }
     }
@@ -16394,6 +16430,43 @@ requestAnimationFrame(frameLoop);
     for(let k=0;k<d.length;k+=4){ if(d[k+3] > 40){ r+=d[k]; gg+=d[k+1]; b+=d[k+2]; n++; } }
     return n ? { r:Math.round(r/n), g:Math.round(gg/n), b:Math.round(b/n), px:n,
                  haze: skyStops()[3] } : null;
+  };
+  /* ---- THE SILHOUETTE, AND THE BUCKET THAT REBUILDS IT (RLG-094) --------
+     `skylinePixel` above reads the sprite's mean COLOUR, which is the thing that
+     is SUPPOSED to change as the day turns. This reads its SHAPE, which is the
+     thing that must not: the topmost opaque row in each column, which is the
+     silhouette a player sees against the sky.
+
+     And the bucket is published beside it, because a check that samples the
+     skyline twice inside one bucket would pass on the broken engine as well.
+     The fault only exists ACROSS a bucket boundary - the proof has to show it
+     crossed one.
+     -------------------------------------------------------------------- */
+  API.skyBucket = function(){ return skyBucket(); };
+  /* debug only, and it exists to REINTRODUCE the defect. Dropping the plan cache is exactly what
+     the broken engine did on every rebuild - the plan came from `Math.random()` inside the painter,
+     so a new sprite was a new city. A check for this fault cannot be falsified by reverting the
+     engine, because the instrument that reads the silhouette does not exist on that build; it is
+     falsified by forgetting the plans between samples and watching the check go red. */
+  API.forgetSkylinePlans = function(){
+    let n = 0;
+    for(const k in skylinePlans){ delete skylinePlans[k]; n++; }
+    for(const k in skylineCache) delete skylineCache[k];
+    return n;
+  };
+  API.skylineProfile = function(key){
+    const a = skylineFor(key || biome);
+    const cv = a.body, g = cv.getContext('2d');
+    const d = g.getImageData(0, 0, cv.width, cv.height).data;
+    const prof = [];
+    for(let x = 0; x < cv.width; x++){
+      let top = cv.height;
+      for(let y = 0; y < cv.height; y++){
+        if(d[(y*cv.width + x)*4 + 3] > 40){ top = y; break; }
+      }
+      prof.push(top);
+    }
+    return prof;
   };
   API.snowFloor = function(){ return +snowFloorNow().toFixed(3); };
   /* the mirror's eye height, and where a car a given distance behind lands in

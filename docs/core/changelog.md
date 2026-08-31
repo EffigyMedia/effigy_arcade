@@ -14,6 +14,30 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-18"></a>
+## [0.10.18] - 2026-08-31
+- Fixed: **the skyline was a different city every six seconds.** Owner: the skyline jitters and pops,
+  in the forward view and the rear-view. It was not a parallax fault, which is why two rounds of
+  smoothing the offset never touched it - the city was not moving wrongly, it was being rebuilt as a
+  different city. `buildSkyline()` generated the plan from `Math.random()` inline, and RLG-080 makes
+  that function run whenever the hour bucket moves: one fortieth of a 240-second day. Ten times a
+  minute the entire horizon was replaced, in both views at once because both draw from one cache.
+  What a place looks like belongs to the biome and what colour it is belongs to the hour; they were
+  fused in one function, so the only way to get a new colour was to get a new city. The plan is
+  cached per biome and built once, the painter paints it in the current hour's light, and RLG-080 is
+  untouched - the tint is still baked, with no wash over the frame. A lit window's amber-or-blue roll
+  moved into the plan with it, so a city no longer recolours every window it has ten times a minute
+  ([RLG-094](../fragments/RLG-094.md)).
+- Added: **`tools/skyline-test.py`.** It walks ten hours of one pinned biome and reads the silhouette
+  as a profile - the topmost opaque row in each of the sprite's 1024 columns - rather than as a pixel
+  count two different cities could share. Zero of 1024 columns move across the day. It also asserts
+  the colour still travels, because "never rebuild the sprite" would pass every shape check and is
+  the fault RLG-080 was raised to remove; and it asserts the run crossed several hour buckets,
+  because the defect does not exist inside one and a check sampling twice in six seconds would have
+  gone green on it. Falsified by reintroducing the fault rather than by reverting the engine, which
+  cannot be done here - the instrument does not exist on the broken build
+  ([RLG-094](../fragments/RLG-094.md)).
+
 <a id="v0-10-17"></a>
 ## [0.10.17] - 2026-08-31
 - Added: **the weather falls in the rear-view as well.** Owner: rain and snow should be shown in the
