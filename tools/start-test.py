@@ -115,7 +115,9 @@ def main():
         seen = []
         for _ in range(26):
             page.wait_for_timeout(160)
-            seen.append(page.evaluate('() => window.__probe.road.startLine()'))
+            row = page.evaluate('() => window.__probe.road.startLine()')
+            row['biome'] = page.evaluate('() => window.__probe.road.biomeSweep().player')
+            seen.append(row)
 
         held = [s for s in seen if s['left'] > 0]
         after = [s for s in seen if s['left'] <= 0 and s['go'] <= 0]
@@ -179,6 +181,23 @@ def main():
         later = [s for s in seen if s['seen']]
         res.check(bool(later), 'and it is remembered once it has been seen',
                   'no sample reported a start had been seen')
+
+        # ---- 6. AND THE WORLD DOES NOT CHANGE AT GO (RLG-088) ----------------
+        # Owner, 2026-08-30: when the countdown finishes, the entire world changes - you
+        # arrive in a brand new biome on GO. Two correct changes met badly: the reset was
+        # made to clear the opening-place flag so each run picks its own, and the count-in
+        # was made to return from step() before the biome runs. So the place was chosen on
+        # the first frame AFTER the count, in front of the player, as a snap.
+        #
+        # THE PLACE IS SAMPLED ACROSS THE WHOLE COUNT AND PAST IT. The question is not
+        # whether a biome exists but whether it is the SAME ONE the player was looking at,
+        # so what is compared is the first sample against every later one.
+        places = [s['biome'] for s in seen]
+        print('      the place across the count and past GO: %s'
+              % ' '.join(dict.fromkeys(places)))
+        res.check(len(set(places)) == 1,
+                  'the world the player looks at during the count is the one they drive into',
+                  'it went %s' % ' then '.join(dict.fromkeys(places)))
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))

@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-11"></a>
+## [0.10.11] - 2026-08-30
+- Fixed: **the world does not change when the countdown ends.** Owner: when the countdown finishes
+  the entire world changes, and you arrive in a brand new biome on GO. Two correct changes met
+  badly - the reset was made to clear the opening-place flag so each run picks its own place
+  (0.10.4), and the count-in was made to return from the frame update before the biome runs so the
+  car is held (0.10.9). Together, the opening place was chosen on the first frame AFTER the count:
+  at GO, in front of the player, as a snap. The pick is its own function now and the reset calls it,
+  so the world you look at for three seconds is the world you drive into
+  ([RLG-088](../fragments/RLG-088.md)).
+- Changed: **the count-in holds one note instead of climbing.** Owner: the pitch going up while
+  counting down is wrong. It is, and this file already said so - the note on the run-out `tick`
+  argues that a rising pitch reads as a fanfare and a countdown holds ONE note and gets more
+  insistent. Same 392 Hz each time; what changes is how hard it is struck, how long it rings and
+  how much low weight sits under it, which leaves GO as the only different note in the sequence
+  ([RLG-088](../fragments/RLG-088.md)).
+
 <a id="v0-10-10"></a>
 ## [0.10.10] - 2026-08-30
 - Fixed: **a race has checkpoints, whatever the timed toggle says.** Owner: turn TIMED off under

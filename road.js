@@ -756,12 +756,24 @@ var snd = {
     if(!AR) return;
     const t = AR.audio.now();
     if(n > 0){
-      /* 3, 2, 1 - each a whole tone above the last, short and hard */
-      const f = 392 * Math.pow(2, (3 - n) * 2 / 12);
-      AR.sfx.tone({ t, freq: f, dur: 0.16, type:'square',
-                    gain: 0.20, cutoff: 3000, verb: 0.22 });
-      AR.sfx.tone({ t: t + 0.005, freq: f / 2, dur: 0.20, type:'triangle',
-                    gain: 0.13, cutoff: 1100 });
+      /* ---- ONE NOTE, STRUCK HARDER (RLG-088) -------------------------
+         Owner, 2026-08-30: the pitch going up while counting DOWN is wrong.
+         It is, and the note on `tick` already said so in this file - a pitch
+         that climbs each second reads as a fanfare, and a countdown holds ONE
+         note and gets more insistent. That was written about a clock running
+         out and it is just as true of a start light, which is a thing that
+         repeats and then changes rather than a thing that rises.
+
+         So the pitch is the same every time and what changes is how hard it is
+         struck, how long it rings and how much low weight sits under it. GO is
+         then the only thing in the sequence that is a different note at all,
+         which is what makes it read as the release.
+         -------------------------------------------------------------- */
+      const hit = 0.16 + (3 - n) * 0.035;
+      AR.sfx.tone({ t, freq: 392, dur: 0.15 + (3 - n) * 0.02, type:'square',
+                    gain: hit, cutoff: 3000, verb: 0.22 });
+      AR.sfx.tone({ t: t + 0.005, freq: 196, dur: 0.20 + (3 - n) * 0.03,
+                    type:'triangle', gain: hit * 0.65, cutoff: 1100 });
       return;
     }
     /* GO - a major chord that opens out, and a sweep up underneath it */
@@ -6613,6 +6625,11 @@ function reset(){
      than a run that starts where it says it does.
      ---------------------------------------------------------------- */
   biomeStarted = 0; biomeNext = 0;
+  /* and the place is chosen HERE rather than by whichever function runs first.
+     With the count-in holding `step()`, the first `stepBiome` is the frame
+     after GO - so leaving it to that changed the world in front of the player
+     the instant they were let go (RLG-088). */
+  openBiome();
   traffic=[]; cops=[]; blocks=[]; crates=[]; fx=[];
   shake=0; hitFlash=0; sirenPhase=0; lastKmh=0; iframe=0;
   acc=0;
@@ -7625,6 +7642,31 @@ let pool = 0, poolFall = 0, poolDry = 0;
    the same slope. See the accumulation block for why `wet` cannot answer this. */
 let settleFall = 0;
 
+/* ---- THE OPENING PLACE IS CHOSEN BEFORE THE FIRST FRAME (RLG-088) ----
+   Owner, 2026-08-30: when the countdown finishes, the entire world changes -
+   you arrive in a brand new biome on GO.
+
+   THAT WAS TWO CORRECT CHANGES MEETING BADLY. RLG-022 made `biomeStarted`
+   clear at every reset, so each run chooses its own opening place rather than
+   inheriting the last one's. RLG-088 then made the count-in return from
+   `step()` before `stepBiome` runs, so the car is held. Separately both are
+   right. Together, the run's opening place was chosen on the FIRST FRAME AFTER
+   THE COUNT - which is to say, at GO, in front of the player, as a snap.
+
+   The pick is its own function now and the reset calls it, so the world the
+   player looks at for three seconds is the world they drive into. This is the
+   argument for keeping a reset's state in one place rather than leaving it to
+   whoever runs first.
+   ------------------------------------------------------------------- */
+function openBiome(){
+  biomeStarted = 1;
+  biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+  rollSeaSide();
+  biomeFrom = biomeTo = biome;
+  biomeEdge = -1e9;
+  buildSkyline();
+}
+
 function stepBiome(dt){
   if(CFG.biome){
     const b2 = CFG.biome();
@@ -7767,12 +7809,7 @@ function stepBiome(dt){
        in.
        ------------------------------------------------------------------ */
     if(!biomeStarted){
-      biomeStarted = 1;
-      biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
-      rollSeaSide();
-      biomeFrom = biomeTo = biome;
-      biomeEdge = -1e9;
-      buildSkyline();
+      openBiome();
     } else {
       let k = biome;
       while(k === biome) k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
