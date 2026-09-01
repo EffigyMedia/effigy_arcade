@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-6"></a>
+## [0.11.6] - 2026-09-01
+- Fixed: **a run can never open in a tunnel.** Owner, 2026-09-01: "runs can never start in
+  a tunnel or on a bridge." A run picked its first place with a flat roll over every entry
+  in the table, so about one in eleven began already inside the bore, with the mouth behind
+  the camera and no approach to it - measured at 35 of 400 rolls on the engine before this
+  ([RLG-140](../fragments/RLG-140.md)).
+- Note: **it is a stated property, not a name the picker knows.** A tunnel and a bridge are
+  not places at all - they are events with a mouth, a length and an exit, where every other
+  entry is a place that lasts six to twelve miles at random. A place states `passage`, so
+  the bridge of [RLG-112](../fragments/RLG-112.md) needs no second edit the day it lands.
+  This is the fourth name branch removed from this file in two versions.
+- Note: **the way this fix goes wrong is by deleting the tunnel from the game.** There is
+  one list of places and the running game picks the NEXT one from it while you drive, so
+  filtering that list would make a tunnel unreachable - and no check on the opening draw
+  alone would notice. The second list is read by the opening and by nothing else, and
+  `tools/tunnel-test.py` asserts both halves. Both failure modes were put back and watched
+  going red.
+- Changed: **the version and the engine's own build stamp move together again**, which is
+  what [RLG-139](../fragments/RLG-139.md) is about.
+
 <a id="v0-11-5"></a>
 ## [0.11.5] - 2026-09-01
 - Added: **CANYON - the place whose distance is a wall.** Owner, 2026-08-31: of the four

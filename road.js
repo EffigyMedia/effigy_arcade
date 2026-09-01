@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.5';
+window.ROAD_BUILD = '0.11.6';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8701,6 +8701,19 @@ const BIOMES = {
                  grown - and one number for both is simpler than two arguments
                  about which matters more. Not zero: nothing in this game is. */
               hill:0.10, bend:0.10, dark:1,
+              /* ---- AND A RUN CANNOT OPEN IN ONE (RLG-140) --------------
+                 Owner, 2026-09-01: "runs can never start in a tunnel or on a
+                 bridge." A `passage` is a place you ENTER and LEAVE rather than
+                 one you can be dropped into - it has a mouth, a length and an
+                 exit, where every other entry here is a place that lasts six to
+                 twelve miles at random. RLG-105 built the entrance as a ramp on
+                 the biome crossing so that arriving is a passage rather than a
+                 cut, and a run that begins inside skips the whole of it.
+
+                 IT IS A PROPERTY, NOT A NAME THE PICKER KNOWS. The bridge of
+                 RLG-112 states the same field the day it lands and needs no
+                 second edit. */
+              passage:1,
               /* the verge IS the foot of the wall in here, so it is concrete
                  rather than dark ground. Beside the car the bore is closer than
                  the projection can show it, and this is what carries it. */
@@ -8791,6 +8804,20 @@ const BIOMES = {
               sky:'#5e3524', city:0.00, trees:0.04, skyForm:'ridge' }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
+/* ---- WHERE A RUN MAY OPEN, WHICH IS NOT EVERYWHERE (RLG-140) ------------
+   THE FULL LIST STAYS THE FULL LIST, and that is the whole care in this. The
+   game picks the NEXT place from `BIOME_KEYS` while you drive, and it must go
+   on reaching every entry - the point of a tunnel is that you drive into one.
+   Filtering `BIOME_KEYS` itself would delete the tunnel from the game.
+
+   This second list is read by `openBiome` and by nothing else, so the rule is
+   about OPENING a run rather than about choosing a place.
+   ------------------------------------------------------------------------- */
+const OPEN_KEYS = BIOME_KEYS.filter(k => !BIOMES[k].passage);
+/* the draw itself, named so a check can sample the ACTUAL pick rather than a
+   copy of it written into a harness. One call away from `openBiome`, so the two
+   cannot drift. */
+function pickOpening(){ return OPEN_KEYS[(Math.random()*OPEN_KEYS.length)|0]; }
 let biome = 'FOREST';
 function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
 
@@ -9419,7 +9446,8 @@ function freshWorld(){
    ------------------------------------------------------------------- */
 function openBiome(){
   biomeStarted = 1;
-  biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+  /* OPEN_KEYS, not BIOME_KEYS: a run never begins inside a passage (RLG-140) */
+  biome = pickOpening();
   rollSide();
   /* and THIS one's temperature, on the same occasion and for the same reason
      the sea's side is rolled here: a thing decided once when the place opens
@@ -19962,6 +19990,23 @@ requestAnimationFrame(frameLoop);
   /* how tall a place stands its skyline, as a multiple of the ordinary band.
      A check reads it to prove a wall is not drawn at horizon scale (RLG-104). */
   API.skyRise = function(k){ return skyRiseOf(k || biome); };
+  /* ---- WHERE A RUN MAY OPEN (RLG-140) ----------------------------------
+     Two lists, and a check has to be able to see BOTH: the places a run may
+     open in, and every place the road can reach. A harness that could only see
+     the first could not tell "the tunnel is excluded from opening" from "the
+     tunnel has been deleted from the game", which is the way this fix goes
+     wrong.
+     ------------------------------------------------------------------ */
+  API.OPEN_KEYS = function(){ return OPEN_KEYS; };
+  API.isPassage = function(k){ return !!(BIOMES[k] && BIOMES[k].passage); };
+  /* the opening draw itself, sampled. It is the same function `openBiome` calls,
+     so this reads the engine rather than a harness's idea of it - and it does
+     not touch the running game, so a check can take four hundred of them. */
+  API.rollOpening = function(n){
+    const out = [];
+    for(let i = 0; i < (n || 400); i++) out.push(pickOpening());
+    return out;
+  };
   /* the sprite's own size, because `skylineProfile` reports an EMPTY column as
      the sprite height - so a check that counts gaps has to know what that is
      rather than typing 220 into the harness */

@@ -258,6 +258,46 @@ def main():
                       'and every place states a form, so nothing gets towers by fall-through',
                       str(forms))
 
+        # --------------------------------------------- and a run cannot open in one
+        print()
+        print('  AND A RUN CANNOT OPEN IN ONE, BUT THE ROAD MUST STILL REACH IT (RLG-140)')
+        # Owner, 2026-09-01: "runs can never start in a tunnel or on a bridge." THE WAY
+        # THIS FIX GOES WRONG IS BY DELETING THE TUNNEL FROM THE GAME - filter the one
+        # list the engine has and the place becomes unreachable, which no check on the
+        # opening draw alone would notice. So both lists are read, and the second
+        # assertion is the one that matters.
+        opens = page.evaluate("() => window.__probe.road.OPEN_KEYS()")
+        allk = page.evaluate("() => window.__probe.road.BIOME_KEYS()")
+        passages = [k for k in allk if page.evaluate(
+            "(k) => window.__probe.road.isPassage(k)", k)]
+        print('      passages:      %s' % passages)
+        print('      a run may open in %d of the %d places' % (len(opens), len(allk)))
+        res.check(passages == ['TUNNEL'],
+                  'the tunnel is the one passage on the board today',
+                  'passages are %s' % passages)
+        res.check('TUNNEL' not in opens,
+                  'and a run cannot open in it',
+                  'OPEN_KEYS is %s' % opens)
+        res.check(set(allk) - set(opens) == {'TUNNEL'},
+                  'and nothing else was excluded with it',
+                  'excluded: %s' % sorted(set(allk) - set(opens)))
+        res.check('TUNNEL' in allk,
+                  'and the tunnel is still a place the road can reach, which is the point',
+                  'BIOME_KEYS is %s' % allk)
+
+        # AND THE DRAW ITSELF, not the list it reads. `rollOpening` calls the same
+        # function `openBiome` does, so this samples the engine rather than a harness's
+        # copy of it. At a tenth of the board, 400 rolls without a tunnel is not luck.
+        rolls = page.evaluate("() => window.__probe.road.rollOpening(400)")
+        seen = sorted(set(rolls))
+        print('      400 opening rolls landed on: %s' % seen)
+        res.check('TUNNEL' not in rolls,
+                  'and four hundred opening rolls never landed in one',
+                  '%d of them did' % rolls.count('TUNNEL'))
+        res.check(len(seen) == len(opens),
+                  'and they still reach every place a run may open in',
+                  'reached %d of %d' % (len(seen), len(opens)))
+
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
         browser.close()
