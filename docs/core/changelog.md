@@ -14,6 +14,43 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-11"></a>
+## [0.11.11] - 2026-09-01
+- Fixed: **the bridge is suspended above the water rather than floating on it.** Owner,
+  2026-09-01, correcting the first cut: draw "only the tarmac and the bridge structure and
+  leaving the water to be just the far edge rendered blue so the bridge looks suspended
+  hundreds of feet above water" ([RLG-112](../fragments/RLG-112.md)).
+- Note: **the fault was a perspective one.** Every slice painted water from the ROAD'S OWN
+  LINE downward, so the sea met the kerb and converged at exactly the rate the tarmac did.
+  That is what a surface at the road's level does, and it is why the crossing read as a
+  causeway.
+- Note: **the suspension is drawn as DISTANCE, because it cannot be drawn as geometry.**
+  Every surface this engine draws sits on one ground plane. But a plane far below the eye is
+  a plane a long way AWAY - water thirteen camera heights under the deck reads 0.34 of the
+  draw distant at the foot of the frame, against 0.02 for the tarmac at the same screen row,
+  seventeen times further. "Far off" is something this engine already paints.
+- Added: **little boats scattered on the water below.** Owner: "the same as intended to be
+  used on coastal but smaller since they are 'further away'." The smallness is not a setting
+  - a boat sits on the water plane, so the nearest one that can appear is already ten
+  thousand units off and the painter comes out tiny without being told to. They are also
+  what gives the drop its scale: a flat colour has no size in it, and a boat is a known one.
+- Note: **these boats are not blocked by the culling question the coastal ones are.**
+  [RLG-059](../fragments/RLG-059.md) deferred the coast's boats because they stand outboard
+  of the lamp posts, so [RLG-073](../fragments/RLG-073.md)'s rule governs them. A boat on the
+  water below a bridge stands on no ground plane at all.
+- Fixed: **two wrong scatters before the right one, and the second is the instructive one.**
+  A fixed lateral spread put all but one boat off the sides, because the offset that lands
+  in frame runs from 14,000 units at the foot to 357,000 at the skyline. An ANGULAR spread
+  fixed that and was worse: it makes a boat's position in the world depend on where the CAR
+  is, so the boats swim sideways to stay on screen. Both looked fine in a still picture. It
+  is a fixed world offset now, sized for the band boats are actually seen in.
+- Note: **and the harness checks the fault that was actually made.** It reads each boat's
+  world place, drives on, and reads again - nothing may have moved. On the angular build ten
+  of ten moved.
+- Added: **all of it in the mirror**, through the same painter with the glass's own scale and
+  horizon - and walking the water BEHIND the car, which the first cut did not: it would have
+  shown the boats in front of you, and looked perfectly plausible doing it.
+
 <a id="v0-11-10"></a>
 ## [0.11.10] - 2026-09-01
 - Added: **the bridge wears its red truss.** Owner, 2026-09-01: "the bridge needs its red

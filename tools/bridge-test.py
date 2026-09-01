@@ -452,6 +452,87 @@ def main():
                   'the mirror shows water on both sides as well',
                   'left %d, right %d' % (mw['left'], mw['right']))
 
+        # ------------------------------------------------ suspended, not floating
+        print()
+        print('  AND IT IS SUSPENDED OVER THE WATER RATHER THAN FLOATING ON IT')
+        # Owner, 2026-09-01, correcting the first cut: draw it "so the bridge looks
+        # suspended hundreds of feet above water".
+        #
+        # MEASURED ON THE FUNCTION, NOT ON THE PIXELS, and that was decided after trying
+        # the other way. The claim is that the water is a plane far below, which this
+        # engine draws as DISTANCE - so the water at the foot of the frame is as far off
+        # as water near the horizon. Sampling the colour to prove it conflates two
+        # separate haze passes: `seaTone`'s own recession and `drawHaze` over the whole
+        # frame. A tone comparison read a travel of 135 on a build that was correct, and
+        # the coast - the obvious control - had no water in frame at all on most rows,
+        # because its rolled side and the bend move the sea about.
+        wp = page.evaluate("() => window.__probe.road.waterPlane()")
+        print('      the water lies %d units below the deck (%d camera heights)'
+              % (wp['unitsBelow'], wp['drop']))
+        print('      at the foot of the frame it reads %.2f of the draw away;'
+              '  at road level it would read %.2f' % (wp['atBottom'], wp['ifFlat']))
+        res.check(wp['atBottom'] > wp['ifFlat'] * 4,
+                  'the water at your wheels is far further off than the road under them',
+                  'water %.3f against flat %.3f' % (wp['atBottom'], wp['ifFlat']))
+        res.check(wp['atBottom'] > 0.20,
+                  'and far enough off to be hazed, which is what says it is below you',
+                  'it reads only %.3f of the draw away' % wp['atBottom'])
+
+        # AND NO GROUND IS PAINTED AT THE ROAD'S LEVEL, which is the fault being fixed:
+        # every slice used to paint water from the road's own line downward, so the sea
+        # met the kerb and converged at the tarmac's rate. That is a causeway.
+        settle(page, 'BRIDGE')
+        near = page.evaluate("(y) => window.__probe.waterRow(y)", hz + (900 - hz) * 0.20)
+        print('      water either side at a fifth down: left %d right %d'
+              % (near['left'], near['right']))
+        res.check(near['left'] > 5 and near['right'] > 5,
+                  'and there is still water either side of the deck to be suspended over',
+                  'left %d, right %d' % (near['left'], near['right']))
+
+        # ------------------------------------------------ boats on the water
+        print()
+        print('  AND BOATS ON THE WATER, WHICH IS WHAT GIVES THE DROP ITS SCALE')
+        # Owner, 2026-09-01: "little boats ... out in the water scattered down below",
+        # and smaller than the coastal ones would be "since they are further away". The
+        # smallness is not a setting - a boat sits on the water plane, so the nearest one
+        # that can appear is already about ten thousand units off and the painter comes out
+        # tiny without being told to.
+        settle(page, 'BRIDGE')
+        b1 = page.evaluate("() => window.__probe.road.boats()")
+        print('      %d boats placed on the water, %d of them on screen'
+              % (b1['total'], b1['drawn']))
+        if b1['sample']:
+            print('      the nearest few: %s'
+                  % ', '.join('%dpx at %d units' % (s['w'], s['dz']) for s in b1['sample'][:4]))
+        res.check(b1['drawn'] >= 3,
+                  'there are boats on the water below',
+                  'only %d of %d were on screen' % (b1['drawn'], b1['total']))
+        res.check(all(s['w'] < 40 for s in b1['sample']),
+                  'and they are little, because the water they sit on is a long way down',
+                  'the biggest was %.0f px' % max([s['w'] for s in b1['sample']] or [0]))
+
+        # A BOAT IS A PLACE IN THE WORLD, AND THIS IS THE CHECK THAT MATTERS. Two versions
+        # of the scatter derived the lateral offset from the car's own position, so the
+        # boats swam sideways to stay on screen - and both looked perfectly fine in a still
+        # picture. It is the same class of fault as the mirror slices pinned to the segment
+        # behind the player, which this engine has been caught by four times: anything whose
+        # world position is derived from `pos` is not in the world.
+        page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD)")
+        page.wait_for_timeout(900)
+        b2 = page.evaluate("() => window.__probe.road.boats()")
+        by1 = {s['i']: s['lx'] for s in b1['sample'] + b1['missed']}
+        moved = [i for s in (b2['sample'] + b2['missed'])
+                 for i in [s['i']] if i in by1 and by1[i] != s['lx']]
+        common = [s['i'] for s in (b2['sample'] + b2['missed']) if s['i'] in by1]
+        print('      %d boats seen in both samples after driving on; %d of them moved'
+              % (len(common), len(moved)))
+        res.check(len(common) > 0,
+                  'the same boats are still there after driving on, so this can be compared',
+                  'no boat appeared in both samples')
+        res.check(not moved,
+                  'and not one of them changed its place in the world as the car moved',
+                  'these moved: %s' % moved[:5])
+
         # ------------------------------------------------ the ironwork
         print()
         print('  AND THE RED TRUSS, WHICH IS WHAT MAKES IT A BRIDGE')

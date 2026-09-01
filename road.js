@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.10';
+window.ROAD_BUILD = '0.11.11';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -14232,6 +14232,166 @@ function seaTone(B, far){
   return c;
 }
 
+/* ---- THE WATER IS A SECOND PLANE, A LONG WAY DOWN (RLG-112) ------------
+   Owner, 2026-09-01: draw it "so the bridge looks suspended hundreds of feet
+   above water", and if the far-edge answer will not do it, "draw the blue ground
+   water far below the bridge".
+
+   BOTH ARE THE SAME FIX AND IT IS ABOUT DISTANCE, NOT POSITION. Every surface
+   this engine draws sits on one ground plane, so a second altitude cannot be
+   drawn as geometry - but it does not have to be. A plane far below the eye is a
+   plane a long way AWAY: at the bottom of the frame, water lying `WATER_DROP`
+   camera-heights under the deck is that many times further off than the tarmac
+   at the same screen row. And "far off" is a thing this engine already paints,
+   through the recession every other stretch of sea uses.
+
+   SO THE SUSPENSION IS DRAWN AS HAZE. The water beside your own wheels is as
+   washed out as water a long way ahead would be, because that is what it is -
+   and a surface that never comes near has no near edge for the eye to sit the
+   road on. THE FIRST CUT PAINTED IT FROM THE ROAD'S OWN LINE DOWNWARD, so it met
+   the kerb and converged at exactly the tarmac's rate. That is what a surface AT
+   the road's level does, and the crossing read as a causeway.
+   ------------------------------------------------------------------------- */
+const WATER_DROP = 13;   /* camera heights from the deck to the water */
+/* how far off the water at this screen row is, as a fraction of the draw - the
+   same number `seaTone` takes from every other water fill in the game */
+function waterFarAt(y, vh, vHorizon){
+  const dy = y - (vHorizon === undefined ? horizon : vHorizon);
+  if(dy <= 0.5) return 1;
+  const dz = CAM_D * CAM_H * (1 + WATER_DROP) * (vh === undefined ? H : vh) / (2 * dy);
+  return clamp(dz / (DRAW * SEG), 0, 1);
+}
+/* the fill itself, as a gradient down the frame. One definition, two callers -
+   the windscreen's far field and the mirror's own band. */
+function waterFill(B, y0, y1, vh, vHorizon){
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  for(const t of [0, 0.25, 0.5, 0.75, 1]){
+    const y = y0 + (y1 - y0) * t;
+    g.addColorStop(t, seaTone(B, waterFarAt(y, vh, vHorizon)));
+  }
+  return g;
+}
+
+/* ---- AND BOATS ON IT, WHICH IS WHAT GIVES THE DROP ITS SCALE (RLG-112) --
+   Owner, 2026-09-01: "can we make little boats (the same as intended to be used
+   on coastal but smaller since they are 'further away') out in the water
+   scattered down below?"
+
+   THE SMALLNESS IS NOT A SETTING - IT FALLS OUT. A boat sits on the water plane,
+   which is `WATER_DROP` camera-heights under the deck, so the nearest boat that
+   can appear at the foot of the frame is already about 10,000 units away and
+   everything above it is further still. The same painter that would draw a
+   coastal boat beside the road therefore comes out tiny here without being told
+   to, and that is the owner's own reasoning made into geometry.
+
+   AND THEY ARE WHAT SELLS THE DROP. A flat colour has no scale in it: water at
+   one tone reads as a distance you have to be told about. A boat is a known
+   size, so a small one is a statement about how far down the surface is, and the
+   eye takes it without any of the rest of this having to be explained.
+
+   SPARSE IS THE WHOLE INSTRUCTION, and [[RLG-059]] says to read it strictly: a
+   boat every few hundred metres reads as a sea, a line of them reads as a marina
+   and, worse, as scenery placed on a rule.
+
+   THESE ARE NOT ROADSIDE SCENERY, WHICH IS WHY THEY ARE NOT BLOCKED. RLG-059
+   deferred the COASTAL boats because they stand outboard of the lamp posts, so
+   RLG-073's culling rule governs them and that rule is not decided. A boat on
+   the water below a bridge stands on no ground plane at all and is placed by its
+   own distance, so nothing RLG-073 decides can reach it.
+   ------------------------------------------------------------------------- */
+const BOAT = {
+  step:    6000,  /* one chance of a boat every this many units of water     */
+  chance:  0.60,  /* and this often, which is what makes it a sea            */
+  /* ---- A REAL PLACE ON THE WATER, AND THE VALUE IS CHOSEN FOR WHERE
+     BOATS ARE ACTUALLY SEEN --------------------------------------------
+     TWO WRONG VERSIONS CAME FIRST AND BOTH ARE WORTH RECORDING. ±120,000
+     units put all but one boat off the sides, because the lateral distance
+     that lands inside the frame runs from about ±14,000 at the foot of the
+     frame to ±357,000 at the skyline and one number cannot serve both.
+
+     THEN AN ANGULAR SPREAD, WHICH LOOKED RIGHT AND WAS WORSE. Making the
+     offset proportional to the distance cancels the perspective out, so
+     boats scatter evenly at every depth - and a boat's position in the world
+     then depends on where the CAR is. It swims sideways to stay on screen.
+     That is the same class of fault as the mirror slices pinned to the
+     segment behind the player, which this engine has now been caught by four
+     times: anything whose world position is derived from `pos` is not in the
+     world.
+
+     SO IT IS A FIXED WORLD OFFSET, and the number is chosen for the band
+     boats are actually seen in. At 60,000 units a boat at that distance
+     lands 201 pixels off centre, which is inside the frame; nearer ones
+     sweep off the sides as you pass them, which is what passing something
+     looks like, and further ones gather toward the vanishing point.
+     ------------------------------------------------------------- */
+  spread:  60000, /* how far either side of the road's line they scatter     */
+  /* ---- A SHIP, NOT A DINGHY ------------------------------------------
+     1,500 units is about four car lengths, and at the distances this water
+     runs to that came out 2 to 7 pixels wide - the painter ran, eight boats a
+     frame, and none of them read as anything. A hull has to be big enough to
+     have a shape before the owner's "little boats" can be little. 4,200 is
+     about eleven car lengths, which is a working boat rather than a liner.
+     -------------------------------------------------------------- */
+  len:     4200,  /* a hull, in world units                                  */
+  /* and none of them directly under the deck, which is where the largest were
+     landing and being covered by the road they are meant to be seen beside */
+  clear:    0.30, /* the fraction of the scatter kept clear of the centre     */
+  far:   360000   /* how far out they are placed - far past the road's draw,
+                     because the water plane runs on long after the road      */
+};
+/* `back` is the MIRROR, which looks the other way: it walks the water BEHIND the
+   car and measures distance the other way round. Without it the glass would show
+   the boats in front of you, which is the exact fault RLG-079 exists to prevent -
+   and it would have looked perfectly plausible. */
+function drawBoats(B, vh, vHorizon, cx, halfW, topY, botY, back){
+  const near = back ? pos - BOAT.far : pos + 2000;
+  const far  = back ? pos - 2000     : pos + BOAT.far;
+  const first = Math.floor(near / BOAT.step);
+  const last  = Math.floor(far / BOAT.step);
+  for(let i = first; i <= last; i++){
+    if(sceneRand(i, 811) > BOAT.chance) continue;
+    const z = i * BOAT.step + sceneRand(i, 907) * BOAT.step;
+    const dz = back ? pos - z : z - pos;
+    if(dz < 500) continue;
+    const scale = CAM_D / dz;
+    const y = vHorizon + scale * CAM_H * (1 + WATER_DROP) * vh / 2;
+    if(y < topY || y > botY) continue;
+    const side = sceneRand(i, 613) < 0.5 ? -1 : 1;
+    const off = BOAT.clear + (1 - BOAT.clear) * sceneRand(i, 419);
+    const lx = side * off * BOAT.spread;
+    const x = cx + scale * (lx - camX * ROAD) * halfW;
+    const w = scale * BOAT.len * halfW;
+    /* under a pixel and a half it is a speck that shimmers rather than a boat */
+    if(w < 2 || x < -w || x > cx * 2 + w) continue;
+    const h = w * 0.34;
+    /* the hull is DARKER than the water it sits in and the sail is lighter, so
+       one of the two reads whatever the hour has done to the sea */
+    ctx.fillStyle = 'rgba(18,26,34,0.72)';
+    ctx.beginPath();
+    ctx.moveTo(x - w/2, y - h*0.2);
+    ctx.lineTo(x + w/2, y - h*0.2);
+    ctx.lineTo(x + w*0.30, y + h*0.4);
+    ctx.lineTo(x - w*0.30, y + h*0.4);
+    ctx.closePath(); ctx.fill();
+    if(w > 3){
+      /* a sail on the bigger ones only - below that it is one pale pixel over
+         a dark one, which reads as noise */
+      ctx.fillStyle = 'rgba(226,232,238,0.80)';
+      ctx.beginPath();
+      ctx.moveTo(x - w*0.06, y - h*0.2);
+      ctx.lineTo(x - w*0.06, y - h*1.9);
+      ctx.lineTo(x + w*0.30, y - h*0.2);
+      ctx.closePath(); ctx.fill();
+    }
+    /* and a wake, which is what says the thing is ON a surface rather than in
+       front of one */
+    if(w > 3){
+      ctx.fillStyle = 'rgba(228,238,246,0.30)';
+      ctx.fillRect(x - w*0.75, y + h*0.4, w*1.5, Math.max(0.6, h*0.16));
+    }
+  }
+}
+
 function groundBase(mix, atIdx){
   /* `atIdx` is for the MIRROR, which looks the other way: the band under ITS
      horizon is the land BEHIND you, and during a biome change that is still the
@@ -15624,7 +15784,25 @@ function drawRoad(){
          know where the road stops, or it measures the road's own sea and
          passes with the far band removed - which it did, once. */
       if(farSea.roadTop === undefined || y2 < farSea.roadTop) farSea.roadTop = +y2.toFixed(1);
-      ctx.fillRect(0, y2, W, H - y2);
+      /* ---- A BRIDGE HAS NO GROUND BESIDE IT (RLG-112) ---------------
+         Owner, 2026-09-01, correcting the first cut: draw "only the tarmac
+         and the bridge structure and leaving the water to be just the far
+         edge rendered blue so the bridge looks suspended hundreds of feet
+         above water."
+
+         THE FAULT WAS THIS FILL, AND IT IS A PERSPECTIVE ONE. Every slice
+         painted water from the ROAD'S OWN LINE downward, so the water met
+         the kerb and converged at exactly the rate the tarmac did. That is
+         what a surface AT the road's level does, and it is why the crossing
+         read as a causeway: the picture said the sea was lapping at the
+         verge.
+
+         A DECK HAS NOTHING BESIDE IT AT ALL. Skipping the fill leaves the
+         far field's own water showing through, which is a surface with no
+         relationship to the road's line - and a plane you cannot see the
+         near edge of reads as a plane a long way below.
+         ---------------------------------------------------------- */
+      if(!bioAt(idx).overWater) ctx.fillRect(0, y2, W, H - y2);
       /* ---- AND THE SEA, IF THIS PLACE HAS ONE (RLG-059) ----------------
          Painted with the ground and on ONE side of it, from a shoreline that
          is a fixed distance out from the tarmac - so the sand between the road
@@ -17344,8 +17522,15 @@ function draw(){
      segments and simply stops before the horizon — the base is not the bug,
      the missing road is. Until the geometry reaches the horizon this is the
      verge's own colour, lightly hazed, which is the least visible option. */
-  ctx.fillStyle = groundBase(0.30);
+  /* over water the far field is a plane far below rather than the ground at the
+     road's own level, so it is a gradient of DISTANCE down the frame (RLG-112) */
+  const gB = bioAt(Math.floor(pos/SEG) + DRAW);
+  ctx.fillStyle = gB.overWater ? waterFill(gB, horizon, H, H, horizon)
+                               : groundBase(0.30);
   ctx.fillRect(0, horizon, W, H-horizon);
+  /* the boats go straight onto the water and under everything the road pass
+     draws, so the deck covers any that would otherwise show through it */
+  if(gB.overWater) drawBoats(gB, H, horizon, W/2 + viewShift, W/2, horizon, H);
   /* ---- AND THE WATER DOES NOT STOP WHERE THE ROAD DOES (RLG-059) ------
      Owner, 2026-08-30: "maintaining the ocean sided render into the background
      up to the horizon?"
@@ -17871,8 +18056,21 @@ function drawMirrorFull(mx, my, mw, mh){
      the BOTTOM half of the windscreen's gradient rather than all of it */
   sky.addColorStop(0, st[2]); sky.addColorStop(1, st[3]);
   ctx.fillStyle = sky; ctx.fillRect(mx, my, mw, vpy - my);
-  ctx.fillStyle = groundBase(0.30, bhd);
+  /* ---- AND THE WATER IS FAR BELOW BEHIND YOU TOO (RLG-112) ------------
+     Owner, 2026-09-01: "obviously, that would have to be shown in the mirror as
+     well." Same function, and the glass passes its own vertical scale and its
+     own horizon - so the recession is computed for the mirror's geometry rather
+     than the windscreen's, and there is still one definition of what water at a
+     distance looks like.
+     ---------------------------------------------------------------- */
+  const mBfar = bioAt(bhd);
+  ctx.fillStyle = mBfar.overWater ? waterFill(mBfar, vpy, my + mh, H_M, vpy)
+                                  : groundBase(0.30, bhd);
   ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
+  /* and the boats behind you, on the same water, through the same painter with
+     the glass's own scale and horizon (RLG-112) */
+  if(mBfar.overWater)
+    drawBoats(mBfar, H_M, vpy, mx + mw/2, mw/2, vpy, my + mh, true);
   /* ---- AND THE SAME BAND IN THE GLASS (RLG-059) ------------------------
      The mirror's road walks to 34,000 units and stops, so the same strip of
      land sat between the water and the horizon behind you that sat in front of
@@ -20682,6 +20880,58 @@ requestAnimationFrame(frameLoop);
     return { towers: TRUSS.towers, span: Math.round(span),
              bay: Math.round(span / (TRUSS.towers + 1)),
              reach: DRAW * SEG, towerH: TRUSS.towerH, railH: TRUSS.h };
+  };
+  /* ---- HOW FAR BELOW THE WATER LIES (RLG-112) --------------------------
+     The suspension is drawn as DISTANCE: water `drop` camera-heights under the
+     deck is that many times further off than the tarmac at the same screen row,
+     and "further off" is what the recession paints. So the claim is testable on
+     the function rather than on the pixels - which matters, because the frame
+     also carries `drawHaze` over the top and the two cannot be told apart by
+     sampling a colour.
+
+     `atBottom` is the water's recession at the foot of the frame and `ifFlat`
+     is what the same row would read if the water sat at the road's own level.
+     The gap between them IS the suspension.
+     ------------------------------------------------------------------ */
+  /* every boat the water pass would place this frame, and where it lands. The
+     first cut drew none and there was no way to tell an empty list from a list
+     that was all being culled. */
+  API.boats = function(){
+    const out = [];
+    const first = Math.floor((pos + 2000) / BOAT.step);
+    const last  = Math.floor((pos + BOAT.far) / BOAT.step);
+    for(let i = first; i <= last; i++){
+      if(sceneRand(i, 811) > BOAT.chance) continue;
+      const z = i * BOAT.step + sceneRand(i, 907) * BOAT.step;
+      const dz = z - pos;
+      if(dz < 500) continue;
+      const scale = CAM_D / dz;
+      const y = horizon + scale * CAM_H * (1 + WATER_DROP) * H / 2;
+      const side = sceneRand(i, 613) < 0.5 ? -1 : 1;
+      const off = BOAT.clear + (1 - BOAT.clear) * sceneRand(i, 419);
+      const lx = side * off * BOAT.spread;
+      const x = W/2 + viewShift + scale * (lx - camX * ROAD) * W/2;
+      const w = scale * BOAT.len * W/2;
+      /* `i` and `lx` are the two that matter: a boat is a place in the WORLD, so
+         its bucket and its lateral offset must not change as the car moves. Two
+         versions of the scatter got that wrong and both looked fine in a still
+         picture (RLG-112). */
+      out.push({ i:i, z:Math.round(z), lx:Math.round(lx),
+                 dz:Math.round(dz), x:Math.round(x), y:Math.round(y), w:+w.toFixed(2),
+                 onScreen: y >= horizon && y <= H && w >= 2 && x > -w && x < W + w });
+    }
+    return { total: out.length, drawn: out.filter(b => b.onScreen).length,
+             sample: out.filter(b => b.onScreen).slice(0, 6),
+             missed: out.filter(b => !b.onScreen).slice(0, 6) };
+  };
+  API.waterPlane = function(){
+    const dy = H - horizon;
+    const dzWater = CAM_D * CAM_H * (1 + WATER_DROP) * H / (2 * dy);
+    const dzFlat  = CAM_D * CAM_H * H / (2 * dy);
+    return { drop: WATER_DROP,
+             atBottom: +clamp(dzWater / (DRAW * SEG), 0, 1).toFixed(4),
+             ifFlat:   +clamp(dzFlat  / (DRAW * SEG), 0, 1).toFixed(4),
+             unitsBelow: Math.round(CAM_H * WATER_DROP) };
   };
   API.rollOpening = function(n){
     const out = [];
