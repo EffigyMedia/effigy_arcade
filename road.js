@@ -11762,7 +11762,20 @@ function step(dt){
       flashWarn(timeFlash('CHECKPOINT', CLOCK_BONUS));
     }
   }
-  cpGantries = cpGantries.filter(cp => cp.z > pos - 8000);
+  /* ---- A BOARD LASTS AS LONG AS THE GLASS CAN SEE IT (RLG-133) --------
+     Owner, 2026-08-31, on the build that added the mirror pass: "I still don't
+     think I see the back of the checkpoints or the finish line in the rearview
+     mirror."
+
+     THE PASS WAS RIGHT AND THIS LINE DEFEATED IT. A board was thrown away 8,000
+     units after it was passed while the mirror draws to 34,000 - so it was
+     culled at less than a quarter of the range the glass has. In the units a
+     player feels: 8,000 is 0.06 of a mile, ABOUT A SECOND AND A HALF at 150mph,
+     shrinking the whole time, in a pane 44 pixels tall. RLG-108 recorded that
+     the retention was "already right", and that was the error.
+
+     `MIRROR_BACK` is the one number, so the two cannot drift apart again. */
+  cpGantries = cpGantries.filter(cp => cp.z > pos - MIRROR_BACK);
 
   /* patience comes back, slowly */
   for(const c of traffic)
@@ -15783,6 +15796,58 @@ function drawFinish(){
   ctx.restore();
 }
 
+/* ---- AND THE BACK OF IT, WHICH WAS NEVER DRAWN AT ALL (RLG-133) ---------
+   Owner, 2026-08-31: "I still don't think I see the back of the checkpoints or
+   the finish line in the rearview mirror."
+
+   TWO FAULTS SHARED ONE SENTENCE AND NAMING THE FINISH LINE SEPARATELY IS WHAT
+   SPLIT THEM. The checkpoint boards were being drawn and then deleted almost
+   immediately; the finish banner was never in the mirror on any build.
+   [[RLG-108]] was scoped to `cpGantries`, and this is a different object with a
+   different painter, so it was never in that unit. `drawFinish` above is a
+   forward painter and returns at 600 units past the line - about eight metres.
+
+   AND CROSSING THE FINISH IS THE ONE MOMENT A PLAYER MOST WANTS THE MIRROR,
+   because it is the only time in a race when what is behind you is the story.
+
+   THE BOARD READS DIFFERENTLY FROM BEHIND AND THE ROAD DOES NOT, which is the
+   whole of what makes this a second picture rather than the same one flipped.
+   Paint on tarmac is paint from either side, so the chequered line is drawn
+   exactly as it is out of the windscreen. The BANNER is a board with a face on
+   one side: from behind you get the backing, its stiffening rails and the
+   structure holding it up - the same shape the checkpoint boards show, for the
+   same reason.
+   ------------------------------------------------------------------------- */
+function drawFinishBack(g, px, py, roadW){
+  if(roadW < 6) return;
+  const h     = Math.max(4, roadW * 0.10);
+  const postW = Math.max(2, roadW * 0.022);
+  const by    = py - h*2.6, bh = h*1.15;
+  /* the line on the tarmac first, so the banner stands in front of it */
+  const cells2 = 20, cw2 = roadW/cells2;
+  for(let i=0;i<cells2;i++){
+    g.fillStyle = (i % 2) ? '#f2f4f8' : '#14171d';
+    g.fillRect(px - roadW/2 + i*cw2, py, cw2+0.5, Math.max(1, h*0.30));
+  }
+  /* the uprights, the same steel from either side */
+  g.fillStyle = '#2b3038';
+  g.fillRect(px - roadW/2 - postW, by, postW, h*2.6);
+  g.fillRect(px + roadW/2,         by, postW, h*2.6);
+  /* the backing board rather than the chequers */
+  g.fillStyle = '#23272e';
+  g.fillRect(px - roadW/2, by, roadW, bh);
+  g.fillStyle = '#2f343c';
+  g.fillRect(px - roadW/2 + postW*0.5, by + postW*0.5,
+             roadW - postW, bh - postW);
+  /* and the rails across it, which is the only detail a back has */
+  if(bh > 5){
+    g.fillStyle = '#3c434c';
+    const rh = Math.max(0.6, bh*0.10);
+    g.fillRect(px - roadW/2 + postW, by + bh*0.30, roadW - postW*2, rh);
+    g.fillRect(px - roadW/2 + postW, by + bh*0.66, roadW - postW*2, rh);
+  }
+}
+
 /* ---- full-render mirror -------------------------------------------------
    A second projection pass looking backward: the road receding behind you,
    with real perspective, and every sprite placed by the same maths as the
@@ -16221,16 +16286,27 @@ function drawMirrorFull(mx, my, mw, mh){
      the world at a distance like everything else and the list is what puts
      near things over far ones. */
   for(const cp of cpGantries) if(cp.z < pos) back.push({ o:cp, gantry:true });
+  /* ---- AND THE FINISH BANNER ONCE IT IS BEHIND YOU (RLG-133) ----------
+     Into the same sorted list, so a rival between you and the line is drawn in
+     front of it. `finishZ` is a single number rather than an array, so it needs
+     no retention of its own - what bounded it before was `drawFinish` refusing
+     to paint more than 600 units past, and that is a FORWARD painter's limit. */
+  if(mode === 'race' && finishZ < pos && finishZ > pos - MIRROR_BACK)
+    back.push({ o:{ z:finishZ }, finish:true });
   back.sort((a,b) => a.o.z - b.o.z);
 
   for(const it of back){
     /* a gantry spans the road, so it is projected on the centre line rather
        than at a lateral offset it has not got */
-    const p1 = rproj(it.gantry ? 0 : it.o.x*ROAD, it.o.z);
+    const p1 = rproj((it.gantry || it.finish) ? 0 : it.o.x*ROAD, it.o.z);
     if(!p1) continue;
     if(it.gantry){
       /* `p1.w` is HALF the road at this distance, in the glass's own units */
       drawGantryBack(ctx, p1.x, p1.y, p1.w * 2, mw);
+      continue;
+    }
+    if(it.finish){
+      drawFinishBack(ctx, p1.x, p1.y, p1.w * 2);
       continue;
     }
     const sw = p1.scale * it.w * CAR_UNIT * mw;
@@ -18682,12 +18758,34 @@ requestAnimationFrame(frameLoop);
      way. This puts one on the REAL `cpGantries` array with the fields the
      placer gives it, at a chosen distance BEHIND, which is where the mirror
      looks. `dz` is positive for behind, because that is how the glass thinks.
+
+     ---- AND THE DEFAULT WAS INSIDE THE FAULT (RLG-133) ------------------
+     It was 4,000, and boards used to be culled at 8,000 - so every check that
+     took the default parked one INSIDE the range that survived, and answered
+     "yes, a board is in the mirror" on a build where a real board had already
+     been deleted. A probe whose default sits inside the bug cannot see the bug.
+     It is 20,000 now: past the old cull, well inside the glass's 34,000, and
+     a place a board only reaches if the retention is right.
      ------------------------------------------------------------------- */
   API.parkGantry = function(dz){
     cpGantries.length = 0;
     if(dz !== null)
-      cpGantries.push({ z: pos - (dz === undefined ? 4000 : dz), hit:true, n:1 });
+      cpGantries.push({ z: pos - (dz === undefined ? 20000 : dz), hit:true, n:1 });
     return cpGantries.length;
+  };
+  /* ---- AND THE FINISH LINE, WHICH NEEDS A RACE TO EXIST (RLG-133) ------
+     It is one number rather than an array, so this MOVES the line instead of
+     adding one. The banner is drawn only in a race, so this puts the run into
+     one - `parkGantry` writes the real `cpGantries` for the same reason, and a
+     probe that quietly measured nothing because the mode was wrong would be the
+     more dangerous of the two options. It says which mode it found, so a check
+     can report that it had to change it rather than assume.
+     ------------------------------------------------------------------- */
+  API.parkFinish = function(dz){
+    const was = mode;
+    if(mode !== 'race') mode = 'race';
+    finishZ = pos - (dz === undefined ? 20000 : dz);
+    return { finishZ: finishZ, back: pos - finishZ, mode: mode, wasMode: was };
   };
   /* ---- A TEST CAN TURN THE CLOCK OFF (RLG-125) --------------------------
      TIMED is a garage toggle, and reaching it from a harness means leaving the

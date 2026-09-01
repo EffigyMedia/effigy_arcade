@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-40"></a>
+## [0.10.40] - 2026-08-31
+- Fixed: **the checkpoint boards stay in the mirror instead of vanishing a second after you pass
+  them.** Owner: "I still don't think I see the back of the checkpoints or the finish line in the
+  rearview mirror." The mirror pass added in 0.10.36 was right; a board was being deleted 8,000 units
+  after it was passed while the glass draws to 34,000, so it survived 0.06 of a mile - about a second
+  and a half at 150mph, shrinking the whole time. The cull reads the mirror's own constant now, so the
+  two cannot drift apart again ([RLG-133](../fragments/RLG-133.md)).
+- Added: **the finish banner is in the mirror, which it never was on any build.** A second fault
+  behind the same sentence, and naming the finish line separately is what separated them: RLG-108 was
+  scoped to the checkpoint array, and the banner is a different object with a different painter that
+  stops 600 units past the line. The chequered line on the tarmac is drawn as it is out of the
+  windscreen, because paint on a road reads the same from either side; the board is not, so from
+  behind you get its backing, its rails and the structure. Crossing the finish is the one moment in a
+  race when what is behind you is the story.
+- Fixed: **a harness probe whose default sat inside the bug it was meant to catch.** `parkGantry`
+  parked a board 4,000 units back - inside the 8,000 that survived - so a check asking "is a board in
+  the mirror" got yes on a build where a real one had already gone. It parks at 20,000 now, past the
+  old cull and well inside the glass. Measured with the world held still: a board changes 1.84% of the
+  pane against 0.03% for an unchanged world, and the finish line 1.35% against 0.00%.
+
 <a id="v0-10-39"></a>
 ## [0.10.39] - 2026-08-31
 - Changed: **the mountain lies under a tenth of snow and the tundra under a quarter.** Owner, having

@@ -454,7 +454,13 @@ def main():
         settle(page, 20)
         none_there = page.evaluate('() => window.__probe.road.gantries()')
         page.evaluate(GRAB, 'nosign')
-        with_board = median_change(page, 4000, 'nosign')
+        # ---- 20,000, NOT 4,000 (RLG-133) --------------------------------------------------
+        # This read 4,000, and boards used to be deleted at 8,000 - so the probe parked one
+        # INSIDE the range that survived and the check answered yes on a build where a real
+        # board, passed at speed, had already gone. A probe whose default sits inside the bug
+        # cannot see the bug. 20,000 is past the old cull and well inside the glass's 34,000,
+        # so a board only reaches it if the retention is right.
+        with_board = median_change(page, 20000, 'nosign')
         one_there = page.evaluate('() => window.__probe.road.gantries()')
         # AND A CONTROL: the same measurement with NO board parked. The world is held still, so
         # this is what "nothing changed" looks like - and it is what stops the check above
@@ -485,6 +491,51 @@ def main():
                   'and it is the board rather than the glass simply moving',
                   'a board changed %.2f%% against %.2f%% for an unchanged world'
                   % (with_board['share'] * 100, still['share'] * 100))
+
+        # ---- AND THE FINISH LINE, WHICH WAS NEVER IN THE GLASS AT ALL (RLG-133) -----------
+        # Owner, 2026-08-31: "I still don't think I see the back of the checkpoints or the
+        # finish line in the rearview mirror." Two faults in one sentence: the boards above
+        # were being deleted, and the banner had no mirror painter on any build. `drawFinish`
+        # is a forward painter that stops 600 units past the line.
+        #
+        # THE SAME SHAPE OF MEASUREMENT, and it needs the same control. `parkFinish` puts the
+        # run into a race, because the banner does not exist outside one - it reports the mode
+        # it found so this cannot pass by measuring a mode that never draws it.
+        page.evaluate("() => window.__probe.road.parkGantry(null)")
+        far = page.evaluate("() => window.__probe.road.parkFinish(400000)")
+        settle(page, 20)
+        page.evaluate(GRAB, 'nofin')
+        fin_still = []
+        fin_seen = []
+        for _ in range(9):
+            page.evaluate("() => window.__probe.road.parkFinish(400000)")
+            settle(page, 4)
+            page.evaluate(GRAB, 'live')
+            r = page.evaluate("([a,b,t]) => window.__probe.changed(a,b,t)", ['live', 'nofin', THR])
+            if r: fin_still.append(r['share'])
+            page.evaluate("() => window.__probe.road.parkFinish(20000)")
+            settle(page, 4)
+            page.evaluate(GRAB, 'live')
+            r = page.evaluate("([a,b,t]) => window.__probe.changed(a,b,t)", ['live', 'nofin', THR])
+            if r: fin_seen.append(r['share'])
+        fin_still.sort(); fin_seen.sort()
+        m_still = fin_still[len(fin_still)//2] if fin_still else 0
+        m_seen = fin_seen[len(fin_seen)//2] if fin_seen else 0
+        print('      the race mode for the banner: was %s, now %s' % (far['wasMode'], far['mode']))
+        print('      the glass changed by %.2f%% with the finish line behind, %.2f%% with it far away'
+              % (m_seen * 100, m_still * 100))
+        res.check(far['mode'] == 'race',
+                  'the banner is measured in the mode that draws it', 'mode %s' % far['mode'])
+        res.check(m_still < 0.02,
+                  'and the glass is still with the line out of range, so the rest can be read',
+                  'it changed %.2f%% on its own' % (m_still * 100))
+        res.check(m_seen > 0.01,
+                  'the FINISH LINE behind the car shows up in the mirror',
+                  'only %.3f%% of the glass differs, which is nothing appearing' % (m_seen * 100))
+        res.check(m_seen > m_still * 4 + 0.005,
+                  'and it is the banner rather than the glass simply moving',
+                  'the line changed %.2f%% against %.2f%% for an unchanged world'
+                  % (m_seen * 100, m_still * 100))
 
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
