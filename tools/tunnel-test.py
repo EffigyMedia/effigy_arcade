@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""TUNNEL TEST - dark by day, through the one lamp clock, and the mouth is a ramp.
+
+    .venv/Scripts/python tools/tunnel-test.py
+
+RLG-105. Owner, 2026-08-31: canyon and tunnel are the two structural places to build.
+"NOTHING ON THE BOARD IS DARK BY DAY, AND THAT IS THE WHOLE POINT."
+
+THREE CLAIMS, AND THE SECOND IS THE ONE WITH A RULING BEHIND IT.
+
+    IT IS DARK AT MIDDAY. Every other place in the game is lit by the hour and the weather
+    alone, so a tunnel at noon would have been a bright corridor.
+
+    AND THE DARKNESS COMES THROUGH `lampsOn`, WHICH MUST STAY ONE FUNCTION. Every lamp in
+    the game asks it - the headlight beams, the street lighting, and all 178 declared lamps
+    across 59 vehicles. A tunnel that lit its cars by a second route would be two answers to
+    one question, and the fragment says so explicitly because the jungle's canopy is going
+    to ask the same question next. So the check does not merely ask "is it dark": it asks
+    whether the darkness arrives through the shared clock.
+
+    AND THE MOUTH IS A RAMP RATHER THAN A CUT. Coming out is a large sudden brightening at
+    speed, repeated every time the place ends - the same photosensitivity hazard RLG-060
+    gave the lightning a comfort option for. The darkness rides the biome crossing, so this
+    checks that it passes through intermediate values instead of stepping.
+
+WHAT IT CANNOT DO. It cannot say whether the bore LOOKS like a tunnel, whether the ceiling
+lamps read at speed, or whether the exit is comfortable on a real screen. `tools/biome-shot.py`
+takes the picture; the owner judges it.
+
+Exit code 0 if every check passed, 1 otherwise.
+"""
+
+import argparse
+import functools
+import http.server
+import socketserver
+import sys
+import threading
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tools'))
+from harness import console_utf8, launch_chromium
+
+GAME = 'games/sw/interstate.html'
+
+INIT = r"""
+window.__probe = { errors: [], road: null };
+(function(){
+  var real = null, wrapped = null;
+  Object.defineProperty(window, 'ROAD', {
+    configurable: true,
+    get: function(){ return real ? wrapped : undefined; },
+    set: function(fn){
+      real = fn;
+      wrapped = function(CFG){
+        var api = real(CFG);
+        window.__probe.road = api || (CFG && CFG.api) || null;
+        return api;
+      };
+    }
+  });
+})();
+window.addEventListener('error', function(e){ window.__probe.errors.push(String(e.message)); });
+"""
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+
+def serve(root):
+    handler = functools.partial(QuietHandler, directory=str(root))
+    httpd = socketserver.TCPServer(('127.0.0.1', 0), handler)
+    httpd.allow_reuse_address = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, httpd.socket.getsockname()[1]
+
+
+class Results:
+    def __init__(self):
+        self.fails = []
+
+    def check(self, ok, label, detail=''):
+        print(('  ok    ' if ok else '  FAIL  ') + label + ('' if ok else '   [' + detail + ']'))
+        if not ok:
+            self.fails.append(label)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--headed', action='store_true')
+    args = ap.parse_args()
+    console_utf8()
+    res = Results()
+    httpd, port = serve(ROOT)
+    print('tunnel-test  .  dark by day, through the one lamp clock')
+    with sync_playwright() as p:
+        browser = launch_chromium(p, headless=not args.headed)
+        page = browser.new_page(viewport={'width': 480, 'height': 900})
+        page.add_init_script(INIT)
+        page.goto('http://127.0.0.1:%d/%s' % (port, GAME), wait_until='load')
+        try:
+            page.wait_for_function(
+                '() => navigator.serviceWorker && navigator.serviceWorker.controller',
+                timeout=5000)
+            page.wait_for_timeout(1000)
+        except Exception:
+            pass
+        page.wait_for_function('!!window.__probe.road', timeout=10000)
+        page.wait_for_selector('#veil:not(.hidden) [data-act="play"]', timeout=10000)
+        page.click('[data-act="play"]')
+        page.wait_for_selector('#veil:not(.hidden) [data-act="drive"]', timeout=5000)
+        page.click('[data-act="drive"]')
+        page.wait_for_timeout(1600)
+
+        def light(biome, hour, wet=0.0):
+            page.evaluate("""([k, h, w]) => {
+              const R = window.__probe.road;
+              R.setBiomePair(k, k); R.setPhase(h);
+              R.setWet(w); R.setSnow(0); R.setPool(0);
+            }""", [biome, hour, wet])
+            page.wait_for_timeout(220)
+            return page.evaluate("() => window.__probe.road.lightLevels()")
+
+        # --------------------------------------------- dark by day
+        print()
+        print('  DARK BY DAY, WHICH NOTHING ELSE ON THE BOARD IS')
+        noon_tun = light('TUNNEL', 0.75)
+        noon_farm = light('FARMLAND', 0.75)
+        night_farm = light('FARMLAND', 0.25)
+        print('      midday in a TUNNEL:   lamps %.2f   (the day clock alone says %.2f)'
+              % (noon_tun['lamps'], noon_tun['clock']))
+        print('      midday in FARMLAND:   lamps %.2f' % noon_farm['lamps'])
+        print('      midnight in FARMLAND: lamps %.2f' % night_farm['lamps'])
+        res.check(noon_tun['lamps'] > 0.95,
+                  'the lamps are FULL ON at midday in a tunnel',
+                  'lamps %.2f' % noon_tun['lamps'])
+        res.check(noon_farm['lamps'] < 0.05,
+                  'and off at the same hour anywhere with a sky, so it is the PLACE',
+                  'farmland at the same hour reads %.2f' % noon_farm['lamps'])
+        # THE DAY CLOCK ITSELF MUST STILL SAY MIDDAY. If the tunnel worked by moving the
+        # hour, every other thing that reads the clock - the sky, the sun, the golden hour -
+        # would move with it, and this would be a very different change.
+        res.check(noon_tun['clock'] < 0.05,
+                  'and the clock still says midday, so the place did not move the sun',
+                  'the day clock reads %.2f inside the tunnel' % noon_tun['clock'])
+
+        # --------------------------------------------- one function, not two
+        print()
+        print('  AND IT ARRIVES THROUGH THE ONE LAMP CLOCK, NOT A SECOND ROUTE')
+        # `lightLevels` reports what `lampsOn()` returns. If a tunnel lit its cars by any
+        # other path, `lamps` here would stay at the clock value and the cars would light
+        # anyway - so this is the check that the seam was respected. The jungle's canopy is
+        # about to ask the same question, and that is why it matters now.
+        res.check(abs(noon_tun['lamps'] - 1.0) < 0.05 and noon_tun['clock'] < 0.05,
+                  'the shared clock returns full lamps while its own day term is zero',
+                  'lamps %.2f against a day term of %.2f'
+                  % (noon_tun['lamps'], noon_tun['clock']))
+        # AND WEATHER STILL WORKS THROUGH THE SAME EXPRESSION, which is what says the place
+        # was added as one more term rather than as an override.
+        wet_farm = light('FARMLAND', 0.75, 1.0)
+        print('      midday in FARMLAND, heavy rain: lamps %.2f' % wet_farm['lamps'])
+        res.check(wet_farm['lamps'] > 0.95,
+                  'and weather still lights them too, so the place is a term and not an override',
+                  'rain at midday reads %.2f' % wet_farm['lamps'])
+
+        # --------------------------------------------- no weather under a roof
+        print()
+        print('  AND A ROOF MEANS NO WEATHER, WHICH FALLS OUT RATHER THAN BEING A RULE')
+        odds = page.evaluate("() => window.__probe.road.climateFor('TUNNEL')")
+        print('      precip %.2f, canRain %s, canSnow %s'
+              % (odds['precip'], odds['canRain'], odds['canSnow']))
+        res.check(odds['precip'] == 0,
+                  'a tunnel precipitates on none of its rolls', 'precip %.3f' % odds['precip'])
+        res.check(not odds['canRain'] and not odds['canSnow'],
+                  'and it can do neither, which comes from a precipitation of zero rather than a branch',
+                  'canRain %s, canSnow %s' % (odds['canRain'], odds['canSnow']))
+        page.evaluate("() => window.__probe.road.setBiomePair('TUNNEL','TUNNEL')")
+        page.wait_for_timeout(200)
+        rolls = page.evaluate("(n) => window.__probe.road.sampleWeatherRolls(n)", 600)
+        res.check(rolls['dry'] == 1.0,
+                  'and 600 rolls of the engine own weather produce nothing at all',
+                  'it produced weather on %.3f of rolls' % (1 - rolls['dry']))
+
+        # --------------------------------------------- the mouth is a ramp
+        print()
+        print('  AND THE MOUTH IS A RAMP RATHER THAN A CUT, which is the comfort answer')
+        # The darkness rides the biome crossing, so driving at a mouth should pass through
+        # intermediate values. A cut would step from 0 to 1 between two samples - and it is
+        # the EXIT that matters for comfort, because that is the brightening.
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.setBiomePair('TUNNEL','TUNNEL'); R.setPhase(0.75); }")
+        page.wait_for_timeout(300)
+        page.evaluate("() => window.__probe.road.startBiomeChange('FARMLAND')")
+        # THE CAR HAS TO ACTUALLY REACH THE MOUTH. The boundary is placed DRAW segments
+        # ahead and the weather band straddles it, so the crossing does not begin until the
+        # car has covered about 186 segments - 37,000 units. The first version of this drove
+        # for 3.6 seconds in 120ms steps and never left the tunnel: it read 1.00 thirty
+        # times and reported a cut, which is the harness measuring its own patience.
+        # biome-test learnt exactly this and holds the speed the same way.
+        # SAMPLED FINELY, because the ramp is about a second long. The weather band is 72
+        # segments - 14,400 units - and at nine tenths of top speed the car crosses it in
+        # roughly a second. A 250ms sample caught ONE intermediate value and reported a cut;
+        # the ramp was there the whole time and the harness could not see it. This is the
+        # same fault as the bend measurement earlier today, run past the resolution its
+        # subject needs.
+        ramp, cross = [], []
+        for _ in range(110):
+            page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD * 0.90)")
+            page.wait_for_timeout(70)
+            L = page.evaluate("() => window.__probe.road.lightLevels()")
+            ramp.append(L['dark'])
+            cross.append(page.evaluate("() => window.__probe.road.biomeSweep()")['atCarWeather'])
+        first = next((i for i, v in enumerate(cross) if v > 0), 0)
+        show = ramp[max(0, first - 1):first + 13]
+        print('      the crossing ran from 0 to %.2f of the weather band' % max(cross))
+        print('      driving OUT of a tunnel into daylight: %s'
+              % ' '.join('%.2f' % v for v in show))
+        mids = [v for v in ramp if 0.06 < v < 0.94]
+        res.check(ramp[0] > 0.9 and min(ramp) < 0.1,
+                  'the run really did cross from full dark to full daylight',
+                  'it went %.2f to %.2f' % (ramp[0], min(ramp)))
+        secs = len(mids) * 0.07
+        print('      the fade took about %.1f second(s) of driving at nine tenths of top speed'
+              % secs)
+        res.check(len(mids) >= 3,
+                  'and it passes through intermediate values rather than cutting',
+                  'only %d sample(s) were part-way' % len(mids))
+        biggest = max(abs(b - a) for a, b in zip(ramp, ramp[1:]))
+        res.check(biggest < 0.5,
+                  'no single step is most of the way, which is what makes it comfortable',
+                  'the largest step was %.2f' % biggest)
+
+        # --------------------------------------------- and it has no horizon
+        print()
+        print('  AND IT HAS NO SKYLINE, BECAUSE THE PLACE HAS NO DISTANCE IN IT')
+        forms = page.evaluate("""() => {
+          const R = window.__probe.road, out = {};
+          for(const k of R.BIOME_KEYS()) out[k] = R.skyForm ? R.skyForm(k) : null;
+          return out;
+        }""")
+        if forms.get('TUNNEL') is not None:
+            print('      horizon forms: %s' % forms)
+            res.check(forms['TUNNEL'] == 'none',
+                      'a tunnel states that it draws no horizon at all',
+                      'it states %r' % forms['TUNNEL'])
+            res.check(forms.get('FARMLAND') == 'open',
+                      'and farmland states the open sky the owner asked for',
+                      'it states %r' % forms.get('FARMLAND'))
+            # AND NOTHING FALLS THROUGH TO TOWERS BY ACCIDENT, which is the fault that put a
+            # city skyline on the first farmland capture: the form was a list of NAMES and
+            # anything unrecognised got the default.
+            res.check(all(v for v in forms.values()),
+                      'and every place states a form, so nothing gets towers by fall-through',
+                      str(forms))
+
+        errs = page.evaluate("() => window.__probe.errors")
+        res.check(not errs, 'no page errors', '; '.join(errs[:3]))
+        browser.close()
+    httpd.shutdown()
+
+    print()
+    if res.fails:
+        print('FAILED: ' + '; '.join(res.fails))
+        return 1
+    print('all checks passed')
+    print('  what the bore LOOKS like is not measured here - see tools/biome-shot.py')
+    return 0
+
+
+sys.exit(main())

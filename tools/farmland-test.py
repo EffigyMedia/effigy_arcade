@@ -140,12 +140,21 @@ def main():
         res.check('FARMLAND' in keys, 'farmland is on the board', str(keys))
         shape = page.evaluate("() => window.__probe.road.roadShape('FARMLAND')")
         every = {k: page.evaluate("(k) => window.__probe.road.roadShape(k)", k) for k in keys}
-        flattest = min(every, key=lambda k: every[k]['hill'])
-        print('      relief %.2f, sinuosity %.2f   (flattest place on the board: %s)'
+        # ---- AMONG PLACES WITH A SKY, and the narrowing is a real correction ------------
+        # This read "the flattest place on the board" and was true when it was written. The
+        # TUNNEL is flatter, at 0.06, and that is not a competing landscape: a bore is a
+        # shape somebody dug, and RLG-105 calls its relief AUTHORED rather than a tendency
+        # of the land. Comparing farmland against it would be comparing a landscape with a
+        # civil engineering drawing. The class is "places with a sky", which is a line the
+        # engine already draws.
+        land = {k: v for k, v in every.items()
+                if page.evaluate("(k) => window.__probe.road.skyForm(k)", k) != 'none'}
+        flattest = min(land, key=lambda k: land[k]['hill'])
+        print('      relief %.2f, sinuosity %.2f   (flattest place with a sky: %s)'
               % (shape['hill'], shape['bend'], flattest))
         res.check(flattest == 'FARMLAND',
-                  'and it is the flattest place on the board, which is the gap it fills',
-                  '%s is flatter at %.2f' % (flattest, every[flattest]['hill']))
+                  'and it is the flattest place with a sky over it, which is the gap it fills',
+                  '%s is flatter at %.2f' % (flattest, land[flattest]['hill']))
         res.check(shape['hill'] > 0,
                   'and still never completely flat, which the owner has said twice',
                   'relief %.3f' % shape['hill'])

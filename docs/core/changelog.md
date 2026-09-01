@@ -14,6 +14,44 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-2"></a>
+## [0.11.2] - 2026-09-01
+- Added: **TUNNEL - the one place on the board that is dark by day.** Owner: nothing else is, and that
+  is the whole point. The place is a third term in the SAME `lampsOn` expression that already took the
+  hour and the weather, so every lamp in the game - the beams, the street lighting, all 178 declared
+  lamps across 59 vehicles - lights inside it without a second route. Measured: at midday the lamps
+  read 1.00 while the day clock still reads 0.00, so the sun did not move
+  ([RLG-105](../fragments/RLG-105.md)).
+- Added: **a real bore, with walls and a ceiling over the camera.** Owner: "The tunnel needs 3D walls
+  and a ceiling above the camera." The first build filled the sky with a dark gradient, which is a
+  hole cut in the picture rather than an enclosure. It is sampled off the road's own projection at
+  sixteen distances, so the walls converge and bend with the road, and the near samples project above
+  the top of the frame.
+- Added: **a hillside with the bore cut through it.** Owner: "Entering it also requires a forward wall
+  or cliff face or mountain side something." Without one the entrance was a dimmer rather than a
+  place. One piece of geometry serves both ends: entering, the arch is dark and the rock is in
+  daylight; leaving, the same arch is bright, which is the light at the end of a tunnel.
+- Changed: **entering is abrupt and leaving is not.** A straight blend darkened the world 36 segments
+  BEFORE the mouth, so the car dimmed while still in the open. Going in runs over 18 segments once the
+  mouth is reached because a portal is sudden; coming out eases over the full 36, because the
+  brightening is the photosensitivity hazard and the eye adapts to light more slowly than to dark.
+- Fixed: **a latent snap in every weather-band quantity.** The darkness faded smoothly to 0.47 and then
+  CUT to 0.00 in one frame: the ground pair collapses after 18 segments while the weather band is 72
+  wide, so the blend was thrown away three quarters of the way through. **The snow floor had the same
+  discontinuity and nobody had looked.** There is a separate pair now.
+- Fixed: **the horizon form was a list of names.** `skylinePlanFor` branched on the biome's name and
+  fell through to TOWERS for anything unrecognised, so farmland was given a city skyline - found by
+  photographing it. A place states its form now, the way it states its rain
+  ([RLG-102](../fragments/RLG-102.md)).
+- Changed: **the cornfield runs off the edge of the screen.** Owner: "The corn needs to extend beyond
+  the side of the screen. You can make the field less dense to accomplish this." The reach triples and
+  the rank spacing pays for it, which is the owner's own trade.
+- Removed: **the turn cautionary boards.** Owner: "We can completely remove the turn cautionary
+  signs." The spawn goes and the painter stays, so they return by restoring five lines
+  ([RLG-138](../fragments/RLG-138.md)).
+- Added: **`tools/tunnel-test.py`** and **`tools/biome-shot.py`**, which photographs a place from the
+  road and a mouth from the approach. It asserts nothing.
+
 <a id="v0-11-1"></a>
 ## [0.11.1] - 2026-09-01
 - Added: **FARMLAND - a cornfield down one side, houses and barns down the other.** Owner: "one side

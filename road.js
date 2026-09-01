@@ -1355,14 +1355,23 @@ function pushCurve(){
      medium and three for a hard one. Straight from Out Run, and the reason its
      corners feel fair at speed.
      ------------------------------------------------------------------------ */
-  const startZ = bendZ0 + totalLen(curveSegs);
-  if(k !== 0){
-    /* the board counts chevrons for the corner AS SCALED - a city bend that has
-       been calmed to a third must not be signed as the hairpin it was rolled as */
-    const mag = Math.abs(k) < 2.0 ? 1 : Math.abs(k) < 4.4 ? 2 : 3;
-    signs.push({ z: startZ - 5200, dir: Math.sign(k), mag,
-                 side: Math.sign(k) > 0 ? 1 : -1 });
-  }
+  /* ---- AND THE BOARDS ARE GONE (RLG-138) ------------------------------
+     Owner, 2026-09-01: "We can completely remove the turn cautionary signs."
+
+     The reasoning above stands as written and was not wrong - a bend you cannot
+     see coming is a trap, and this is straight from Out Run. What has changed
+     underneath it is the ROAD: the corner cap is a renderer limit rather than a
+     taste one, biomes now scale every bend by their own sinuosity, and the
+     hardest corner the generator can produce is far gentler than the one those
+     boards were written for. A sign warning of a hairpin the road can no longer
+     make is furniture.
+
+     THE SPAWN GOES, NOT THE PAINTER. `drawSign` and the sprite stay where they
+     are and the array is still walked and still culled, so nothing downstream
+     has to change and the boards can come back by restoring these five lines.
+     Deleting a painter to remove a feature is how a feature stops being
+     recoverable.
+     ------------------------------------------------------------------ */
   curveSegs.push({ k, len });
   if(k !== 0) curveSegs.push({ k:0, len: rnd(3500, 7000) });
 }
@@ -5577,8 +5586,23 @@ const SCENERY = {
      and the row count is what carries the depth. The three kinds are the same
      crop at three heights, so a field is not one stamp repeated.
      ------------------------------------------------------------------ */
-  FARMLAND_CROP: { density:1.0, rowDensity:1.0, rows:6, out:0.12, outFar:5.4,
-            w:0.30, h:0.62, spread:0, kinds:3, lattice:true,
+  /* ---- IT HAS TO RUN OFF THE EDGE OF THE SCREEN (RLG-102) -------------
+     Owner, 2026-09-01: "The corn needs to extend beyond the side of the screen.
+     You can make the field less dense to accomplish this."
+
+     THE FIRST BUILD STOPPED AT 5.4 ROAD-WIDTHS OUT and the capture showed why
+     that was wrong: a band of corn with plain green grass beyond it, which reads
+     as a strip somebody planted beside a road rather than as a field the road
+     runs through. A field has no far edge you can see.
+
+     SO THE REACH TRIPLES AND THE RANKS PAY FOR IT. `outFar` goes to 16 and the
+     rank count stays at nine rather than the twenty-seven that keeping the old
+     spacing would have needed - which is the owner's own trade, stated in the
+     same sentence. The ranks are further apart, and at a distance that gap is
+     under a pixel: what the eye gets is a field that reaches the horizon.
+     ------------------------------------------------------------------ */
+  FARMLAND_CROP: { density:1.0, rowDensity:1.0, rows:9, out:0.12, outFar:16.0,
+            w:0.34, h:0.62, spread:0, kinds:3, lattice:true,
             build:(g,W2,H2,i)=>{
               /* a stand of stalks, taller on the later kinds */
               const tall = 0.62 + i * 0.16;
@@ -6322,23 +6346,37 @@ function skylinePlanFor(B, w, h, BANDS){
     let x = 0;
     while(x < w){
       let bw, bh, wins = [], kind = 'tower';
-      if(B.name === 'DESERT'){
+      /* ---- THE FORM IS A PROPERTY, NOT A LIST OF NAMES (RLG-102/RLG-105) --
+         This branched on `B.name` and fell through to TOWERS for anything it
+         did not recognise - so FARMLAND, whose whole brief was "open sky just
+         like ocean", was given a city, and the fault was invisible until the
+         place was photographed.
+
+         A LIST OF NAMES CANNOT BE EXTENDED WITHOUT EDITING IT, which is the
+         same shape three standing rulings forbid elsewhere in this file for
+         vehicles. A place now STATES its horizon the way it states its rain,
+         and a new one gets what it asked for rather than what the fall-through
+         happens to be. `open` is the coast's low band with big gaps, and `none`
+         is for a place with no distance in it at all. */
+      const form = B.skyForm || 'tower';
+      if(form === 'none'){ break; }
+      if(form === 'mesa'){
         kind = 'mesa';
         bw = rint(70, 190); bh = Math.round(rint(24, 74) * band.tall);
         x += Math.round(rint(10, 70) * band.gap);
-      } else if(B.name === 'MOUNTAIN' || B.name === 'TUNDRA'){
+      } else if(form === 'peak'){
         kind = 'peak';
         bw = rint(90, 240); bh = Math.round(rint(70, 200) * band.tall);
         x -= Math.round(rint(20, 70) / band.gap);
-      } else if(B.name === 'COASTAL'){
+      } else if(form === 'open'){
         /* a sea horizon is almost nothing: a low flat band with the occasional
            island or headland standing off it. The gaps ARE the subject. */
         kind = 'mesa';
         bw = rint(40, 150); bh = Math.round(rint(8, 30) * band.tall);
         x += Math.round(rint(120, 420) * band.gap);
-      } else if(B.name === 'SWAMP' || B.name === 'FOREST'){
+      } else if(form === 'tree' || form === 'wetTree'){
         kind = 'tree';
-        const swamp = B.name === 'SWAMP';
+        const swamp = form === 'wetTree';
         bw = rint(12, swamp ? 46 : 30);
         bh = Math.round(rint(swamp ? 24 : 38, swamp ? 62 : 96) * band.tall);
         x -= Math.round(rint(2, 9) / band.gap);
@@ -8455,7 +8493,7 @@ const BIOMES = {
                  at a fixed offset leaves the screen as it comes near. A narrower
                  beach keeps the coast in shot for most of the draw. */
               sea:'#1d4a63', beach:1.3,
-              sky:'#2f4a63', city:0.08, trees:0.20 },
+              sky:'#2f4a63', city:0.08, trees:0.20, skyForm:'open' },
   /* ---- THE FLATTEST PLACE ON THE BOARD (RLG-102) ----------------------
      Owner, 2026-08-31: "I want to add another biome farmland. This one would
      have one side with a cornfield and the other side flat with houses and
@@ -8477,23 +8515,41 @@ const BIOMES = {
   FARMLAND: { name:'FARMLAND', temp:0.60, vary:0.25, precip:0.34, bias:0.45,
               hill:0.10, bend:0.35, crop:'FARMLAND_CROP',
               grassLo:'#5c6b35', grassHi:'#7d8f47',
-              sky:'#43506b', city:0.03, trees:0.30 },
+              sky:'#43506b', city:0.03, trees:0.30, skyForm:'open' },
+  /* ---- THE ONE PLACE THAT IS DARK BY DAY (RLG-105) --------------------
+     Nothing else on the board is. The hour and the weather drove every lamp in
+     the game, so a tunnel is the first thing that makes `lampsOn` read the
+     PLACE as well - which is one more term in one expression, and a large
+     change in what the game looks like at midday. It makes the headlight beams,
+     the street lighting and all 178 declared lamps earn their keep in daylight.
+
+     `dark` AT 1 IS THE WHOLE OF IT. `precip` at 0 gives it no weather for the
+     reason a roof gives it no weather rather than because a rule says so, and
+     `canRain` and `canSnow` both fall out false from a precipitation of zero.
+
+     RELIEF IS AUTHORED-LOW AND SINUOSITY LOW. A bore is a shape somebody dug
+     rather than a tendency of the land, and a tunnel that wanders is a tunnel
+     nobody built. The colours are the concrete and the sodium of a real one. */
+  TUNNEL:   { name:'TUNNEL',   temp:0.45, vary:0.10, precip:0.00, bias:1.00,
+              hill:0.06, bend:0.20, dark:1,
+              grassLo:'#2a2c30', grassHi:'#3a3d43',
+              sky:'#0a0c10', city:0.00, trees:0.00, skyForm:'none' },
   SWAMP:    { name:'SWAMP',    temp:0.80, vary:0.10, precip:0.64, bias:1.10,
               hill:0.15, bend:0.70,
               grassLo:'#22301f', grassHi:'#33422a',
-              sky:'#2c3a2e', city:0.06, trees:0.70 },
+              sky:'#2c3a2e', city:0.06, trees:0.70, skyForm:'wetTree' },
   FOREST:   { name:'FOREST',   temp:0.45, vary:0.20, precip:0.52, bias:1.00,
               hill:0.70, bend:0.85,
               grassLo:'#1d3a24', grassHi:'#2a4f31',
-              sky:'#3a2c52', city:0.18, trees:0.85 },
+              sky:'#3a2c52', city:0.18, trees:0.85, skyForm:'tree' },
   DESERT:   { name:'DESERT',   temp:0.95, vary:0.10, precip:0.04, bias:1.00,
               hill:0.45, bend:0.40,
               grassLo:'#6b5330', grassHi:'#8a6d42',
-              sky:'#5a3520', city:0.05, trees:0.05 },
+              sky:'#5a3520', city:0.05, trees:0.05, skyForm:'mesa' },
   MOUNTAIN: { name:'MOUNTAIN', temp:0.15, vary:0.15, precip:0.45, bias:1.00,
               hill:1.00, bend:1.00,
               grassLo:'#2b3a33', grassHi:'#3c4f45',
-              sky:'#33405e', city:0.10, trees:0.55 },
+              sky:'#33405e', city:0.10, trees:0.55, skyForm:'peak' },
   /* ---- A CITY HAS NO CLIMATE OF ITS OWN, SO IT ROLLS ONE (RLG-109) ----
      `vary` at 0.45 is the widest on the board and it is doing the work a
      `neutral` FLAG was going to do. A place with a narrow range can only sit
@@ -8504,7 +8560,7 @@ const BIOMES = {
   CITY:     { name:'CITY',     temp:0.45, vary:0.45, precip:0.38, bias:1.00,
               hill:0.30, bend:0.30,
               grassLo:'#2c2f36', grassHi:'#3b3f48',
-              sky:'#2a2438', city:1.00, trees:0.10 },
+              sky:'#2a2438', city:1.00, trees:0.10, skyForm:'tower' },
   /* ---- TUNDRA IS WHITE BEFORE ANYTHING FALLS (RLG-059, RLG-109) --------
      Owner, 2026-08-29: "let's make the tundra automatically snow covered
      whether it's snowing or not. So let's assume that base tundra is 50% snow
@@ -8526,7 +8582,7 @@ const BIOMES = {
   TUNDRA:   { name:'TUNDRA',   temp:0.05, vary:0.10, precip:0.15, bias:0.90,
               hill:0.80, bend:0.75,
               grassLo:'#3e4a52', grassHi:'#54626c',
-              sky:'#2e3c50', city:0.06, trees:0.22 }
+              sky:'#2e3c50', city:0.06, trees:0.22, skyForm:'peak' }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
 let biome = 'FOREST';
@@ -8694,6 +8750,21 @@ let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
    and to `biomeFrom` at every other time.
    -------------------------------------------------------------------- */
 let climFrom = climateAt('FOREST', BIOMES.FOREST.temp), climTo = climFrom;
+/* ---- THE WEATHER'S OWN PAIR, WHICH OUTLIVES THE GROUND'S (RLG-105) ------
+   `biomeFrom` and `biomeTo` collapse when the GROUND crossing finishes, which is
+   18 segments wide. Everything scoped to the WEATHER band is 72 wide - four
+   times as long - so reading the ground pair for a weather-band quantity throws
+   the blend away three quarters of the way through it.
+
+   THAT WAS MEASURED RATHER THAN REASONED. Driving out of a tunnel, the darkness
+   faded 1.00, 0.94, 0.85, 0.75, 0.67, 0.57, 0.47 and then CUT to 0.00 in one
+   frame - a smooth ramp for half its length and a snap for the rest, which is
+   precisely the comfort fault the ruling asked to avoid. The snow floor had the
+   same discontinuity and nobody had looked.
+
+   So the pair that the weather band reads is kept separately and collapses on
+   its own crossing. */
+let wxFrom = 'FOREST', wxTo = 'FOREST';
 function climate(){ return biome === biomeTo ? climTo : climFrom; }
 /* the weather target from the moment a band reached the car, so the thinning
    scales one value instead of multiplying the live one down every frame */
@@ -8714,6 +8785,8 @@ function snowFloorNow(){
   /* the INSTANCES, not the recipes. A city that rolled cold lies under snow and
      a city that rolled warm does not, and the recipes cannot tell them apart
      (RLG-109). */
+  /* the weather's pair, not the ground's - the floor crosses on the weather band
+     and collapsing it early snapped the white off (RLG-105) */
   const a = climFrom.snowFloor, b = climTo.snowFloor;
   return a === b ? a : a + (b - a) * biomeCrossW;
 }
@@ -9120,6 +9193,7 @@ function openBiome(){
      the sea's side is rolled here: a thing decided once when the place opens
      rather than per frame (RLG-109) */
   climFrom = climTo = rollClimate(biome);
+  wxFrom = wxTo = biome;
   biomeFrom = biomeTo = biome;
   biomeEdge = -1e9;
   buildSkyline();
@@ -9145,7 +9219,7 @@ function stepBiome(dt){
     /* a circuit is built in ONE place and never leaves it, so its instance is
        rolled once when the place is set and both ends of the blend hold it.
        `biomeFrom` and `biomeTo` are deliberately NOT set here — see RLG-129. */
-    if(b2 !== biome){ biome = b2; climFrom = climTo = rollClimate(b2);
+    if(b2 !== biome){ biome = b2; wxFrom = wxTo = b2; climFrom = climTo = rollClimate(b2);
                       buildSkyline(); endImpossibleWeather(); }
     return;
   }
@@ -9199,6 +9273,9 @@ function stepBiome(dt){
      -------------------------------------------------------------------- */
   const crossW = clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1);
   biomeCrossW = crossW;
+  /* the weather's pair collapses on the WEATHER band, a quarter of the way
+     later than the ground's - see `wxFrom` (RLG-105) */
+  if(crossW >= 1 && wxFrom !== wxTo){ wxFrom = wxTo; climFrom = climTo; }
   if(biomeFrom !== biomeTo){
     /* the INSTANCE of the place being entered, rolled when the change was
        placed. A cold-rolled city keeps snow that a warm-rolled one thins out,
@@ -9258,9 +9335,6 @@ function stepBiome(dt){
     if(cross >= 1){
       biomeFrom = biomeTo;
       biome = biomeTo;
-      /* the instance travels with the pair. The place behind you has stopped
-         existing, so its temperature stops being blended into the snow floor. */
-      climFrom = climTo;
       bandBase = -1;
       endImpossibleWeather();
     }
@@ -9311,6 +9385,7 @@ function stepBiome(dt){
          `openBiome` and the place ahead has no instance, so both questions fall
          back to the one behind you and nothing says so.
          -------------------------------------------------------------- */
+      wxFrom = biome; wxTo = k;
       climTo = rollClimate(k);
     }
     biomeNext = rnd(6.5, 12) * MILE;
@@ -13877,6 +13952,225 @@ function hazeTint(a){
   return 'rgba(' + Math.round(r) + ',' + Math.round(gg) + ',' + Math.round(b) + ',' + a + ')';
 }
 
+/* ---- INSIDE A TUNNEL, WHERE THERE IS NO SKY TO DRAW (RLG-105) -----------
+   THE FAR FIELD IS THE HARD PART OF THIS PLACE and it needed a decision before
+   any art: what does the sky draw when the place has no distance in it. The
+   answer taken here is that it draws NOTHING NEW - the sky, the skyline and the
+   haze are painted exactly as they always are, and the bore is laid over the top
+   of them with the place's own darkness as its opacity.
+
+   THAT IS WHY THE ENTRANCE AND THE EXIT COST NOTHING. `placeDark()` blends over
+   the weather band, so driving at a tunnel mouth fades the world out and driving
+   from one fades it back in, using the crossing machinery RLG-022 already built.
+   A tunnel that switched the sky off would have needed its own transition, and
+   the mouth would have been a cut.
+
+   AND THE RAMP IS THE COMFORT ANSWER TOO. Coming out is a large sudden
+   brightening at speed, repeated every time the place ends - the same
+   photosensitivity hazard RLG-060 gave the lightning an option for. Riding the
+   crossing makes it a ramp without a second mechanism to keep in step.
+
+   IT IS DRAWN UNDER THE ROAD, deliberately. You are inside the bore, not behind
+   it: the tarmac, the cars and the headlights are all still lit, and the bore is
+   what replaced the sky above them.
+   ------------------------------------------------------------------------- */
+/* ---- THE BORE'S OWN PROPORTIONS (RLG-105) -------------------------------
+   MEASURED OFF THE CAPTURES RATHER THAN GUESSED. The first pair, 2.05 and 0.62,
+   gave an opening four road-widths across and barely one and a quarter tall - a
+   letterbox slot in a hillside rather than a tunnel mouth. A road bore is about
+   as tall as it is wide across one carriageway, so the walls come in and the
+   roof goes up.
+   ------------------------------------------------------------------------- */
+const BORE = {
+  wide: 1.45,   /* how far the walls stand from the centre, in road half-widths */
+  high: 1.05,   /* wall height, in road half-widths                             */
+  far:  26000,  /* how far down the bore is built                               */
+  segs: 16,
+  /* and the hill it is cut into: broad and low, so it reads as a hillside
+     rather than as a dome sitting on the road */
+  mass: 4.6,
+  crown: 1.75
+};
+/* the tube, sampled with the road's own projection so it bends with the road */
+function borePoints(far){
+  const pts = [];
+  for(let i = 0; i <= BORE.segs; i++){
+    const t = i / BORE.segs;
+    /* SQUARED, so the near mouth gets most of the samples. Evenly in distance
+       puts them all at the vanishing point, where they are worth nothing. */
+    const z = pos + PLAYER_Z + 40 + t * t * (far === undefined ? BORE.far : far);
+    const p = proj(0, z);
+    if(!p.ok) continue;
+    const half = p.w * BORE.wide;
+    const hgt  = p.w * 2 * BORE.high;
+    pts.push({ xl: p.x - half, xr: p.x + half, y: p.y, top: p.y - hgt, s: p.scale });
+  }
+  return pts;
+}
+function drawBore(){
+  const d = placeDark();
+  if(d <= 0.01) return;
+  const pts = borePoints();
+  if(pts.length < 3) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, d);
+
+  /* ---- THE CEILING, WHICH HAS TO COME OVER THE CAMERA -----------------
+     Owner, 2026-09-01: "The tunnel needs 3D walls and a ceiling above the
+     camera." The first build filled the sky rectangle with a flat gradient,
+     which is a dark backdrop rather than an enclosure - there was nothing over
+     your head, and the eye reads that immediately.
+
+     The near samples project ABOVE the top of the screen, so the vault closes
+     over the camera and the picture is of being inside something. */
+  const roof = ctx.createLinearGradient(0, 0, 0, horizon + 2);
+  roof.addColorStop(0,    '#0d1015');
+  roof.addColorStop(0.70, '#171b22');
+  roof.addColorStop(1,    '#1e232b');
+  /* THE WHOLE SKY FIRST, AND THE TUBE OVER IT. Building the vault as a polygon
+     that also had to reach the top of the frame left a one-pixel seam where the
+     two parts met, and the daylight sky showed through it as a bright line
+     across the bore. A rectangle cannot have a seam. */
+  ctx.fillStyle = roof;
+  ctx.fillRect(0, 0, W, horizon + 2);
+
+  /* ---- THE TWO WALLS, WHICH ARE WHAT MAKE IT A TUBE -------------------
+     Lit a shade differently from each other so the bore has a form rather than
+     being one flat tone: the concrete catches the road's light unevenly and a
+     single colour reads as a hole cut in the picture. */
+  for(const sideL of [true, false]){
+    const wall = ctx.createLinearGradient(0, 0, 0, horizon + 2);
+    wall.addColorStop(0, sideL ? '#1a1e25' : '#161a20');
+    wall.addColorStop(1, sideL ? '#2b3038' : '#252a31');
+    ctx.fillStyle = wall;
+    ctx.beginPath();
+    const get = (q) => sideL ? q.xl : q.xr;
+    ctx.moveTo(get(pts[0]), pts[0].y);
+    for(const q of pts) ctx.lineTo(get(q), q.y);
+    for(let i = pts.length - 1; i >= 0; i--) ctx.lineTo(get(pts[i]), pts[i].top);
+    ctx.closePath();
+    ctx.fill();
+    /* and out to the edge of the frame, so a wall never runs out sideways */
+    ctx.beginPath();
+    const nx = get(pts[0]);
+    ctx.rect(sideL ? -2 : nx, 0, sideL ? nx + 2 : W - nx + 2, horizon + 2);
+    ctx.fill();
+  }
+
+  /* ---- THE LAMPS ARE WHAT MAKE IT A TUNNEL AND NOT A NIGHT ------------
+     A bore with no lighting is indistinguishable from driving at midnight,
+     which would waste the one thing this place exists for. They sit where the
+     wall meets the ceiling and they bend with the road, because they are placed
+     off the same projected points the tube is. */
+  const lampsLit = lampsOn();
+  if(lampsLit > 0.02){
+    ctx.globalAlpha = Math.min(1, d) * (0.40 + lampsLit * 0.45);
+    ctx.fillStyle = '#ffd9a0';
+    for(let i = 1; i < pts.length; i += 2){
+      const q = pts[i];
+      const wdt = Math.max(1, (q.xr - q.xl) * 0.075);
+      const hgt = Math.max(1, (q.y - q.top) * 0.035);
+      ctx.fillRect(q.xl + wdt * 0.6, q.top + hgt, wdt, hgt);
+      ctx.fillRect(q.xr - wdt * 1.6, q.top + hgt, wdt, hgt);
+    }
+  }
+  ctx.restore();
+}
+
+/* ---- THE FACE THE BORE IS CUT INTO (RLG-105) ----------------------------
+   Owner, 2026-09-01: "Entering it also requires a forward wall or cliff face or
+   mountain side something."
+
+   A TUNNEL THAT FADES IN IS A DIMMER, NOT A PLACE. Without this the mouth was a
+   darkening of the whole picture with nothing to drive INTO - the one moment the
+   fragment said was the feature. The face is a rock wall standing across the
+   road at the boundary with the bore cut through it, so the approach is a hole
+   in a hillside getting closer.
+
+   IT SERVES BOTH ENDS FROM ONE PIECE OF GEOMETRY. Entering, the opening is dark
+   and the wall is lit by the daylight you are still in. Leaving, the same wall
+   is behind you and the opening is bright - which is the light at the end of a
+   tunnel, and it is the same arch drawn with the two fills swapped.
+   ------------------------------------------------------------------------- */
+function drawPortal(){
+  const inTun  = (BIOMES[wxTo]   || {}).dark || 0;
+  const outTun = (BIOMES[wxFrom] || {}).dark || 0;
+  if(inTun === outTun) return;                 /* no mouth in view */
+  if(biomeEdge < -1e8) return;
+  const z = biomeEdge * SEG;
+  if(z < pos + 200) return;                    /* already through it */
+  const p = proj(0, z);
+  if(!p.ok) return;
+  const entering = inTun > outTun;
+  const half = p.w * BORE.wide;
+  const hgt  = p.w * 2 * BORE.high;
+  const top  = p.y - hgt;
+  /* ---- A HILLSIDE, NOT A CURTAIN ---------------------------------------
+     The first build filled the WHOLE frame above the horizon with rock and cut
+     the arch out of it, which painted over the farmland the car was still
+     driving through and showed daylight through the hole. A portal is an OBJECT
+     AT A DISTANCE: it subtends what it subtends and no more, it grows as you
+     close on it because it sits at a fixed z, and it stops existing when you
+     pass it. All of that falls out of projecting it like anything else.
+     ------------------------------------------------------------------ */
+  const mass = half * BORE.mass;               /* how far the hill spreads */
+  const crown = hgt * BORE.crown;              /* and how far it rises */
+  ctx.save();
+  ctx.beginPath();
+  /* the hill: a broad mound sitting on the road's own ground line */
+  ctx.moveTo(p.x - mass, p.y + hgt * 0.10);
+  ctx.quadraticCurveTo(p.x - mass * 0.52, p.y - crown * 0.86,
+                       p.x,               p.y - crown);
+  ctx.quadraticCurveTo(p.x + mass * 0.52, p.y - crown * 0.86,
+                       p.x + mass,        p.y + hgt * 0.10);
+  ctx.closePath();
+  /* and the bore cut through it, wound the other way so `evenodd` leaves a hole */
+  ctx.moveTo(p.x + half, p.y + hgt * 0.10);
+  ctx.lineTo(p.x + half, top + hgt * 0.26);
+  ctx.quadraticCurveTo(p.x, top - hgt * 0.06, p.x - half, top + hgt * 0.26);
+  ctx.lineTo(p.x - half, p.y + hgt * 0.10);
+  ctx.closePath();
+  const face = ctx.createLinearGradient(0, p.y - crown, 0, p.y + hgt * 0.10);
+  if(entering){
+    /* a hillside in daylight, so the hole in it reads as dark */
+    face.addColorStop(0, '#6a6152');
+    face.addColorStop(0.55, '#544d40');
+    face.addColorStop(1, '#3c372d');
+  } else {
+    /* the same rock seen from inside the bore, in the bore's own light */
+    face.addColorStop(0, '#181c22');
+    face.addColorStop(1, '#0f1216');
+  }
+  ctx.fillStyle = face;
+  ctx.fill('evenodd');
+
+  /* ---- AND WHAT IS BEYOND THE HOLE ------------------------------------
+     Entering, the opening is the dark of the bore and it must be painted, or
+     the sky shows through the arch and the tunnel reads as a window. Leaving,
+     the opening is the daylight you are driving into - the light at the end of
+     a tunnel, which is the same arch with the fill swapped. */
+  ctx.beginPath();
+  ctx.moveTo(p.x - half, p.y + hgt * 0.10);
+  ctx.lineTo(p.x - half, top + hgt * 0.26);
+  ctx.quadraticCurveTo(p.x, top - hgt * 0.06, p.x + half, top + hgt * 0.26);
+  ctx.lineTo(p.x + half, p.y + hgt * 0.10);
+  ctx.closePath();
+  if(entering){
+    const mouth = ctx.createLinearGradient(0, top, 0, p.y + hgt * 0.10);
+    mouth.addColorStop(0, '#05070a');
+    mouth.addColorStop(1, '#0d1116');
+    ctx.fillStyle = mouth;
+  } else {
+    ctx.fillStyle = skyStops()[3];
+  }
+  ctx.fill();
+  /* the lip, which is what gives the mouth an edge rather than a silhouette */
+  ctx.strokeStyle = entering ? 'rgba(30,26,20,.85)' : 'rgba(180,190,200,.35)';
+  ctx.lineWidth = Math.max(1, half * 0.06);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawHaze(){
   /* THE THIRD ORANGE SOURCE. The lamps were fixed, the bloom was gated, and a
      hard rgba(196,88,54,.62) band was still being painted across the horizon
@@ -13924,7 +14218,55 @@ function lampsOn(){
   const p = phase();
   const byWeather = clamp(bad * 1.35, 0, 1);
   const byClock = clockLamps(p);
-  return Math.max(byClock, byWeather);
+  /* ---- AND THE PLACE IS A THIRD REASON (RLG-105) ----------------------
+     Nothing on the board was dark by day: the hour and the weather drove every
+     lamp in the game, so a tunnel at noon would have been a bright corridor.
+     A place now contributes a darkness the way it contributes rain.
+
+     THE SAME `Math.max` AND NOT A NEW ROUTE. Every lamp in the game asks this
+     one function - the beams, the tail lamps, all 178 declared lamps across 59
+     vehicles, and the street lighting. A tunnel that lit its cars by a second
+     path would be two answers to one question, and this file has the receipts
+     on what that costs. It is one more term in the same expression.
+     ---------------------------------------------------------------- */
+  return Math.max(byClock, byWeather, placeDark());
+}
+/* ---- HOW ENCLOSED THE PLACE IS, RIGHT NOW (RLG-105) ---------------------
+   0 is open sky and 1 is a bore with no daylight in it. It blends across the
+   WEATHER band rather than the ground band, for the reason the snow floor does:
+   the darkness of a tunnel belongs with the sky rather than with the colour of
+   the verge, and it should arrive as you reach the mouth rather than at the line
+   where the tarmac changes.
+
+   THAT BLEND IS ALSO THE COMFORT ANSWER. Coming out of a tunnel is a large,
+   sudden brightening at speed, repeated every time the place ends - the same
+   photosensitivity hazard RLG-060 gave the lightning an option for. Riding the
+   crossing makes it a ramp rather than a cut, without a second mechanism.
+   ------------------------------------------------------------------------- */
+function placeDark(){
+  const a = (BIOMES[wxFrom] || {}).dark || 0;
+  const b = (BIOMES[wxTo] || {}).dark || 0;
+  if(a === b) return a;
+  /* ---- ENTERING IS ABRUPT AND LEAVING IS NOT, WHICH IS BOTH CORRECT AND
+     THE COMFORT ANSWER (RLG-105) -----------------------------------------
+     A straight blend across the band starts darkening 36 segments BEFORE the
+     mouth, so the world dimmed while the car was still out in the open and the
+     capture showed a farmland under a grey wash. That is not what entering a
+     tunnel looks like: you are in daylight until you pass the portal, and then
+     you are not.
+
+     THE TWO DIRECTIONS ARE NOT SYMMETRIC AND SHOULD NOT BE. Going in, the
+     change is sudden because a portal is sudden - it runs over 18 segments once
+     the mouth is reached. Coming out is the photosensitivity hazard RLG-060
+     named, so it eases over the full 36 that remain. The eye takes longer to
+     adapt to light than to dark, which is the same reason.
+
+     `biomeCrossW` is 0.5 AT THE BOUNDARY, because the weather band straddles
+     it. That is what both expressions pivot on.
+     ---------------------------------------------------------------- */
+  const t = biomeCrossW;
+  if(b > a) return a + (b - a) * clamp((t - 0.5) * 4, 0, 1);
+  return b + (a - b) * clamp(1 - (t - 0.5) * 2, 0, 1);
 }
 function clockLamps(p){
   /* Dawn is phase 0.50. They used to hold full until 0.55 and not go out until
@@ -16109,6 +16451,11 @@ function draw(){
      road and verge are drawn over it, exactly as they would be in life.
      ------------------------------------------------------------------- */
   drawHaze();
+  /* the bore goes over the sky, the skyline and the haze, and UNDER the road -
+     you are inside it, and the tarmac is still lit (RLG-105) */
+  drawBore();
+  /* the face the bore is cut into, over the tube and under the road (RLG-105) */
+  drawPortal();
   drawWorld();          /* buckets the sprites */
   drawRoad();           /* paints the road AND emits them, far to near */
   sweepUnemitted();     /* RLG-041: whatever the road never got to */
@@ -16931,6 +17278,44 @@ function drawMirrorFull(mx, my, mw, mh){
      different effect nobody asked for.
      ------------------------------------------------------------------- */
   paintMirrorPrecip(mx, my, mw, mh);
+  /* ---- AND THE BORE IS BEHIND YOU TOO (RLG-105) ------------------------
+     The first tunnel capture had a dark bore out of the windscreen and BRIGHT
+     DAYLIGHT in the mirror, which is one place disagreeing with itself as
+     plainly as a cornfield on two different sides would be. The glass is a
+     picture of the world behind the car and the world behind the car is
+     also inside the tunnel.
+
+     THE SAME `placeDark` AND THE SAME BLEND, so the mouth arrives in the glass
+     on the same ramp it arrives out of the front - and driving OUT of a tunnel
+     shows daylight in the mirror only as fast as the crossing allows.
+     ------------------------------------------------------------------- */
+  const mDark = placeDark();
+  if(mDark > 0.01){
+    const mvp = my + mh * MIRROR_HORIZON;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, mDark);
+    const mv = ctx.createLinearGradient(0, my, 0, mvp + 1);
+    mv.addColorStop(0,   '#0a0c10');
+    mv.addColorStop(1,   '#1b2028');
+    ctx.fillStyle = mv;
+    ctx.fillRect(mx, my, mw, mvp - my + 1);
+    /* the lamps recede the other way, toward the mirror's own vanishing point */
+    const mLit = lampsOn();
+    if(mLit > 0.02){
+      ctx.globalAlpha = Math.min(1, mDark) * (0.35 + mLit * 0.45);
+      ctx.fillStyle = '#ffd9a0';
+      for(let i = 1; i <= 6; i++){
+        const f = i / 7;
+        const y = mvp - (mvp - my) * (1 - f * f) * 0.90;
+        const spread = (1 - f) * mw * 0.40;
+        const wdt = Math.max(1, (1 - f) * mw * 0.070);
+        const hgt = Math.max(1, (1 - f) * mh * 0.030);
+        ctx.fillRect(mx + mw/2 - spread - wdt/2, y, wdt, hgt);
+        ctx.fillRect(mx + mw/2 + spread - wdt/2, y, wdt, hgt);
+      }
+    }
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -18784,6 +19169,7 @@ requestAnimationFrame(frameLoop);
     biomeFrom = biome; biomeTo = want;
     biomeEdge = Math.floor(pos/SEG) + DRAW;
     rollSide();          /* the same roll the real placement makes */
+    wxFrom = biome; wxTo = want;
     climTo = rollClimate(want);   /* and the same instance, for the same reason:
                                      a hook that takes a different path from the
                                      thing it stands in for proves less than it
@@ -18810,8 +19196,8 @@ requestAnimationFrame(frameLoop);
      or a warm tundra on purpose.
      ------------------------------------------------------------------ */
   API.setBiomePair = function(a, b, tA, tB){
-    if(BIOMES[a]){ biomeFrom = a; climFrom = climateAt(a, tA === undefined ? BIOMES[a].temp : tA); }
-    if(BIOMES[b]){ biomeTo   = b; climTo   = climateAt(b, tB === undefined ? BIOMES[b].temp : tB); }
+    if(BIOMES[a]){ biomeFrom = a; wxFrom = a; climFrom = climateAt(a, tA === undefined ? BIOMES[a].temp : tA); }
+    if(BIOMES[b]){ biomeTo   = b; wxTo   = b; climTo   = climateAt(b, tB === undefined ? BIOMES[b].temp : tB); }
     if(biomeFrom === biomeTo){ biome = biomeFrom; biomeEdge = -1e9; }
     return { from:biomeFrom, to:biomeTo,
              tempFrom:+climFrom.temp.toFixed(3), tempTo:+climTo.temp.toFixed(3) };
@@ -19075,6 +19461,13 @@ requestAnimationFrame(frameLoop);
      distance from the tarmac. -1 left, 1 right (RLG-059). */
   API.seaSide  = function(){ return sideRoll; };   /* the old name, kept: harnesses use it */
   API.sideRoll = function(){ return sideRoll; };
+  /* what a place puts on its horizon, stated rather than inferred from its name
+     (RLG-102/RLG-105). A check reads this to prove nothing falls through to the
+     tower default, which is what put a city skyline on a farmland. */
+  API.skyForm = function(k){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    return B.skyForm || 'tower';
+  };
   API.roadShape = function(k){
     const B = BIOMES[k || biome] || BIOMES.FOREST;
     return { name:B.name, hill:B.hill, bend:B.bend };
@@ -19167,6 +19560,10 @@ requestAnimationFrame(frameLoop);
   };
   API.lightLevels = function(){
     return { lamps:+lampsOn().toFixed(3), clock:+clockLamps(phase()).toFixed(3),
+             /* how enclosed the place is, so a check can tell a tunnel's darkness
+                from a night or a storm (RLG-105) */
+             dark:+placeDark().toFixed(3),
+             from:biomeFrom, to:biomeTo,
              phase:+phase().toFixed(3), wet:+wet.toFixed(3) };
   };
   API.mirrorEye = function(v){ if(v > 0) MIRROR_EYE = v; return MIRROR_EYE; };
