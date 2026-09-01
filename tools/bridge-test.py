@@ -153,6 +153,28 @@ window.__probe.isIron = function(R, G, B){
 window.__probe.isLand = function(R, G, B){
   return G > 40 && R < 150 && G > R * 1.05 && G > B * 1.15;
 };
+/* Scanning down from the skyline, the first row at which the deck appears in the
+   road's own vanishing column. On a bridge that must be the skyline itself. */
+window.__probe.deckTop = function(vx, hz){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var g = c.getContext('2d');
+  var x0 = Math.max(0, Math.round((vx - 3) * dpr)), ww = Math.round(7 * dpr);
+  var top = Math.round(hz * dpr), hh = Math.round(160 * dpr);
+  var d = g.getImageData(x0, top, ww, hh).data;
+  for(var y = 0; y < hh; y++){
+    var dark = 0;
+    for(var x = 0; x < ww; x++){
+      var i = (y*ww + x)*4;
+      /* tarmac is the darkest thing up there by a long way - the water it sits
+         in never gets near this, even at its most shadowed */
+      if(d[i] < 70 && d[i+1] < 75 && d[i+2] < 95) dark++;
+    }
+    if(dark >= ww * 0.5) return Math.round(top/dpr) + Math.round(y/dpr);
+  }
+  return null;
+};
 window.__probe.landRow = function(y){
   var c = document.querySelector('canvas');
   var r = c.getBoundingClientRect();
@@ -488,6 +510,46 @@ def main():
         res.check(near['left'] > 5 and near['right'] > 5,
                   'and there is still water either side of the deck to be suspended over',
                   'left %d, right %d' % (near['left'], near['right']))
+
+        # ------------------------------------------------ the deck reaches the skyline
+        print()
+        print('  AND THE DECK RUNS TO THE SKYLINE RATHER THAN ENDING IN MID-WATER')
+        # Owner, 2026-09-01: "the end of the rendered bridge ends under the horizon, which
+        # wouldn't happen." The road is drawn for DRAW segments and stops short of the
+        # vanishing point - on land the far field fills the gap with more ground and nobody
+        # reads it as an end, but on a bridge the STRUCTURE stops in the middle of a stretch
+        # of water.
+        settle(page, 'BRIDGE')
+        van = page.evaluate("() => window.__probe.road.vanishing()")
+        df = page.evaluate("() => window.__probe.road.deckFar()")
+        print('      the skyline is at %.1f and the road pass stops painting at %s'
+              % (van['horizon'], van['roadStops']))
+        print('      the deck walks on from %s to %s in %s steps'
+              % (df['from'], df['to'], df['walked']))
+        # READ FROM THE WALK, NOT FROM THE PIXELS, and that was decided after trying the
+        # other way. Two things sit exactly where the deck's tip is and cannot be told
+        # from it by colour - the skyline's own headlands, which are dark silhouettes on
+        # the horizon line, and the ironwork's stanchions. Scanning the road's vanishing
+        # COLUMN is worse: near the horizon the road is at a finite distance and the bend
+        # puts it well off that column, so one unchanged build read 353, 356, 358 and 397.
+        res.check(df['walked'] > 0,
+                  'the deck walks on past where the road pass stops',
+                  'it emitted %s extra points' % df['walked'])
+        if df['to'] is not None:
+            res.check(df['to'] < van['roadStops'],
+                      'and it ends above where the road pass ended',
+                      'the walk ended at %s, the road pass at %s' % (df['to'], van['roadStops']))
+            # IT CANNOT REACH THE SKYLINE EXACTLY, and that is geometry rather than a
+            # shortfall: a road converging on a vanishing point is a point there.
+            # THE LAST FEW PIXELS ARE THE CLOSING LINE, and they are exact rather than
+            # sampled. The walk emits only points the projection gives - a shorter walk is
+            # its failure mode, never a wrong one - and the polygon then closes on the
+            # vanishing point itself, which is a value and not a trend. So the deck DOES
+            # reach the skyline; what this bounds is how much of it is sampled rather than
+            # spanned. Measured at 4.3 px of span from a 12.6 px gap.
+            res.check(df['to'] - van['horizon'] < 8,
+                      'and it samples to within a few pixels, the rest being the closing line',
+                      'it stopped %.1f px under the skyline' % (df['to'] - van['horizon']))
 
         # ------------------------------------------------ boats on the water
         print()

@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.11';
+window.ROAD_BUILD = '0.11.12';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -15647,6 +15647,100 @@ function overBrow(worldZ, screenY){
    which slices were actually painted. This does.
    -------------------------------------------------------------------------- */
 let roadY = [], spriteBuckets = {}, emitted = {};
+/* ---- WHAT THE TARMAC IS, IN ONE PLACE (RLG-112) -------------------------
+   Lifted out of the road pass so the stretch that carries the deck to the
+   horizon can ask the same question the drawn slices ask. Two derivations that
+   agree today are two derivations that disagree after the next edit, and this
+   file has the receipts on that - the join between a far band and the slices
+   below it is exactly where it shows.
+   ------------------------------------------------------------------------- */
+/* ---- A BRIDGE CANNOT END IN MID-WATER (RLG-112) -------------------------
+   Owner, 2026-09-01: "the end of the rendered bridge ends under the horizon,
+   which wouldn't happen."
+
+   IT IS THE SAME GAP [[RLG-101]] IS ABOUT and it has always been there: the road
+   is drawn for `DRAW` segments and simply stops before the vanishing point. On
+   land nobody reads it as an end, because the far field fills the gap with more
+   ground and ground is what is supposed to be there. On a bridge the STRUCTURE
+   stops - in the middle of a stretch of water - and that is a thing which cannot
+   happen.
+
+   THE TECHNIQUE IS RLG-093'S AND IT IS NOT AN EXTRAPOLATION. The note on the
+   sea's far band records that estimating the angle from the last two slices
+   measured WORSE - at the far end of the draw two neighbouring slices are a
+   fraction of a pixel apart vertically, so the slope is a small number divided by
+   a smaller one, and it put the crease at thirteen times the edge's own curvature
+   where a straight line had been at two. So there is no second construction here
+   either: the walk asks `proj` the same questions the drawn slices ask, in the
+   same steps, until it reaches the horizon. A point the projection will not give
+   is simply not added, so the failure mode is a shorter deck and never a wrong
+   one.
+
+   THE LANE MARKINGS ARE THE ONE PART NOT CARRIED, and RLG-101 already says why: a
+   dashed line is a strobing pattern that has to keep its phase, and past a
+   certain distance a marking is under a pixel wide anyway.
+   ------------------------------------------------------------------------- */
+let deckFarTrace = null;
+function drawDeckFar(B){
+  const fFar = Math.floor(pos/SEG) + DRAW;
+  const a = proj(0, fFar*SEG);
+  deckFarTrace = { walked:0, from:null, to:null };
+  if(!a.ok || a.y <= horizon + 0.5) return;
+  deckFarTrace.from = +a.y.toFixed(1);
+  /* the vanishing point is a value rather than a trend: at infinite distance the
+     perspective term goes to zero, so the road arrives at the centre of the
+     screen shifted by the view offset and the bend. Exact, and no hill can
+     confuse it - the same reasoning the sea's band is built on. */
+  const vx = W/2 + viewShift + bendPx(fFar*SEG);
+  const pts = [a];
+  let lastY = a.y;
+  for(let k = 1; k <= FAR_SEA_STEPS; k++){
+    const q = proj(0, (fFar + k*FAR_SEA_STEP) * SEG);
+    if(!q || !q.ok) continue;
+    if(!(q.y < lastY - 0.10 && q.y > horizon + 0.10)) continue;
+    pts.push(q); lastY = q.y;
+  }
+  deckFarTrace.walked = pts.length - 1;
+  deckFarTrace.to = +lastY.toFixed(1);
+  const edge = (q, side, out) => (q ? q.x + side * q.w * out : vx);
+  /* the deck, tapering to nothing at the vanishing point */
+  const band = (out, style) => {
+    ctx.fillStyle = style;
+    ctx.beginPath();
+    ctx.moveTo(edge(pts[0], -1, out), pts[0].y);
+    for(let i = 1; i < pts.length; i++) ctx.lineTo(edge(pts[i], -1, out), pts[i].y);
+    ctx.lineTo(vx, horizon);
+    for(let i = pts.length - 1; i >= 1; i--) ctx.lineTo(edge(pts[i], 1, out), pts[i].y);
+    ctx.lineTo(edge(pts[0], 1, out), pts[0].y);
+    ctx.closePath(); ctx.fill();
+  };
+  /* kerb first, then the tarmac over it, so the two meet the way they do on a
+     drawn slice rather than at a seam of their own */
+  band(TRUSS.out, '#6f6b62');
+  band(1, tarmacTone(false, 0));
+  /* and the railing, which is the part that says the bridge continues */
+  ctx.fillStyle = IRON.face;
+  for(const side of [-1, 1]){
+    ctx.beginPath();
+    ctx.moveTo(edge(pts[0], side, TRUSS.out), trussTop(pts[0], pts[0].y, TRUSS.h, H));
+    for(let i = 1; i < pts.length; i++)
+      ctx.lineTo(edge(pts[i], side, TRUSS.out), trussTop(pts[i], pts[i].y, TRUSS.h, H));
+    ctx.lineTo(vx, horizon);
+    for(let i = pts.length - 1; i >= 1; i--) ctx.lineTo(edge(pts[i], side, TRUSS.out), pts[i].y);
+    ctx.lineTo(edge(pts[0], side, TRUSS.out), pts[0].y);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function tarmacTone(dark, fade){
+  const nAmt = nightFall(), gAmt = goldenHour();
+  const snowLight = nAmt > 0.5 ? SNOW_NIGHT : gAmt > 0.25 ? SNOW_GOLD : SNOW_DAY;
+  const rainDark = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
+  const wetRoad = mixRGB(mixRGB(dark ? '#232231' : '#1e1d2a', settle * 0.55, snowLight),
+                         rainDark * 0.55, WET_DARK);
+  return rainDark > 0 ? mixRGB(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN) : wetRoad;
+}
+
 function drawRoad(){
   buildHillClip();
   spriteStats = { drawn:0, culled:0, clipped:0 };
@@ -16108,11 +16202,7 @@ function drawRoad(){
        ordering matters: the reflection sits ON the wet surface, so soaking the
        road after reflecting it would wash the reflection away.
        -------------------------------------------------------------------- */
-    const wetRoad = mixRGB(mixRGB(dark ? '#232231' : '#1e1d2a', snowRoad, snowLight),
-                           rainDark * 0.55, WET_DARK);
-    ctx.fillStyle = rainDark > 0
-      ? mixRGB(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN)
-      : wetRoad;
+    ctx.fillStyle = tarmacTone(dark, fade);
     quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p2.x+p2.w, y2, p2.x-p2.w, y2);
 
     /* the paint goes under the snow before the tarmac does - a marking is the
@@ -17531,6 +17621,9 @@ function draw(){
   /* the boats go straight onto the water and under everything the road pass
      draws, so the deck covers any that would otherwise show through it */
   if(gB.overWater) drawBoats(gB, H, horizon, W/2 + viewShift, W/2, horizon, H);
+  /* the deck carried on to the vanishing point, painted before the haze like the
+     ground it continues, and under everything the road pass draws (RLG-112) */
+  if(gB.truss) drawDeckFar(gB);
   /* ---- AND THE WATER DOES NOT STOP WHERE THE ROAD DOES (RLG-059) ------
      Owner, 2026-08-30: "maintaining the ocean sided render into the background
      up to the horizon?"
@@ -20924,6 +21017,32 @@ requestAnimationFrame(frameLoop);
              sample: out.filter(b => b.onScreen).slice(0, 6),
              missed: out.filter(b => !b.onScreen).slice(0, 6) };
   };
+  /* where the road's vanishing point is on screen, and where the road pass
+     actually stops painting. A check for "the deck reaches the horizon" has to
+     look at the right column: on a bend the vanishing point is well off centre,
+     and sampling the middle of the screen would answer a different question. */
+  API.vanishing = function(){
+    const fFar = Math.floor(pos/SEG) + DRAW;
+    return { x: +(W/2 + viewShift + bendPx(fFar*SEG)).toFixed(1),
+             horizon: +horizon.toFixed(1),
+             roadStops: farSea.roadTop === undefined ? null : farSea.roadTop };
+  };
+  /* ---- HOW FAR THE DECK'S OWN WALK GOT (RLG-112) -----------------------
+     READ FROM THE WALK RATHER THAN FROM THE PIXELS, and that was decided after
+     trying the other way. Two things sit exactly where the deck's tip is and
+     cannot be told from it by colour: the skyline's own headlands, which are
+     dark silhouettes on the horizon line, and the ironwork's stanchions. And a
+     scan of the road's vanishing COLUMN is worse still - near the horizon the
+     road is at a finite distance and the bend puts it well off that column, so
+     the same build read 353, 356, 358 and 397 on four runs.
+
+     `from` is where the road pass stops and `to` is where the walk ended. A
+     road converging on a vanishing point is a POINT there, so `to` reaching
+     the horizon exactly is not something to ask for.
+     ------------------------------------------------------------------ */
+  /* a shape rather than null when the walk never ran, so a build without it FAILS
+     the check rather than crashing the harness */
+  API.deckFar = function(){ return deckFarTrace || { walked:0, from:null, to:null }; };
   API.waterPlane = function(){
     const dy = H - horizon;
     const dzWater = CAM_D * CAM_H * (1 + WATER_DROP) * H / (2 * dy);

@@ -14,6 +14,36 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-12"></a>
+## [0.11.12] - 2026-09-01
+- Fixed: **the bridge no longer ends in mid-water.** Owner, 2026-09-01: "the end of the
+  rendered bridge ends under the horizon, which wouldn't happen." The road is drawn for DRAW
+  segments and stops short of the vanishing point - on land the far field fills that gap with
+  more ground and nobody reads it as an end, but on a bridge the STRUCTURE stops in the middle
+  of a stretch of water ([RLG-112](../fragments/RLG-112.md)).
+- Note: **the technique is [RLG-093](../fragments/RLG-093.md)'s and it is not an
+  extrapolation.** The note on the sea's far band records that estimating the angle from the
+  last two slices measured WORSE - at the far end of the draw two neighbouring slices are a
+  fraction of a pixel apart vertically, so the slope is a small number over a smaller one, and
+  it put the crease at thirteen times the edge's own curvature. So the deck's walk asks `proj`
+  the same questions the drawn slices ask, in the same steps, until the horizon. A shorter
+  walk is its failure mode, never a wrong one.
+- Note: **the lane markings are the one part not carried**, and RLG-101 already says why: a
+  dashed line is a strobing pattern that has to keep its phase, and past a certain distance a
+  marking is under a pixel wide anyway. The tarmac, the kerb and both rails are carried.
+- Changed: **the tarmac's colour has one definition and two callers now**, so the far stretch
+  cannot disagree with the slices below it - which is exactly where a join shows.
+- Note: **the check reads the walk, not the pixels, and that was decided after trying the
+  other way.** Two things sit exactly where the deck's tip is and cannot be told from it by
+  colour: the skyline's own headlands, which are dark silhouettes on the horizon line, and the
+  ironwork's stanchions. Scanning the road's vanishing column is worse - near the horizon the
+  road is at a finite distance and the bend puts it well off that column, so one unchanged
+  build read 353, 356, 358 and 397 on four runs.
+- Note: **it closes 8.4 px of a 12.6 px gap by sampling and the rest by construction.** The
+  polygon ends on the vanishing point itself, which is a value rather than a trend. A road
+  converging on a vanishing point is a POINT there, so reaching the skyline exactly is not
+  something to ask a picture for.
+
 <a id="v0-11-11"></a>
 ## [0.11.11] - 2026-09-01
 - Fixed: **the bridge is suspended above the water rather than floating on it.** Owner,
