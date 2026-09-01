@@ -326,6 +326,68 @@ def main():
                   'and a dry road carries it nowhere, so every reading above is the weather',
                   'a dry road overshot by %.4f' % dry_big)
 
+        # ---------------------------------------------- and it runs you wide in a bend
+        # Owner, 2026-08-31: "I want to make sure that it still plays into roadway turns,
+        # e.g. You are more greatly pulled to the outside curve due to slippage."
+        #
+        # TWO MECHANISMS SHOULD COMPOUND HERE and this is the check that they do. The
+        # cornering force already divides by grip, so a wet road pushes harder toward the
+        # outside on its own; and that push moves the wheel, which the slip then reads as a
+        # movement and adds its own overshoot to. Neither was written for the other, so
+        # whether they actually stack is a question rather than a certainty.
+        #
+        # THE CURVATURE IS PINNED. Finding a bend of a stated severity by driving is a
+        # search, and it would measure the road generator rather than the physics.
+        print()
+        # BOTH ARMS MUST STAY OFF THE VERGE. The first attempt used a hard bend for two and
+        # a half seconds and BOTH arms pinned against the edge of the road at -1.08, where
+        # the difference this check exists to measure cannot exist. A gentle bend held
+        # briefly leaves both arms free to differ.
+        BEND, BEND_S = 1.1, 1.0
+        print('  AND A SLICK ROAD RUNS YOU WIDE IN A BEND')
+        WIDE = """([wet, snowy, settle, k, secs]) => {
+          const R = window.__probe.road;
+          R.clearTraffic();
+          R.setWet(wet); R.setSnow(snowy ? settle : 0);
+          if(!snowy) R.setSnow(0);
+          R.setPool(0);
+          R.steerOver(0, 0.01);
+          R.holdCurve(k);
+          return new Promise((done) => {
+            const t0 = performance.now();
+            const tick = () => {
+              R.clearTraffic();
+              R.setSpd(R.MAX_SPD * 0.45);
+              if(performance.now() - t0 < secs * 1000) requestAnimationFrame(tick);
+              else { const s = R.slide(); R.holdCurve(null); done({ x: s.x, slide: s.slide }); }
+            };
+            requestAnimationFrame(tick);
+          });
+        }"""
+        page.evaluate("() => { const R = window.__probe.road; R.steerOver(0, 0.30); }")
+        page.wait_for_timeout(900)
+        dry_wide = page.evaluate(WIDE, [0, 0, 0, BEND, BEND_S])
+        page.evaluate("() => { const R = window.__probe.road; R.steerOver(0, 0.30); }")
+        page.wait_for_timeout(900)
+        snow_wide = page.evaluate(WIDE, [1.0, 1, 1.0, BEND, BEND_S])
+        print('      the same bend, same speed: dry runs to %.3f, snow runs to %.3f'
+              % (dry_wide['x'], snow_wide['x']))
+        res.check(abs(dry_wide['x']) > 0.02,
+                  'a bend pushes the car toward the outside even on a dry road',
+                  'it reached %.4f' % dry_wide['x'])
+        res.check(abs(snow_wide['x']) > abs(dry_wide['x']) * 1.15,
+                  'and a slick road carries it MARKEDLY wider, which is what the owner asked for',
+                  'snow %.4f against dry %.4f' % (snow_wide['x'], dry_wide['x']))
+        res.check(dry_wide['x'] * snow_wide['x'] > 0,
+                  'and to the same side, so it is the same bend doing it rather than two effects',
+                  'dry %.4f, snow %.4f' % (dry_wide['x'], snow_wide['x']))
+        # AND THE SLIP IS PART OF IT rather than the cornering force being the whole story.
+        # If `slide` were zero here, the bend would be pushing the car wide entirely through
+        # `cornerG` and the delta model would be contributing nothing to a corner.
+        res.check(abs(snow_wide['slide']) > 0.005,
+                  'and the slip itself is carrying part of it, not just the cornering force',
+                  'the slip offset in the bend was %.4f' % snow_wide['slide'])
+
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
         browser.close()

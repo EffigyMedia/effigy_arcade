@@ -9427,6 +9427,8 @@ let WET = {
 function wetGrip(){  return Math.max(WET.floor, 1 - wet * (snowy ? WET.fallSnow : WET.fallRain) - settle * WET.settle - pool * WET.pool); }
 function wetBrake(){ return Math.max(WET.brakeFloor, 1 - wet * (snowy ? WET.brakeSnow : WET.brakeRain) - settle * WET.brakeSettle - pool * WET.brakePool); }
 let towOverride = -1;               /* -1 = off; a harness may force a tow */
+/* debug only: a pinned road curvature, or null for the real road (RLG-048) */
+let curveHold = null;
 let horning = false, hornCool = 0, bustT = 0, behindT = 2, slowFor = 0, audioTick = 0, bendT = 0, skySmooth = 0, pushK = 0;
 
 /* ---- rubber on the road --------------------------------------------------
@@ -12016,7 +12018,9 @@ function step(dt){
      you enter a bend and bleeds off as you leave it, and it is a good deal
      gentler than the first guess.
      -------------------------------------------------------------------- */
-  const kWant = curvatureAt(pos + PLAYER_Z);
+  /* a harness may pin the curvature, because finding a bend of a stated
+     severity by driving is a search rather than a measurement (RLG-048) */
+  const kWant = curveHold === null ? curvatureAt(pos + PLAYER_Z) : curveHold;
   pushK += (kWant - pushK) * Math.min(1, dt * CORNER_LAG);
   if(Math.abs(pushK) > 0.02){
     /* Cornering load is curvature times velocity SQUARED — double the speed
@@ -19319,6 +19323,14 @@ requestAnimationFrame(frameLoop);
     if(o) for(const k in o) if(k in IMPACT) IMPACT[k] = o[k];
     return Object.assign({}, IMPACT);
   };
+  /* ---- HOLD A BEND, SO IT CAN BE MEASURED (RLG-048) --------------------
+     The owner's requirement is that a slick road runs you WIDE in a corner, and
+     a corner of a stated severity cannot be found by driving without searching
+     for it - which measures the road generator rather than the physics. This
+     pins the curvature the cornering force reads. `null` gives the real road
+     back. It writes the same variable the road writes, so everything downstream
+     cannot tell the difference. */
+  API.holdCurve = function(k){ curveHold = (k === null || k === undefined) ? null : k; return curveHold; };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };
   API.mass = function(){ return bodyMass(); };

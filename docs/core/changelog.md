@@ -14,6 +14,22 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-44"></a>
+## [0.10.44] - 2026-08-31
+- Verified: **a slick road runs you wide in a bend, and by two mechanisms that compound.** Owner: "I
+  want to make sure that it still plays into roadway turns, e.g. You are more greatly pulled to the
+  outside curve due to slippage." It does. The cornering force already divides by grip, so a wet road
+  pushes harder toward the outside on its own - and that push moves the wheel, which the slip model
+  reads as a movement and adds its own overshoot to. Neither was written for the other, so whether
+  they stack was a question rather than a certainty ([RLG-048](../fragments/RLG-048.md)).
+- Measured: at a pinned curvature and a fixed speed over one second, a dry road runs the car to
+  -0.038 and a snowy one to -0.089 - two and a third times as wide, to the same side, with the slip
+  offset carrying a measurable part of it rather than the cornering force being the whole story.
+- Added: **`API.holdCurve`**, which pins the curvature the cornering force reads. Finding a bend of a
+  stated severity by driving is a search, and it would measure the road generator rather than the
+  physics. The first version of this check used a hard bend for two and a half seconds and put BOTH
+  arms against the edge of the road at -1.08, where the difference it exists to measure cannot exist.
+
 <a id="v0-10-43"></a>
 ## [0.10.43] - 2026-08-31
 - Changed: **a collision answers where it happened, and moves both cars.** Owner: "if I cut off an
