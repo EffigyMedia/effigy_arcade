@@ -8286,12 +8286,37 @@ function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
    each weather event. Nothing is rolled per frame.
    ------------------------------------------------------------------------- */
 const CLIMATE_SWING = 0.25;
-/* how much settled white a freezing place holds before anything falls. The
-   tundra derives 0.48 from it, against the 0.50 that was typed into the recipe;
-   the owner offered 0.2 as a guess and the answer is to keep the floor derived
-   and move THIS number if the ground reads too white. A number that falls out of
-   a model can be changed in one place; a number typed into one biome cannot. */
-const SNOW_FLOOR_K = 0.60;
+/* ---- HOW MUCH WHITE A FREEZING PLACE HOLDS BEFORE ANYTHING FALLS --------
+   Owner, 2026-08-31, having driven it: "The mountains base snow floor should be
+   .1 snowiness. The tundra base snow floor should be .25 snowiness. Falling snow
+   adds to that up to the 1.0 snowiness."
+
+   THE FIRST VERSION DERIVED 0.24 AND 0.48 AND BOTH WERE ABOUT TWICE TOO MUCH.
+   That is the model being tuned rather than being wrong, and it is exactly the
+   move the fragment said to make: a number that falls out of a model can be
+   changed in one place, and a number typed into one biome cannot.
+
+   BUT ONE COEFFICIENT COULD NOT DO IT, AND THAT IS THE INTERESTING PART. The two
+   places sit at 0.15 and 0.05 against a freezing pivot of 0.25, which puts them
+   at 0.40 and 0.80 of full cover - a ratio of 1 to 2. The owner asked for 0.10
+   and 0.25, which is 1 to 2.5. No single multiplier gives both, so the PIVOT had
+   to move as well: the temperature at which ground snow starts to lie is 0.22
+   rather than 0.25, and it is slightly colder than the first guess.
+
+   TWO NUMBERS FOR TWO STATED POINTS IS AN EXACT FIT AND HAS NO FREEDOM LEFT IN
+   IT, which is worth saying plainly rather than dressing up as a derivation.
+   What it buys is that every OTHER place still derives - a city that rolls
+   freezing lies under snow without a line naming it - and both numbers move in
+   one place if the owner wants a third reading.
+
+     mountain, stated 0.15   (0.22 - 0.15) / 0.22 * 0.32 = 0.102
+     tundra,   stated 0.05   (0.22 - 0.05) / 0.22 * 0.32 = 0.247
+
+   AND FALLING SNOW ADDS TO IT UP TO 1.0, which is the second half of the ruling
+   and was already true: `settle` builds FROM the floor and is clamped at 1.
+   ------------------------------------------------------------------------- */
+const SNOW_FLOOR_T = 0.22;
+const SNOW_FLOOR_K = 0.32;
 
 /* everything that used to be stated per place, derived from the two that still
    are. `key` and `name` ride along so a probe can say which place it is. */
@@ -8307,7 +8332,7 @@ function climateAt(key, t){
     /* the instance's own tendency: how often it snows and how often it rains.
        These are what a DESTINATION is asked when weather is carried into it. */
     snow: p * share, rain: p * (1 - share),
-    snowFloor: clamp((0.25 - t) / 0.25, 0, 1) * SNOW_FLOOR_K,
+    snowFloor: clamp((SNOW_FLOOR_T - t) / SNOW_FLOOR_T, 0, 1) * SNOW_FLOOR_K,
     /* ---- A TENDENCY IS NOT A CAPABILITY, AND THE TWO MUST NOT BE ONE ----
        `snow` above is 0.000 for a coast at its stated 0.55, and a coast can
        still have a snowy day: the moment rolls within `swing` of the instance,

@@ -143,10 +143,17 @@ SNOW_FIRST = """(k) => {
   R.setWet(0.9); R.setSnow(0.30);
 }"""
 
-# then stop it, just above the floor, with the fall rate now set
+# then stop it, just above the floor, with the fall rate now set.
+#
+# 0.34, NOT 0.58, AND THE NUMBER HAS TO TRACK THE FLOOR. This read 0.58 when the tundra's
+# floor was 0.48 - a tenth above it, which is what "just above" meant and what makes the
+# floor the only thing that can stop the unwind. The owner cut the floor to a quarter cover
+# on 2026-08-31, and left at 0.58 the reading ended with the ground still sliding through
+# 0.46 on its way down: the check was then measuring the length of the run rather than the
+# floor, and it said so by failing. This keeps the same margin above the new floor.
 STOP_JUST_ABOVE = """() => {
   const R = window.__probe.road;
-  R.setSnow(0.58); R.setWet(0);
+  R.setSnow(0.34); R.setWet(0);
 }"""
 
 GRIP_IN_TUNDRA = """() => {
@@ -405,8 +412,18 @@ def main():
         print('  THE TUNDRA IS WHITE BEFORE ANYTHING FALLS')
         floors = page.evaluate(READ_FLOORS)
         print('      floors: %s' % floors)
-        res.check(floors.get('TUNDRA', 0) > 0.4,
-                  'the tundra holds snow on its own', 'floor %.2f' % floors.get('TUNDRA', 0))
+        # 0.25 IS THE OWNER'S RULING, 2026-08-31, and it replaced the 0.48 this model first
+        # derived - which the owner drove and found about twice too white. The engine lands
+        # on 0.247 because two stated points fix two constants exactly; the tolerance is for
+        # that fit and nothing else. The number is written here rather than read from the
+        # engine so a build that deleted the floor cannot satisfy the check by agreeing with
+        # itself.
+        res.check(0.24 <= floors.get('TUNDRA', 0) <= 0.26,
+                  'the tundra holds the quarter cover the owner asked for, before anything falls',
+                  'floor %.3f against a ruled 0.25' % floors.get('TUNDRA', 0))
+        res.check(0.09 <= floors.get('MOUNTAIN', 0) <= 0.11,
+                  'and the mountain holds the tenth it was ruled, which one coefficient could not give with it',
+                  'floor %.3f against a ruled 0.10' % floors.get('MOUNTAIN', 0))
         # ---- THE FLOOR IS DERIVED FROM THE TEMPERATURE NOW (RLG-109) --------------------
         # This used to read "and nowhere else does", against a `snowFloor` typed into the
         # tundra's recipe alone. The floor derives from the instance's temperature, so
@@ -437,7 +454,7 @@ def main():
         }""")
         print('      the same CITY: rolled warm floor %.2f, rolled cold floor %.2f'
               % (swing['hot'], swing['cold']))
-        res.check(swing['hot'] == 0 and swing['cold'] > 0.4,
+        res.check(swing['hot'] == 0 and swing['cold'] > 0.25,
                   'and ONE city recipe gives a bare city or a snowed-in one, by its rolled temperature',
                   'warm %.3f, cold %.3f' % (swing['hot'], swing['cold']))
 
@@ -484,9 +501,13 @@ def main():
         # floor deleted, which is true of anything - the check switched itself off
         # exactly when its subject went missing. 0.50 is the ruling; it is written
         # here so the assertion cannot be neutralised by the fault it tests for.
-        res.check(min(rest) >= 0.48,
-                  'and nothing takes it below the 50% the owner asked for, at any point',
-                  'lowest %.3f' % min(rest))
+        #
+        # THE RULED NUMBER IS NOW 0.25, not 0.50. The owner drove the derived 0.48 and cut it
+        # to a quarter cover on 2026-08-31. What is asserted is unchanged in kind - the floor
+        # holds the ground up and nothing takes it below - and only the height moved.
+        res.check(min(rest) >= 0.24,
+                  'and nothing takes it below the quarter cover the owner asked for, at any point',
+                  'lowest %.3f against a ruled 0.25' % min(rest))
         res.check(abs(rest[-1] - rest[-4]) < 0.01,
                   'and it settles rather than still sliding',
                   '%.3f then %.3f, four samples apart' % (rest[-4], rest[-1]))

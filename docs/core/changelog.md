@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-39"></a>
+## [0.10.39] - 2026-08-31
+- Changed: **the mountain lies under a tenth of snow and the tundra under a quarter.** Owner, having
+  driven 0.10.38: "The mountains base snow floor should be .1 snowiness. The tundra base snow floor
+  should be .25 snowiness." The model derived 0.24 and 0.48 and both were about twice too white. This
+  is the model being tuned rather than corrected, and it is the move [RLG-109](../fragments/RLG-109.md)
+  said to make: a number that falls out of a model changes in one place, and a number typed into one
+  biome cannot.
+- Changed: **the freezing pivot moved with it, because one coefficient could not give both numbers.**
+  The two places sit at 0.40 and 0.80 of full cover against a pivot of 0.25 - a ratio of 1 to 2 - and
+  the owner asked for 1 to 2.5. So ground snow now starts to lie at 0.22 rather than 0.25 and the
+  coefficient is 0.32, which puts the mountain on 0.102 and the tundra on 0.247. Two constants fixed
+  by two stated points is an exact fit with no freedom left in it, and that is said plainly rather
+  than dressed up as a derivation - what it buys is that every other place still derives, so a city
+  that rolls freezing lies under snow with no line naming it.
+- Unchanged, and verified rather than assumed: **falling snow adds to the floor up to 1.0.** The
+  second half of the ruling was already the behaviour - accumulation builds FROM the floor and is
+  clamped at 1 - so nothing was changed for it.
+- Changed: **three biome checks carried the old numbers and now carry the new ones.** The tundra and
+  the mountain are asserted against the owner's figures rather than against whatever the engine
+  reports, so a build that deleted the floor cannot satisfy them by agreeing with itself. The unwind
+  check also had to move its starting level: its design is to begin JUST above the floor, where only
+  the floor can stop the descent, and 0.58 stopped being just above anything when the floor halved -
+  it failed by measuring the length of the run instead. Falsified by putting the old coefficient
+  back: three checks fail. biome-test is 82 of 82.
+
 <a id="v0-10-38"></a>
 ## [0.10.38] - 2026-08-31
 - Changed: **a place states a climate and a day states its weather.** The biome table stated `rain`
