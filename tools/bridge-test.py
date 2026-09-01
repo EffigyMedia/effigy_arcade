@@ -133,6 +133,71 @@ window.__probe.waterTone = function(y){
   return n ? { r: R/n, g: G/n, b: B/n, n: n } : null;
 };
 
+/* Is this pixel the ironwork? International Orange is strongly red-dominant with a
+   little green and almost no blue.
+
+   THE FIRST VERSION OF THIS TEST CAUGHT THE RUMBLE STRIP, and a COAST - which has no
+   ironwork anywhere - came back with 250 orange pixels. Sampling them settled it in one
+   run: they were rgb(146,86,85) and rgb(144,73,79), the antialiased edge between the
+   rumble's red stripe and its pale one. That blend sits at R = 1.7 x G, and the ironwork
+   sits at 2.4 to 3.6 - so the ratio is the discriminator and 2.0 separates them with
+   room on both sides. Guessing a threshold would not have found this; looking at the
+   pixels did. */
+window.__probe.isIron = function(R, G, B){
+  return R > 90 && R > G * 2.0 && R > B * 2.5;
+};
+/* Is this pixel LAND? The bridge's own unused ground colours are a headland green,
+   chosen so that a build with the water removed looks obviously wrong rather than
+   quietly similar. So "no land at the skyline" is the sharp form of "the water reaches
+   the skyline": on a build without the water treatment that row is entirely this. */
+window.__probe.isLand = function(R, G, B){
+  return G > 40 && R < 150 && G > R * 1.05 && G > B * 1.15;
+};
+window.__probe.landRow = function(y){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var g = c.getContext('2d');
+  var d = g.getImageData(0, Math.round(y*dpr), c.width, 1).data;
+  var n = 0;
+  for(var x = 0; x < c.width; x++){
+    var i = x*4;
+    if(window.__probe.isLand(d[i], d[i+1], d[i+2])) n++;
+  }
+  return n;
+};
+window.__probe.ironRow = function(y0, y1, split){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var g = c.getContext('2d');
+  var top = Math.round(y0*dpr), hh = Math.max(1, Math.round((y1-y0)*dpr));
+  var d = g.getImageData(0, top, c.width, hh).data;
+  var half = (split === undefined ? c.width/2 : split * dpr);
+  var left = 0, right = 0;
+  for(var y = 0; y < hh; y++){
+    for(var x = 0; x < c.width; x++){
+      var i = (y*c.width + x)*4;
+      if(window.__probe.isIron(d[i], d[i+1], d[i+2])){ if(x < half) left++; else right++; }
+    }
+  }
+  return { left: left, right: right, area: c.width*hh };
+};
+window.__probe.mirrorIron = function(){
+  var c = document.querySelector('canvas');
+  var r = c.getBoundingClientRect();
+  var dpr = c.width / r.width;
+  var mw = Math.min(r.width * 0.62, 250), mh = 44;
+  var mx = (r.width - mw) / 2, my = 6;
+  var g = c.getContext('2d');
+  var x0 = Math.round(mx * dpr), y0 = Math.round(my * dpr);
+  var ww = Math.round(mw * dpr), hh = Math.round(mh * dpr);
+  var d = g.getImageData(x0, y0, ww, hh).data;
+  var n = 0;
+  for(var i = 0; i < d.length; i += 4)
+    if(window.__probe.isIron(d[i], d[i+1], d[i+2])) n++;
+  return { px: n, area: ww*hh };
+};
 window.__probe.mirrorWater = function(){
   var c = document.querySelector('canvas');
   var r = c.getBoundingClientRect();
@@ -179,9 +244,19 @@ class Results:
 
 
 def settle(page, place):
-    """Pin both ends of the blend to one place and let a few frames draw."""
-    page.evaluate("(k) => window.__probe.road.setBiomePair(k, k)", place)
+    """Pin both ends of the blend to one place and let a few frames draw.
+
+    THE ROAD IS CLEARED EVERY TIME, and that is not tidiness. A red car is
+    orange too: the ironwork check below counts International Orange pixels,
+    and traffic put 221 of them into a COAST - a place with no ironwork at all -
+    which is enough to make the control meaningless. `biome-shot.py` clears the
+    road for the same reason before it takes a picture.
+    """
+    page.evaluate("(k) => { const R = window.__probe.road;"
+                  " R.setBiomePair(k, k); R.clearTraffic(); }", place)
     page.wait_for_timeout(500)
+    page.evaluate("() => window.__probe.road.clearTraffic()")
+    page.wait_for_timeout(120)
 
 
 def main():
@@ -249,12 +324,19 @@ def main():
         c = page.evaluate("(y) => window.__probe.waterRow(y)", row)
         print('      coast,  the same row:                            '
               '  left %d  right %d  of %d' % (c['left'], c['right'], c['width']))
-        res.check(b['left'] > 20 and b['right'] > 20,
-                  'the bridge has water to left AND right of the road',
+        # A SYMMETRY RATHER THAN A COUNT, and the count is why. This asked for more than
+        # 20 pixels a side and read 26 and 26 - then the ironwork was built, the kerb and
+        # the railing took a few of them at this row, and a correct build came back 21 and
+        # 20 and failed. What the check is actually about is that the water is on BOTH
+        # sides, which is a shape claim; a magnitude picked from one reading is a threshold
+        # waiting to be tripped by the next feature that legitimately paints there.
+        bmin, bmax = min(b['left'], b['right']), max(b['left'], b['right'])
+        res.check(bmin > 8 and bmin >= bmax * 0.5,
+                  'the bridge has water to left AND right of the road, in comparable amounts',
                   'left %d, right %d' % (b['left'], b['right']))
         # THE CONTROL. A coast puts its water on ONE rolled side, so one of its two counts
         # must be near nothing - otherwise this check is measuring "is there water".
-        res.check(min(c['left'], c['right']) < 20,
+        res.check(min(c['left'], c['right']) < bmax * 0.25,
                   'and the coast still has land on one side, so this measures a bridge',
                   'the coast read left %d, right %d' % (c['left'], c['right']))
 
@@ -295,9 +377,33 @@ def main():
         print('        bridge  %d of %d pixels are water' % (bb['left'] + bb['right'], bb['width']))
         print('        coast   %d of %d' % (cb['left'] + cb['right'], cb['width']))
         settle(page, 'BRIDGE')
-        res.check((bb['left'] + bb['right']) > bb['width'] * 0.90,
-                  'the bridge fills that row edge to edge, so the water reaches the skyline',
-                  'only %d of %d' % (bb['left'] + bb['right'], bb['width']))
+        # THE IRONWORK STANDS IN THIS ROW TOO, and that is not a fault. A cable and a
+        # tower cross the skyline exactly where the water is, so the claim is that the row
+        # is water EXCEPT where the bridge itself is - which is what "the water reaches
+        # the skyline" actually means. This check read 480 of 480 before the ironwork was
+        # built and would now fail on a correct build without the second term.
+        bbi = page.evaluate("([a, b]) => window.__probe.ironRow(a, b)", [row_hz, row_hz + 1])
+        bland = page.evaluate("(y) => window.__probe.landRow(y)", row_hz)
+        covered = bb['left'] + bb['right'] + bbi['left'] + bbi['right']
+        print('        bridge  %d water + %d ironwork + %d land, of %d'
+              % (bb['left'] + bb['right'], bbi['left'] + bbi['right'], bland, bb['width']))
+        # NOT "water plus ironwork fills the row", which was asked first and failed one run
+        # in three on a correct build: at every boundary between water and orange there is
+        # an antialiased pixel that is neither, and there are about forty of them. A
+        # threshold sitting on that blend is a threshold that fails at random.
+        #
+        # THE SHARP CLAIM IS THAT THERE IS NO LAND UP THERE. The bridge's unused ground
+        # colour is a headland green precisely so a build without the water treatment looks
+        # wrong rather than similar - and on that build this row is entirely land and no
+        # water at all. Both halves are asserted, so neither a missing far field nor a
+        # blank row can pass.
+        res.check(bland == 0,
+                  'there is no land at the skyline - the water runs all the way to it',
+                  '%d land pixels in the row' % bland)
+        res.check((bb['left'] + bb['right']) > bb['width'] * 0.75,
+                  'and most of that row is water, with the bridge standing in the rest',
+                  'only %d water of %d, plus %d ironwork'
+                  % (bb['left'] + bb['right'], bb['width'], bbi['left'] + bbi['right']))
         # THE COAST'S FIGURE IS PRINTED AND NOT ASSERTED ON, and that was measured rather
         # than assumed. It came back 238, 183 and 340 of 480 on three runs of one unchanged
         # build: the shore converges on the road's own vanishing point, which the bend
@@ -346,6 +452,85 @@ def main():
                   'the mirror shows water on both sides as well',
                   'left %d, right %d' % (mw['left'], mw['right']))
 
+        # ------------------------------------------------ the ironwork
+        print()
+        print('  AND THE RED TRUSS, WHICH IS WHAT MAKES IT A BRIDGE')
+        plan = page.evaluate("() => window.__probe.road.trussPlan()")
+        print('      %d towers over %d units: a bay of %d against a draw of %d'
+              % (plan['towers'], plan['span'], plan['bay'], plan['reach']))
+        # THE ONE CONSTRAINT THAT IS GEOMETRIC RATHER THAN TASTE. A tower is culled at the
+        # draw distance like everything else, and the cable rises to tower height wherever
+        # a tower stands. So towers further apart than the draw leave the cable climbing to
+        # a peak with nothing at the top of it - measured at four towers, where a probe of
+        # the live game found NO tower inside the draw at all.
+        res.check(plan['bay'] <= plan['reach'],
+                  'a tower always stands inside the draw, so the cable has something to hang on',
+                  'bays are %d against a draw of %d' % (plan['bay'], plan['reach']))
+
+        cable = page.evaluate("() => window.__probe.road.cableProfile(80)")
+        print('      the cable across the crossing, in world units above the deck:')
+        print('      %s' % ' '.join('%d' % v for v in cable[::8]))
+        res.check(cable[0] <= plan['railH'] + 1 and cable[-1] <= plan['railH'] + 1,
+                  'it is anchored at the deck at both ends',
+                  'ends at %d and %d' % (cable[0], cable[-1]))
+        res.check(max(cable) >= plan['towerH'] * 0.98,
+                  'and it reaches the top of a tower',
+                  'the highest it got was %d against a tower of %d'
+                  % (max(cable), plan['towerH']))
+        # AND IT SAGS. A cable that went straight from anchor to tower to anchor would pass
+        # both checks above and be a set of wires rather than a suspension bridge.
+        #
+        # NOT AT THE MIDDLE OF THE CROSSING, which is where this asked first and why it
+        # failed on a correct build: with seven towers there are eight bays, so the middle
+        # of the span lands exactly ON a tower and reads full height. The sag lives INSIDE
+        # a bay, so that is where it has to be measured.
+        interior = cable[len(cable)//8:-len(cable)//8]
+        dip = min(interior)
+        res.check(dip < plan['towerH'] * 0.6,
+                  'and it sags inside each bay rather than running straight between towers',
+                  'the lowest it got between the end anchors was %d against a tower of %d'
+                  % (dip, plan['towerH']))
+
+        settle(page, 'BRIDGE')
+        band = (hz + (900 - hz) * 0.10, hz + (900 - hz) * 0.55)
+        iron = page.evaluate("([a, b]) => window.__probe.ironRow(a, b)", list(band))
+        settle(page, 'COASTAL')
+        ciron = page.evaluate("([a, b]) => window.__probe.ironRow(a, b)", list(band))
+        print('      orange pixels over the road band:  bridge left %d right %d,'
+              '  coast left %d right %d'
+              % (iron['left'], iron['right'], ciron['left'], ciron['right']))
+        res.check(iron['left'] > 40 and iron['right'] > 40,
+                  'there is ironwork down BOTH sides of the deck',
+                  'left %d, right %d' % (iron['left'], iron['right']))
+        res.check(ciron['left'] + ciron['right'] < 20,
+                  'and none at all in a place with no truss, so this measures the bridge',
+                  'the coast had %d orange pixels' % (ciron['left'] + ciron['right']))
+
+        # AND THE GLASS. Owner, 2026-09-01: all of it "needs to be properly visible in the
+        # mirror". One painter serves both views, so this is a check that the mirror was
+        # actually given the call rather than that a second copy agrees with the first.
+        #
+        # WHAT IT DOES NOT SEPARATE, measured rather than assumed. The glass carries two
+        # things - the railing and the towers - and this counts both together: 319 orange
+        # pixels with both, 253 with the towers alone, 72 with the railing alone, 0 with
+        # neither. So it proves ironwork reaches the mirror and would NOT catch one of the
+        # two going missing on its own. Splitting it would need the pane divided by
+        # something that separates a rail from a tower's legs, and neither is confined to
+        # a part of the glass the other stays out of.
+        settle(page, 'BRIDGE')
+        mi = page.evaluate("() => window.__probe.mirrorIron()")
+        settle(page, 'COASTAL')
+        mc = page.evaluate("() => window.__probe.mirrorIron()")
+        print('      orange pixels in the glass:  bridge %d, coast %d  (of %d)'
+              % (mi['px'], mc['px'], mi['area']))
+        res.check(mi['px'] > 60,
+                  'the mirror carries the ironwork too',
+                  'only %d orange pixels in the glass' % mi['px'])
+        res.check(mc['px'] < 20,
+                  'and not in a place without it',
+                  'the coast put %d orange pixels in the glass' % mc['px'])
+        settle(page, 'BRIDGE')
+
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
         browser.close()
@@ -356,8 +541,8 @@ def main():
         print('FAILED: ' + '; '.join(res.fails))
         return 1
     print('all checks passed')
-    print('  whether it reads as a BRIDGE rather than a causeway is not measured here -')
-    print('  it will not until the towers and the deck are built. See tools/biome-shot.py')
+    print('  whether the ironwork reads as the Golden Gate at speed is not measured here,')
+    print('  and neither is the deck surface, which is not built. See tools/biome-shot.py')
     return 0
 
 

@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.9';
+window.ROAD_BUILD = '0.11.10';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8926,7 +8926,7 @@ const BIOMES = {
                  FAULT. These are the headland the bridge springs from, so if
                  `overWater` ever stops being read the road runs over grass and
                  anyone can see it. */
-              overWater:1,
+              overWater:1, truss:1,
               grassLo:'#3f4a35', grassHi:'#55634a',
               sea:'#1d4a63',
               skyBase:'#1b2b3a',
@@ -10455,6 +10455,154 @@ function drawGantryBack(g, px, py, roadW, wide){
     g.fillRect(px - bw/2 + lw, bTop + bh*0.28, bw - lw*2, rh);
     g.fillRect(px - bw/2 + lw, bTop + bh*0.64, bw - lw*2, rh);
   }
+}
+/* ---- THE RAILING, ONE SLICE AT A TIME (RLG-112) -------------------------
+   Called from the road pass with the slice it belongs to, so it inherits the
+   crest occlusion and the far-to-near ordering for nothing. A rail drawn in a
+   pass of its own would have needed both again.
+
+   THREE PARTS AND THEY ARE ALL ONE MEMBER. A bottom chord at the deck edge, a
+   top chord at rail height, and a stanchion every other segment between them.
+   The chords are QUADS rather than lines, because a line has no perspective in
+   it: the rail is thicker at your elbow than at the vanishing point, and that
+   is most of what makes it read as ironwork rather than as a drawn border.
+   ------------------------------------------------------------------------- */
+/* a height above the road, projected. `vh` is the view's own vertical scale -
+   the windscreen's `H` or the mirror's `H_M` - so one painter serves both
+   rather than the glass growing a second copy of this arithmetic (RLG-079). */
+function trussTop(p, y, h, vh){ return y - p.scale * h * (vh === undefined ? H : vh) / 2; }
+/* does a post fall between these two world positions? Asked of the WORLD rather
+   than of a segment index, because the mirror walks in 900-unit steps and the
+   road ahead walks in 200s - an index cycle would space the rail differently in
+   the two views, which is exactly the drift the mirror's note warns about. */
+function postIn(za, zb, every){
+  const s = SEG * every;
+  return Math.floor(za / s) !== Math.floor(zb / s);
+}
+function drawTruss(p1, p2, y1, y2, za, zb, vh){
+  /* how thick a member is on screen, from the slice's own scale */
+  const m1 = Math.max(0.7, p1.w * 0.030), m2 = Math.max(0.5, p2.w * 0.030);
+  const t1 = trussTop(p1, y1, TRUSS.h, vh), t2 = trussTop(p2, y2, TRUSS.h, vh);
+  const a1 = p1.w * TRUSS.out, a2 = p2.w * TRUSS.out;
+  ctx.fillStyle = IRON.face;
+  for(const side of [-1, 1]){
+    const x1 = p1.x + side * a1, x2 = p2.x + side * a2;
+    /* the top chord */
+    quad(x1 - m1, t1, x1 + m1, t1, x2 + m2, t2, x2 - m2, t2);
+    /* and the kick rail, a third of the way up, which is what a railing has
+       instead of a single bar and what stops it reading as a wire */
+    const k1 = y1 + (t1 - y1) * 0.42, k2 = y2 + (t2 - y2) * 0.42;
+    quad(x1 - m1*0.7, k1, x1 + m1*0.7, k1, x2 + m2*0.7, k2, x2 - m2*0.7, k2);
+  }
+  /* the stanchions, on a segment cycle so they are evenly spaced in the WORLD
+     rather than on the screen - spacing them by pixels would crowd them at the
+     horizon and stretch them at the bumper */
+  if(postIn(za, zb, TRUSS.post) && p1.w > 2){
+    ctx.fillStyle = IRON.dark;
+    for(const side of [-1, 1]){
+      const x1 = p1.x + side * a1;
+      ctx.fillRect(x1 - m1 * 0.5, t1, m1, y1 - t1);
+    }
+  }
+
+  /* ---- AND THE CABLE, DRAWN THE SAME WAY (RLG-112) -------------------
+     RLG-112 calls the cable between the towers "the one genuinely new
+     drawing", and it is a curve between two known points. Drawn slice by
+     slice it needs no curve code at all: each slice paints the short chord
+     between its own two ends, and the shape falls out of the sampling. It
+     also inherits the crest occlusion and the far-to-near ordering, which a
+     single long path across the frame would have had to redo.
+     ------------------------------------------------------------- */
+  if(!eventLen) return;
+  const u1 = (za - eventZ0) / eventLen;
+  const u2 = (zb - eventZ0) / eventLen;
+  if(u1 < -0.02 || u1 > 1.02) return;
+  const c1 = trussTop(p1, y1, cableAt(u1), vh), c2 = trussTop(p2, y2, cableAt(u2), vh);
+  const cm1 = Math.max(0.8, p1.w * 0.022), cm2 = Math.max(0.5, p2.w * 0.022);
+  ctx.fillStyle = IRON.face;
+  for(const side of [-1, 1]){
+    const x1 = p1.x + side * a1, x2 = p2.x + side * a2;
+    quad(x1 - cm1, c1, x1 + cm1, c1, x2 + cm2, c2, x2 - cm2, c2);
+  }
+  /* the suspender ropes: thin, vertical, and the thing that says the deck is
+     HUNG from the cable rather than standing on it */
+  if(postIn(za, zb, TRUSS.rope) && p1.w > 3 && c1 < t1 - 2){
+    ctx.fillStyle = IRON.dark;
+    for(const side of [-1, 1]){
+      const x1 = p1.x + side * a1;
+      ctx.fillRect(x1 - cm1 * 0.45, c1, Math.max(0.7, cm1 * 0.9), t1 - c1);
+    }
+  }
+}
+
+/* ---- A TOWER STANDS ON THE ROAD AND PASSES OVER THE CAMERA (RLG-112) ----
+   The fragment is explicit that this is NOT a skyline problem, and names the
+   machinery: a checkpoint gantry already does exactly this. So a tower is a
+   gantry built tall - two legs outside the shoulder, cross-braced, with the
+   road running between them - and it is drawn from `proj` at its own z so it
+   arrives, grows and passes overhead on its own.
+   ------------------------------------------------------------------------- */
+function drawTower(z){
+  const p = proj(0, z);
+  if(!p.ok) return;
+  /* ---- CULLED AT THE DRAW DISTANCE, LIKE EVERYTHING ELSE (RLG-073) ---
+     A tower is 13,000 units tall, so it clears the horizon from far beyond
+     where the road stops being drawn - and without this, every tower on the
+     crossing was painted at once. They stacked up at the vanishing point and
+     the result read as a ladder standing in the sea rather than as a line of
+     towers. Nothing else in this engine draws past the road, and neither
+     should this.
+
+     AND IT FADES IN over the last fifth, which is the rule RLG-041 settled
+     for the cars and RLG-073 extended to the scenery: nothing arrives at
+     full opacity.
+     ------------------------------------------------------------- */
+  const dz = z - pos;
+  const reach = DRAW * SEG;
+  if(dz > reach) return;
+  const ease = clamp((reach - dz) / (reach * 0.20), 0, 1);
+  const roadW = p.scale * ROAD * W;
+  if(roadW < 2) return;
+  drawTowerAt(p, p.y, H, ease);
+}
+/* the tower itself, from a projected point and a view's vertical scale. Two
+   callers - the windscreen and the glass - and one definition (RLG-079). */
+function drawTowerAt(p, py, vh, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+  const p1y = py;
+  const half = p.w * TRUSS.out * 1.06;
+  const top  = trussTop(p, p1y, TRUSS.towerH, vh);
+  const legW = Math.max(1.4, p.w * 0.105);
+  /* the legs taper: a suspension tower is wider at its feet than at its head,
+     and that taper is most of what says "tower" from a distance */
+  const headW = legW * 0.62;
+  ctx.fillStyle = IRON.face;
+  for(const side of [-1, 1]){
+    const xb = p.x + side * half, xt = p.x + side * half * 0.88;
+    ctx.beginPath();
+    ctx.moveTo(xb - legW, p1y); ctx.lineTo(xb + legW, p1y);
+    ctx.lineTo(xt + headW, top); ctx.lineTo(xt - headW, top);
+    ctx.closePath(); ctx.fill();
+  }
+  /* ---- THREE PORTALS, NOT A LADDER (RLG-112) ------------------------
+     Five evenly spaced braces starting just above the deck came out as a
+     ladder across the road, and a ladder is a gate rather than a tower. A
+     suspension tower has a LARGE OPEN PORTAL at deck level and two or three
+     braces well above it - the opening the road passes through is most of
+     what says the thing is a tower you drive between.
+
+     Placed by HEIGHT rather than by screen position, so a tower keeps its
+     proportions as it comes near.
+     ------------------------------------------------------------- */
+  ctx.fillStyle = IRON.lit;
+  for(const t of [0.30, 0.58, 0.86]){
+    const yb = p1y + (top - p1y) * t;
+    const w = half * (1 - 0.12 * t);
+    const th = Math.max(1.0, (p1y - top) * 0.016);
+    ctx.fillRect(p.x - w, yb - th, w * 2, th * 2);
+  }
+  ctx.restore();
 }
 function drawGantry(cp){
   const p1 = proj(0, cp.z);
@@ -14507,6 +14655,82 @@ function hazeTint(a){
    as tall as it is wide across one carriageway, so the walls come in and the
    roof goes up.
    ------------------------------------------------------------------------- */
+/* ---- INTERNATIONAL ORANGE (RLG-112) ------------------------------------
+   Owner, 2026-09-01: "the bridge needs its red truss, like Golden Gate Bridge."
+
+   THE COLOUR HAS A NAME AND IT IS NOT PILLAR-BOX RED. International Orange is
+   what the Golden Gate is painted, and it was chosen because it holds up against
+   fog and water - which is the same reason it works here, over a sea that is
+   grey-blue at every hour. Three tones, the way every other mass in this engine
+   has three: the face, the sunward side, and the shadow.
+   ------------------------------------------------------------------------- */
+const IRON = { face:'#c0362c', lit:'#d95b3f', dark:'#8a2620' };
+/* ---- WHAT A DRIVER ACTUALLY SEES OF A SUSPENSION BRIDGE (RLG-112) -------
+   Not the towers. RLG-112 says so - the deck is the part a player sees at speed
+   - and standing on the Golden Gate bears it out: what runs past you for a mile
+   and a half is the RAILING, with the suspender ropes rising off it at intervals
+   and the main cable sweeping between them. A tower passes twice.
+
+   So the railing is drawn per slice, in the road pass, where it is occluded by
+   crests for nothing. Everything is in world units above the road, projected the
+   way the tunnel's ceiling is - `p.y - p.scale * h * H/2` - because a rail is a
+   thing at a height rather than an offset from the road's own projected line.
+   That distinction cost the tunnel three builds.
+   ------------------------------------------------------------------------- */
+const TRUSS = {
+  out:   1.13,  /* the rail line, in road half-widths - the rumble's own edge   */
+  h:      260,  /* the top rail, in world units above the deck                  */
+  post:     3,  /* a stanchion every N segments                                 */
+  rope:     6,  /* a suspender rope every N segments                            */
+  /* ---- THE IRONWORK IS SIZED FROM THE REAL THING (RLG-112) -----------
+     A car is 380 units and about four and a half metres, so a metre is close
+     to 84 units. The Golden Gate's towers stand about 155 metres over its
+     deck, which is 13,000 - and at that height a tower fills the frame from
+     5,000 units out and still stands 255 pixels tall at 20,000. That is what
+     makes a tower read as a tower rather than as a gate.
+     -------------------------------------------------------------- */
+  towerH:13000, /* the towers, in world units above the deck                    */
+  sag:   9000,  /* how far the main cable drops below the line between two
+                   towers at the middle of a bay                                */
+  /* ---- SEVEN TOWERS, NOT THE GOLDEN GATE'S TWO -----------------------
+     AND THE CONSTRAINT IS GEOMETRIC RATHER THAN A MATTER OF TASTE. The drawn
+     world is 30,000 units - `DRAW` segments of `SEG` - and a tower is culled
+     at that distance like everything else. The cable, meanwhile, rises to
+     tower height wherever a tower stands. So if the towers are further apart
+     than the draw, the cable climbs to a peak WITH NOTHING AT THE TOP OF IT,
+     and the crossing reads as cables hung from the sky.
+
+     MEASURED: at four towers the bays are 43,758 units against a draw of
+     30,000, and a probe of the live game found no tower inside the draw at
+     all - one 1,600 units behind and the next 42,000 ahead. Seven towers put
+     the bays at 27,349, inside the draw, so there is always one to hang the
+     cable on.
+
+     The literal count loses to the geometry here. The Golden Gate's two
+     towers are 1,280 metres apart, which at this engine's scale is four
+     draw-lengths of empty cable.
+     -------------------------------------------------------------- */
+  towers:   7   /* dividing the span into eight bays                            */
+};
+/* how high the main cable runs above the deck, as a fraction of the way through
+   the crossing. It is anchored at the deck at both ends, passes over every tower,
+   and sags through each bay between them. */
+function cableAt(u){
+  const N = TRUSS.towers, bay = 1/(N + 1);
+  const i = Math.min(N, Math.max(0, Math.floor(u / bay)));
+  const t = clamp((u - i * bay) / bay, 0, 1);
+  const hA = i === 0 ? 0 : TRUSS.towerH;
+  const hB = i === N ? 0 : TRUSS.towerH;
+  return Math.max(TRUSS.h, hA + (hB - hA) * t - TRUSS.sag * 4 * t * (1 - t));
+}
+/* where the towers stand, in world z. Empty when no crossing is in force. */
+function towerZs(){
+  if(!eventLen) return [];
+  const out = [];
+  for(let i = 1; i <= TRUSS.towers; i++)
+    out.push(eventZ0 + eventLen * (i / (TRUSS.towers + 1)));
+  return out;
+}
 let BORE = {
   /* ---- TIGHT TO THE ROADWAY (RLG-105) --------------------------------
      Owner, 2026-09-01: "I'd prefer if the tunnel walls were just outside the
@@ -15675,7 +15899,23 @@ function drawRoad(){
     const snowRoad = settle * 0.55, snowRumble = settle * 0.45;
     // rumble strip
     const r1 = p1.w*1.13, r2 = p2.w*1.13;
-    ctx.fillStyle = mixRGB(mixRGB(dark ? '#c9c3b4' : '#8c3346', snowRumble, snowLight),
+    /* ---- A DECK IS NOT A ROAD EDGE (RLG-112) --------------------------
+       Owner, 2026-09-01: "the bridge needs its red truss, like Golden Gate
+       Bridge." The red-and-white rumble strip is the single strongest thing
+       saying ORDINARY ROADWAY in the frame, and it runs the whole length of
+       the crossing - so the ironwork cannot read while it is there. A deck
+       has a CONCRETE kerb instead.
+
+       NOT AN ORANGE ONE, WHICH WAS THE FIRST ATTEMPT. Painting the kerb the
+       ironwork's own colour merged the two into a single solid orange ribbon
+       lying on the deck: the railing needs something to stand UP from, and a
+       kerb the same colour gives it nothing. Grey concrete is also what is
+       actually there.
+       ------------------------------------------------------------- */
+    const deckB = bioAt(idx);
+    ctx.fillStyle = mixRGB(mixRGB(deckB.truss ? (dark ? '#8e8a80' : '#6f6b62')
+                                              : (dark ? '#c9c3b4' : '#8c3346'),
+                                  snowRumble, snowLight),
                            rainDark * 0.20, WET_DARK);
     quad(p1.x-r1, y1, p1.x-p1.w, y1, p2.x-p2.w, y2, p2.x-r2, y2);
     quad(p1.x+p1.w, y1, p1.x+r1, y1, p2.x+r2, y2, p2.x+p2.w, y2);
@@ -15716,6 +15956,10 @@ function drawRoad(){
     const e1=p1.w*0.022, e2=p2.w*0.022;
     quad(p1.x-p1.w*0.965-e1,y1,p1.x-p1.w*0.965+e1,y1,p2.x-p2.w*0.965+e2,y2,p2.x-p2.w*0.965-e2,y2);
     quad(p1.x+p1.w*0.965-e1,y1,p1.x+p1.w*0.965+e1,y1,p2.x+p2.w*0.965+e2,y2,p2.x+p2.w*0.965-e2,y2);
+
+    /* the deck's ironwork, over its own slice's markings and under everything
+       the sprite pass draws (RLG-112) */
+    if(deckB.truss) drawTruss(p1, p2, y1, y2, idx*SEG, (idx+1)*SEG, H);
 
     maxy = y2;
 
@@ -16026,6 +16270,9 @@ function drawWorld(){
   for(const b of blocks)  items.push({z:b.z, kind:'b', o:b});
   for(const sg of signs)  items.push({z:sg.z, kind:'s', o:sg});
   for(const cp of cpGantries) items.push({z:cp.z, kind:'c', o:cp});
+  /* the bridge's towers, emitted with everything else so they are depth-sorted
+     against the cars rather than painted over them (RLG-112) */
+  for(const tz of towerZs()) items.push({z:tz, kind:'w', o:tz});
   for(const r of racers)  items.push({z:r.z, kind:'g', o:r});
   for(const c of crates)  if(!c.got) items.push({z:c.z, kind:'r', o:c});
   items.sort((a,b)=>b.z-a.z);
@@ -16083,6 +16330,8 @@ function emitBucket(n){
   for(const it of list){
     if(it.kind==='c'){
       drawGantry(it.o);
+    } else if(it.kind==='w'){
+      drawTower(it.o);
     } else if(it.kind==='s'){
       drawSign(it.o);
     } else if(it.kind==='g'){
@@ -17788,6 +18037,19 @@ function drawMirrorFull(mx, my, mw, mh){
       ctx.beginPath(); ctx.moveTo(a.x-a.w, a.y); ctx.lineTo(b2.x-b2.w, b2.y); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(a.x+a.w, a.y); ctx.lineTo(b2.x+b2.w, b2.y); ctx.stroke();
     }
+    /* ---- AND THE IRONWORK IS BEHIND YOU TOO (RLG-112) ----------------
+       Owner, 2026-09-01: all of it "needs to be properly visible in the
+       mirror". THE SAME PAINTER, not a second one - it takes the view's own
+       vertical scale as an argument, so the glass gets the same railing, the
+       same cable and the same ropes from one definition. A second copy is the
+       thing the mirror's own note at the top of this pass exists to forbid.
+
+       The mirror walks in 900-unit steps against the road's 200, which is why
+       the posts and the ropes are spaced by WORLD POSITION rather than by a
+       segment index: an index cycle would have put the rail on a different
+       pitch in each view.
+       ------------------------------------------------------------- */
+    if(mB.truss) drawTruss(a, b2, a.y, b2.y, wz, wz + MSEG, H_M);
     /* ---- AND WHAT STOOD BESIDE IT (RLG-079) --------------------------
        The same sprites, from the same cache, placed by the same hash of the
        same world segment index - so a tree you have just driven past is in the
@@ -17961,6 +18223,10 @@ function drawMirrorFull(mx, my, mw, mh){
      the world at a distance like everything else and the list is what puts
      near things over far ones. */
   for(const cp of cpGantries) if(cp.z < pos) back.push({ o:cp, gantry:true });
+  /* the bridge's towers once they are behind you, into the same sorted list so
+     a car between you and one is drawn in front of it (RLG-112) */
+  for(const tz of towerZs())
+    if(tz < pos && tz > pos - MIRROR_BACK) back.push({ o:{ z:tz }, tower:true });
   /* ---- AND THE FINISH BANNER ONCE IT IS BEHIND YOU (RLG-133) ----------
      Into the same sorted list, so a rival between you and the line is drawn in
      front of it. `finishZ` is a single number rather than an array, so it needs
@@ -17973,8 +18239,17 @@ function drawMirrorFull(mx, my, mw, mh){
   for(const it of back){
     /* a gantry spans the road, so it is projected on the centre line rather
        than at a lateral offset it has not got */
-    const p1 = rproj((it.gantry || it.finish) ? 0 : it.o.x*ROAD, it.o.z);
+    const p1 = rproj((it.gantry || it.finish || it.tower) ? 0 : it.o.x*ROAD, it.o.z);
     if(!p1) continue;
+    if(it.tower){
+      /* ---- THE SAME TOWER, IN THE GLASS (RLG-112) ------------------
+         `drawTower` paints from a projected point and a vertical scale, so
+         the mirror passes its own and gets the identical shape. Nothing
+         about a tower is re-derived here.
+         --------------------------------------------------------- */
+      drawTowerAt(p1, p1.y, H_M, 1);
+      continue;
+    }
     if(it.gantry){
       /* `p1.w` is HALF the road at this distance, in the glass's own units */
       drawGantryBack(ctx, p1.x, p1.y, p1.w * 2, mw);
@@ -20374,6 +20649,39 @@ requestAnimationFrame(frameLoop);
     for(let i = 0; i <= n; i++)
       out.push(+(lookup(gradCache, z0 + (z1 - z0) * i / n)).toFixed(5));
     return out;
+  };
+  /* ---- WHAT IRONWORK IS ACTUALLY IN FRONT OF YOU (RLG-112) -------------
+     Where every tower of the crossing stands, how far ahead it is, and whether
+     it is inside the draw. A picture of a bridge cannot be argued about
+     usefully - one capture read as a ladder at the vanishing point and there
+     was no way to tell two towers from one drawing seven braces without this.
+     ------------------------------------------------------------------ */
+  API.towers = function(){
+    const reach = DRAW * SEG;
+    return towerZs().map(z => ({ z:Math.round(z), dz:Math.round(z - pos),
+                                 drawn: (z - pos) <= reach && (z - pos) > 30 }));
+  };
+  /* ---- THE CABLE'S OWN SHAPE, SAMPLED (RLG-112) ------------------------
+     Height above the deck across the crossing. A check reads it to prove the
+     cable is anchored at the deck at both ends and reaches every tower, which
+     a picture cannot settle - one capture read as a ladder at the vanishing
+     point and there was no way to argue about it without numbers.
+     ------------------------------------------------------------------ */
+  API.cableProfile = function(n){
+    const out = [];
+    n = n || 80;
+    for(let i = 0; i <= n; i++) out.push(Math.round(cableAt(i / n)));
+    return out;
+  };
+  /* the ironwork's own figures, and the one constraint that is geometric rather
+     than a matter of taste: a tower must stand closer than the draw, or the
+     cable climbs to a peak with nothing at the top of it */
+  API.trussPlan = function(){
+    const B = BIOMES.BRIDGE;
+    const span = (B && B.span ? B.span * MILE : 0);
+    return { towers: TRUSS.towers, span: Math.round(span),
+             bay: Math.round(span / (TRUSS.towers + 1)),
+             reach: DRAW * SEG, towerH: TRUSS.towerH, railH: TRUSS.h };
   };
   API.rollOpening = function(n){
     const out = [];

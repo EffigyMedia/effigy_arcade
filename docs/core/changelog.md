@@ -14,6 +14,46 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-10"></a>
+## [0.11.10] - 2026-09-01
+- Added: **the bridge wears its red truss.** Owner, 2026-09-01: "the bridge needs its red
+  truss, like Golden Gate Bridge." International Orange, which is the colour the Golden Gate
+  is actually painted and is not pillar-box red - a railing down both sides of the deck on a
+  concrete kerb, suspender ropes, the main cable, and towers that pass overhead
+  ([RLG-112](../fragments/RLG-112.md)).
+- Note: **not the towers - the RAILING is what a driver sees.** RLG-112 says the deck is the
+  part a player sees at speed, and it is right: what runs past for the length of the crossing
+  is the rail with the ropes rising off it, and a tower passes occasionally. So the rail, the
+  ropes and the cable are drawn per slice in the road pass, where they inherit the crest
+  occlusion and the far-to-near ordering for nothing.
+- Note: **the tower is a gantry built tall**, which is the machinery RLG-112 named. Nothing
+  about it is a skyline problem.
+- Fixed: **the red-and-white rumble strip had to go on a deck.** It is the single strongest
+  thing in the frame saying ORDINARY ROADWAY and it runs the whole crossing. A first attempt
+  painted the kerb the ironwork's own colour and merged the two into one solid orange ribbon
+  lying on the deck - a railing needs something to stand up from. Grey concrete, which is
+  also what is there.
+- Fixed: **seven towers, not the Golden Gate's two, and the constraint is geometric.** A
+  tower is culled at the draw distance like everything else, and the cable rises to tower
+  height wherever a tower stands - so towers further apart than the draw leave the cable
+  climbing to a peak with nothing at the top of it. Measured at four towers: a probe of the
+  live game found no tower inside the draw at all, one 1,600 units behind and the next 42,000
+  ahead. Seven puts the bays at 27,349 against a draw of 30,000.
+- Fixed: **the towers were drawn past the end of the road.** Every tower on the crossing was
+  painted at once and they stacked up at the vanishing point, which read as a ladder standing
+  in the sea. They are culled and faded at the draw distance now, the way
+  [RLG-073](../fragments/RLG-073.md) settled for the scenery.
+- Fixed: **a tower has a portal, not a ladder.** Five evenly spaced braces starting above the
+  deck came out as a gate across the road. A suspension tower has a large open opening at
+  deck level and two or three braces well above it, and the opening you drive through is most
+  of what says the thing is a tower.
+- Added: **and all of it is in the mirror.** Owner: it "needs to be properly visible in the
+  mirror". One painter, two callers - it takes the view's own vertical scale as an argument,
+  so the glass gets the same railing, cable, ropes and towers from one definition. The posts
+  and ropes are spaced by world position rather than by segment index, because the mirror
+  walks in 900-unit steps against the road's 200 and an index cycle would put the rail on a
+  different pitch in each view.
+
 <a id="v0-11-9"></a>
 ## [0.11.9] - 2026-09-01
 - Fixed: **the canyon skyline stands no higher than the canyon walls.** Owner, from the
