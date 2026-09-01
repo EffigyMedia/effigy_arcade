@@ -14,6 +14,33 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-1"></a>
+## [0.11.1] - 2026-09-01
+- Added: **FARMLAND - a cornfield down one side, houses and barns down the other.** Owner: "one side
+  with a cornfield and the other side flat with houses and barns. Just like the ocean, the sides would
+  be randomly decided at generation. The skyline would just be open sky just like ocean." The flattest
+  place on the board at a relief of 0.10, which is the gap it was argued to fill
+  ([RLG-102](../fragments/RLG-102.md)).
+- Changed: **the coast's side roll is generalised rather than copied.** `seaSide` is `sideRoll` across
+  all twenty-two sites that read it. A place says what it does with the side it rolled: the coast
+  draws NOTHING there because it is water, farmland draws a different spec. One roll read by two
+  places, so a place can never disagree with itself about which side it is - which is what a second
+  roll would eventually produce.
+- Added: **a cornfield is a texture with rows, not a scatter.** This is the part with no precedent.
+  Every roadside in the engine jitters, and the eye reads woodland precisely because it is irregular;
+  a planted field is the opposite. `lattice` skips the density roll and drops the jitter, and the
+  perspective does the rest. Measured: the crop uses ONE distinct distance from the road per rank,
+  the yards on the other side use sixteen.
+- Verified: **both views agree which side is which** - 4,810 placements on the rolled side out of the
+  windscreen against 250 on the other, and 2,758 against 68 in the mirror. And **the open sky cost
+  nothing**: farmland states the coast's own cloud bias and needed no new code, which was the stated
+  test of whether the coastal work was a tendency or a special case.
+- Corrected: **a loose claim in [RLG-109](../fragments/RLG-109.md).** It said the weather swing gives
+  farmland snow on "roughly three precipitation events in ten". Thirty per cent is the fraction of
+  MOMENTS cold enough to snow at all, not the fraction of falls that come down as snow - the model
+  gives 4.5% and the engine measures 3.8%. The model is right and the sentence overstated it.
+- Added: **`tools/farmland-test.py`**.
+
 <a id="v0-11-0"></a>
 ## [0.11.0] - 2026-08-31
 

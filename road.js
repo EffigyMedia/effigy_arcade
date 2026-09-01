@@ -5556,6 +5556,125 @@ function BEACH_HOUSE(g, W2, H2, v){
 }
 
 const SCENERY = {
+  /* ---- A CORNFIELD IS A TEXTURE WITH ROWS, NOT A SCATTER (RLG-102) -----
+     This is the one genuinely new thing in farmland and it is where the effort
+     went. Everything else the engine plants beside a road is a SCATTER: a hash
+     decides whether an object stands at this segment, another hash jitters where
+     in the band it stands, and the eye reads it as woodland or desert precisely
+     because it is irregular.
+
+     A PLANTED FIELD IS THE OPPOSITE. Its whole character is that it is regular -
+     the rows are straight, they are evenly spaced, and they run away from the
+     road. Jitter it and it reads as scrub; scatter it and it reads as carpet.
+
+     `lattice` IS THAT DIFFERENCE, and it is two lines in the placement loop
+     rather than a second drawing system: the density roll is skipped so every
+     rank at every segment is planted, and the jitter within the band is dropped
+     so the ranks line up across segments. What the perspective then does with a
+     regular grid is exactly what it does with a real field - the rows converge.
+
+     SIX RANKS AND A NARROW SPRITE, because a field is made of many small things
+     and the row count is what carries the depth. The three kinds are the same
+     crop at three heights, so a field is not one stamp repeated.
+     ------------------------------------------------------------------ */
+  FARMLAND_CROP: { density:1.0, rowDensity:1.0, rows:6, out:0.12, outFar:5.4,
+            w:0.30, h:0.62, spread:0, kinds:3, lattice:true,
+            build:(g,W2,H2,i)=>{
+              /* a stand of stalks, taller on the later kinds */
+              const tall = 0.62 + i * 0.16;
+              const base = H2 * 0.99, top = H2 * (1 - tall);
+              /* the earth it stands in, so a field has a floor rather than
+                 floating stalks over the verge colour */
+              g.fillStyle = '#6b5c33';
+              g.fillRect(0, H2*0.86, W2, H2*0.14);
+              const stalks = 7;
+              for(let k = 0; k < stalks; k++){
+                const x = W2 * (0.10 + 0.80 * (k / (stalks - 1)));
+                const lean = (k - (stalks-1)/2) * W2 * 0.012;
+                g.strokeStyle = k % 2 ? '#8a9a3f' : '#7a8c37';
+                g.lineWidth = Math.max(1, W2 * 0.055);
+                g.beginPath();
+                g.moveTo(x, base);
+                g.lineTo(x + lean, top + H2*0.10);
+                g.stroke();
+                /* the head of the corn, which is what gives the band its colour */
+                g.fillStyle = k % 2 ? '#c9b757' : '#b9a648';
+                g.beginPath();
+                g.ellipse(x + lean, top + H2*0.10, W2*0.055, H2*0.075, 0, 0, Math.PI*2);
+                g.fill();
+              }
+            } },
+  /* ---- AND THE YARD SIDE, WHICH IS THE BEACH HOUSES AGAIN (RLG-102) ----
+     A farmhouse, a barn, a silo and a windbreak tree. The buildings are the
+     same construction the coast already uses - a mass, a roof, and windows that
+     light after dark - with different paint and a different roof pitch, which
+     is what the fragment predicted when it said the buildings were the beach
+     houses again.
+
+     `lit` AND `litKinds` PUT THE LAMPS IN THE RIGHT PLACES: a house and a barn
+     have windows, a silo and a tree do not. */
+  FARMLAND: { density:0.30, w:1.45, h:1.55, out:1.30, spread:2.20, kinds:4,
+            lit:true, litKinds:[0, 1],
+            build:(g,W2,H2,i)=>{
+              const ground = H2 * 0.97;
+              if(i === 0){
+                /* the farmhouse: a low block with a steep roof */
+                const bw = W2*0.46, bx = W2*0.10, bh = H2*0.38;
+                g.fillStyle = '#c9c3b4';
+                g.fillRect(bx, ground - bh, bw, bh);
+                g.fillStyle = '#7d4a3a';
+                g.beginPath();
+                g.moveTo(bx - bw*0.10, ground - bh);
+                g.lineTo(bx + bw*0.5, ground - bh - H2*0.20);
+                g.lineTo(bx + bw*1.10, ground - bh);
+                g.closePath(); g.fill();
+                g.fillStyle = '#2b3138';
+                g.fillRect(bx + bw*0.16, ground - bh*0.72, bw*0.20, bh*0.26);
+                g.fillRect(bx + bw*0.60, ground - bh*0.72, bw*0.20, bh*0.26);
+                g.fillRect(bx + bw*0.38, ground - bh*0.42, bw*0.22, bh*0.42);
+              } else if(i === 1){
+                /* the barn: wider, taller, and the one red thing on the board */
+                const bw = W2*0.62, bx = W2*0.20, bh = H2*0.46;
+                g.fillStyle = '#8c3a2e';
+                g.fillRect(bx, ground - bh, bw, bh);
+                g.fillStyle = '#6e2c23';
+                g.beginPath();
+                g.moveTo(bx - bw*0.06, ground - bh);
+                g.lineTo(bx + bw*0.5, ground - bh - H2*0.22);
+                g.lineTo(bx + bw*1.06, ground - bh);
+                g.closePath(); g.fill();
+                /* the white trim that says barn rather than shed */
+                g.strokeStyle = '#d8cfc0';
+                g.lineWidth = Math.max(1, W2*0.012);
+                g.beginPath();
+                g.moveTo(bx + bw*0.5, ground - bh); g.lineTo(bx + bw*0.5, ground);
+                g.moveTo(bx, ground - bh*0.5); g.lineTo(bx + bw, ground - bh*0.5);
+                g.stroke();
+                g.fillStyle = '#2b3138';
+                g.fillRect(bx + bw*0.34, ground - bh*0.60, bw*0.32, bh*0.60);
+              } else if(i === 2){
+                /* a silo: the vertical the rest of the place has not got */
+                const sw = W2*0.20, sx = W2*0.40, sh = H2*0.66;
+                g.fillStyle = '#a8a49a';
+                g.fillRect(sx, ground - sh, sw, sh);
+                g.fillStyle = '#8e8a80';
+                g.fillRect(sx + sw*0.62, ground - sh, sw*0.38, sh);
+                g.fillStyle = '#7a776e';
+                g.beginPath();
+                g.ellipse(sx + sw/2, ground - sh, sw/2, sw*0.42, 0, Math.PI, 0);
+                g.fill();
+              } else {
+                /* a windbreak tree, so the yard side is not only buildings */
+                const tx = W2*0.5, th = H2*0.58;
+                g.fillStyle = '#5b4a33';
+                g.fillRect(tx - W2*0.030, ground - th*0.42, W2*0.060, th*0.42);
+                g.fillStyle = '#4f6b32';
+                g.beginPath();
+                g.ellipse(tx, ground - th*0.62, W2*0.20, th*0.34, 0, 0, Math.PI*2);
+                g.fill();
+              }
+            } },
+
   /* ---- A COAST ROAD, ON ITS LANDWARD SIDE ONLY (RLG-059) ---------------
      Sparse, because a coast is open: what stands beside it is the occasional
      palm, a low rock, and now and then a house facing the water. Everything
@@ -5974,28 +6093,52 @@ function drawScenery(idx, p1, y1, z1, fade){
      the water begins where the ground colour changes rather than where the car
      is.
      -------------------------------------------------------------------- */
-  const water = B.sea ? seaSide : 0;
+  const water = B.sea ? sideRoll : 0;
   for(const side of [-1, 1]){
     if(water && side === water) continue;
-    for(let row = rows - 1; row >= 0; row--){
+    /* ---- THE ROLLED SIDE MAY DRAW SOMETHING ELSE ENTIRELY (RLG-102) ---
+       The coast's rolled side draws NOTHING, because it is water. Farmland's
+       draws a different spec, because it is a crop. Both are the same question -
+       what does this place put on the side it rolled - and both read the one
+       roll, so a place can never disagree with itself about which side it is.
+
+       TWO SPECS IS HONEST HERE AND WAS NOT FOR THE COAST. The coastal record
+       carries a note against a second, landward-only spec: with the seaward side
+       empty that left the first spec with no side to draw on, which is dead code
+       dressed as generality. Farmland uses BOTH sides, so both specs are live.
+       ---------------------------------------------------------------- */
+    const cropSide = B.crop && side === sideRoll;
+    const spec2 = cropSide ? SCENERY[B.crop] : spec;
+    const artKey = cropSide ? B.crop : B.name;
+    if(!spec2) continue;
+    const rows2 = cropSide ? (spec2.rows || 1) : rows;
+    for(let row = rows2 - 1; row >= 0; row--){
       const salt = row * 101;
       const r0 = sceneRand(idx, (side < 0 ? 11 : 23) + salt);
-      if(r0 > (spec.rowDensity || spec.density)) continue;
+      /* ---- A PLANTED FIELD IS NOT ROLLED FOR (RLG-102) --------------
+         `lattice` skips the density roll, so every rank at every segment is
+         planted, and drops the jitter below, so the ranks line up across
+         segments. That regularity IS the cornfield: the same placement with
+         the roll and the jitter left in reads as scrub. */
+      if(!spec2.lattice && r0 > (spec2.rowDensity || spec2.density)) continue;
       const r1 = sceneRand(idx, (side < 0 ? 37 : 41) + salt);
       const r2 = sceneRand(idx, (side < 0 ? 53 : 59) + salt);
-      const kind = Math.floor(r1 * spec.kinds) % spec.kinds;
-      const art = sceneryArt(B.name, kind);
+      const kind = Math.floor(r1 * spec2.kinds) % spec2.kinds;
+      const art = sceneryArt(artKey, kind);
       if(!art) continue;
-      /* size varies with the object, not with the frame */
-      const grow = 0.72 + r2 * 0.56;
-      const w2 = sc * spec.w * grow;
+      /* size varies with the object, not with the frame. A crop is uniform,
+         because a field of unequal corn is a field nobody planted. */
+      const grow = spec2.lattice ? 1 : 0.72 + r2 * 0.56;
+      const w2 = sc * spec2.w * grow;
       const h2 = w2 * (art.height / art.width);
       if(w2 < 0.8) continue;
       /* MEASURED FROM THE EDGE OF THE TARMAC, not from the middle of it. The
          row walks outward; `spread` jitters within the row so the rows do not
          read as ranks. */
-      const band = rows > 1 ? (spec.outFar - spec.out) / rows : 0;
-      const off = spec.out + band * (row + r1) + (rows > 1 ? 0 : r1 * spec.spread);
+      const band = rows2 > 1 ? (spec2.outFar - spec2.out) / rows2 : 0;
+      const off = spec2.lattice
+        ? spec2.out + band * row
+        : spec2.out + band * (row + r1) + (rows2 > 1 ? 0 : r1 * spec2.spread);
       /* the INNER edge of the object sits at the placement point, so a tree at
          the kerb stands beside the tarmac rather than half over it */
       const xi = p1.x + side * roadsideAt(p1, off);
@@ -6021,14 +6164,21 @@ function drawScenery(idx, p1, y1, z1, fade){
          at the near end of an approach is a couple of per cent of the distance and
          reads as the geometry drifting when it is the instrument that moved. */
       if(sceneTrace) sceneTrace.push({ view:'ahead', idx:idx, side:side, row:row,
+                                       /* how far out from the tarmac it stands, which is
+                                          what says a field is planted rather than
+                                          scattered - a scatter jitters this per segment
+                                          and a crop does not (RLG-102) */
+                                       off:+off.toFixed(4), kind:kind, spec:artKey,
                                        x:+x.toFixed(4), y:+y1.toFixed(4),
                                        w:+w2.toFixed(4), h:+h2.toFixed(4),
                                        z:z1, pos:+pos.toFixed(2),
                                        a:+ctx.globalAlpha.toFixed(3) });
       ctx.drawImage(art, x - w2/2, y1 - h2, w2, h2);
       /* the windows, on the same schedule as the street lamps */
-      const litArt = spec.lit && (!spec.litKinds || spec.litKinds.indexOf(kind) >= 0)
-                   ? sceneryLitArt(B.name, kind) : null;
+      /* the lit variant follows the spec that was actually drawn, so a barn
+         lights its windows and a stand of corn does not (RLG-102) */
+      const litArt = spec2.lit && (!spec2.litKinds || spec2.litKinds.indexOf(kind) >= 0)
+                   ? sceneryLitArt(artKey, kind) : null;
       if(litArt && lampsOn() > 0.02){
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = Math.min(1, fade * 4) * lampsOn();
@@ -8306,6 +8456,28 @@ const BIOMES = {
                  beach keeps the coast in shot for most of the draw. */
               sea:'#1d4a63', beach:1.3,
               sky:'#2f4a63', city:0.08, trees:0.20 },
+  /* ---- THE FLATTEST PLACE ON THE BOARD (RLG-102) ----------------------
+     Owner, 2026-08-31: "I want to add another biome farmland. This one would
+     have one side with a cornfield and the other side flat with houses and
+     barns. Just like the ocean, the sides would be randomly decided at
+     generation. The skyline would just be open sky just like ocean."
+
+     `crop` IS THE WHOLE OF THE SIDED PART. It names the scenery the ROLLED side
+     draws; the other side draws the ordinary spec. The coast says `sea` and its
+     rolled side draws nothing at all, which is the same mechanism answering a
+     different question - one roll, read by two places.
+
+     AND THE OPEN SKY COST NOTHING, which is the test of whether the coastal work
+     was built as a tendency or as a special case. `bias` at 0.45 is the coast's
+     own number and it needed no new code.
+
+     RELIEF 0.10 IS THE LOWEST ON THE BOARD and it is the gap this place fills:
+     nothing else is open in this way. The coast comes closest and is defined by
+     having a hard edge down one side. */
+  FARMLAND: { name:'FARMLAND', temp:0.60, vary:0.25, precip:0.34, bias:0.45,
+              hill:0.10, bend:0.35, crop:'FARMLAND_CROP',
+              grassLo:'#5c6b35', grassHi:'#7d8f47',
+              sky:'#43506b', city:0.03, trees:0.30 },
   SWAMP:    { name:'SWAMP',    temp:0.80, vary:0.10, precip:0.64, bias:1.10,
               hill:0.15, bend:0.70,
               grassLo:'#22301f', grassHi:'#33422a',
@@ -8452,7 +8624,7 @@ function climateAt(key, t){
   };
 }
 /* one instance of a place: its temperature rolled once, and everything that
-   follows from it. The same shape as `rollSeaSide` — decided when the place
+   follows from it. The same shape as `rollSide` — decided when the place
    opens, not per frame. */
 function rollClimate(key){
   const B = BIOMES[key] || BIOMES.FOREST;
@@ -8515,7 +8687,7 @@ let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
    One per end of the blend, because both ends are asked questions: the place
    being left holds the snow already on its ground, and the place being entered
    decides whether weather carried into it stays. They are rolled where
-   `rollSeaSide` is called and they are replaced together with the pair.
+   `rollSide` is called and they are replaced together with the pair.
 
    `climate()` answers for the place the PLAYER is in, which is always one end or
    the other — `biome` is set to `biomeTo` at the halfway point of the crossing
@@ -8728,7 +8900,17 @@ let biomeStarted = 0;
    the same side for the whole stretch, and a value rolled per frame would put
    the sea on alternating sides sixty times a second.
    ------------------------------------------------------------------------- */
-let seaSide = 1;
+/* ---- WHICH SIDE OF THE ROAD THE PLACE PUTS ITS OWN THING ON (RLG-102) ---
+   Rolled once when a place opens, and read by everything that draws: the slices,
+   the far band, the mirror and the scenery. It was `seaSide` and it was the
+   coast's alone; farmland needs exactly the same answer for a different reason -
+   a cornfield down one side and yards down the other - so the mechanism is
+   GENERALISED rather than copied.
+
+   A SECOND FUNCTION THAT ROLLS A SIDE WOULD BE A SECOND THING TO KEEP IN STEP,
+   and this project has the receipts on that. One roll, read by two places.
+   ------------------------------------------------------------------------- */
+let sideRoll = 1;
 /* debug only, and it exists to REINTRODUCE the defect. True draws the far band's
    shore as a straight line to the vanishing point, which is what it was before
    RLG-093. Reverting the engine cannot falsify the check - the instrument reads
@@ -8767,7 +8949,7 @@ let seaStraight = false;
    one side while the GAME was rolling it correctly. A hook that takes a
    different path from the thing it is standing in for proves less than it looks
    like it proves. Both call this. */
-function rollSeaSide(){ seaSide = Math.random() < 0.5 ? -1 : 1; return seaSide; }
+function rollSide(){ sideRoll = Math.random() < 0.5 ? -1 : 1; return sideRoll; }
 
 /* ---- WEATHER BELONGS TO A PLACE, SO IT HAS TO LEAVE WITH IT ---------------
    The biome decided what MIGHT fall, and then nothing checked it again. A front
@@ -8933,7 +9115,7 @@ function freshWorld(){
 function openBiome(){
   biomeStarted = 1;
   biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
-  rollSeaSide();
+  rollSide();
   /* and THIS one's temperature, on the same occasion and for the same reason
      the sea's side is rolled here: a thing decided once when the place opens
      rather than per frame (RLG-109) */
@@ -9120,7 +9302,7 @@ function stepBiome(dt){
       biomeEdge = here + DRAW;
       /* a fresh coin for every new place, so two oceans in one run need not
          put the water on the same side */
-      rollSeaSide();
+      rollSide();
       /* ---- AND THE PLACE AHEAD GETS ITS OWN TEMPERATURE (RLG-109) -----
          THIS IS THE LIKELIEST WAY TO GET THE REFACTOR WRONG. The place being
          entered is asked two questions before the car ever reaches it - what
@@ -14138,8 +14320,8 @@ function drawRoad(){
            carries the slope on down rather than dropping vertically, so the
            NEAREST slice, which nothing paints over, ends correctly too.
            ---------------------------------------------------------- */
-        const shF = p2.x + seaSide * roadsideAt(p2, sB.beach);
-        const shN = p1.x + seaSide * roadsideAt(p1, sB.beach);
+        const shF = p2.x + sideRoll * roadsideAt(p2, sB.beach);
+        const shN = p1.x + sideRoll * roadsideAt(p1, sB.beach);
         /* ---- A SLOPE MEASURED OVER HALF A PIXEL IS NOT A SLOPE -----
            The fill carries its edge on down to the bottom of the screen so the
            NEAREST slice, which nothing paints over, ends on the shoreline's own
@@ -14158,8 +14340,8 @@ function drawRoad(){
         const dyS = y1 - y2;
         const shB = dyS > 2 ? clamp(shN + (shN - shF) * ((H - y1) / dyS), -4*W, 5*W)
                             : shN;
-        if(seaSide < 0 ? (shF > 0 || shN > 0) : (shF < W || shN < W)){
-          const edge = seaSide < 0 ? 0 : W;
+        if(sideRoll < 0 ? (shF > 0 || shN > 0) : (shF < W || shN < W)){
+          const edge = sideRoll < 0 ? 0 : W;
           /* `fade` is 1 at the bumper and 0 at the end of the draw, so the
              distance the water has receded through is its complement */
           ctx.fillStyle = seaTone(sB, 1 - fade);
@@ -15832,7 +16014,7 @@ function draw(){
     const fa = proj(0, fFar*SEG);
     farSea.y = +fa.y.toFixed(1); farSea.horizon = horizon; farSea.ok = fa.ok;
     if(fa.ok && fa.y > horizon){
-      const sa = fa.x + seaSide * roadsideAt(fa, fB.beach);
+      const sa = fa.x + sideRoll * roadsideAt(fa, fB.beach);
       /* ---- THE HORIZON'S OWN SHORE IS NOT EXTRAPOLATED --------------
          The first version read the shoreline at two depths and carried the
          line between them up to the horizon. It was wrong about a third of
@@ -15884,7 +16066,7 @@ function draw(){
          does not sit between the horizon and the shore already drawn is simply
          not added. The failure mode is a shorter walk, never a missing sea.
          ------------------------------------------------------------- */
-      const edge = seaSide < 0 ? 0 : W;
+      const edge = sideRoll < 0 ? 0 : W;
       /* NO RECESSION HERE. This band is painted before `drawHaze`, so the wash
          is applied to it as paint rather than mixed into its colour. Asking for
          both would haze it twice and put the seam back the other way round. */
@@ -15900,7 +16082,7 @@ function draw(){
           const q = proj(0, (fFar + k*FAR_SEA_STEP) * SEG);
           if(!q || !q.ok) continue;
           if(!(q.y > lastY + 0.25 && q.y < fa.y - 0.25)) continue;
-          ctx.lineTo(q.x + seaSide * roadsideAt(q, fB.beach), q.y);
+          ctx.lineTo(q.x + sideRoll * roadsideAt(q, fB.beach), q.y);
           lastY = q.y;
           walked++;
         }
@@ -16305,10 +16487,10 @@ function drawMirrorFull(mx, my, mw, mh){
   if(mfB.sea){
     const ma = rproj(0, pos - MIRROR_BACK), mb = rproj(0, pos - MIRROR_BACK + 900*12);
     if(ma && mb && ma.y > vpy && mb.y > ma.y){
-      const s1 = ma.x + seaSide * roadsideAt(ma, mfB.beach, mw);
-      const s2 = mb.x + seaSide * roadsideAt(mb, mfB.beach, mw);
+      const s1 = ma.x + sideRoll * roadsideAt(ma, mfB.beach, mw);
+      const s2 = mb.x + sideRoll * roadsideAt(mb, mfB.beach, mw);
       const sh = s1 + (s2 - s1) * ((vpy - ma.y) / (mb.y - ma.y));
-      const edge = seaSide < 0 ? mx : mx + mw;
+      const edge = sideRoll < 0 ? mx : mx + mw;
       ctx.fillStyle = seaTone(mfB);
       ctx.beginPath();
       ctx.moveTo(sh, vpy); ctx.lineTo(s1, ma.y);
@@ -16424,9 +16606,9 @@ function drawMirrorFull(mx, my, mw, mh){
        being computed.
        ---------------------------------------------------------------- */
     if(mB.sea){
-      const msh = a.x + seaSide * roadsideAt(a, mB.beach, mw);
+      const msh = a.x + sideRoll * roadsideAt(a, mB.beach, mw);
       ctx.fillStyle = seaTone(mB);
-      if(seaSide < 0){ if(msh > mx) ctx.fillRect(mx, a.y, msh - mx, my + mh - a.y); }
+      if(sideRoll < 0){ if(msh > mx) ctx.fillRect(mx, a.y, msh - mx, my + mh - a.y); }
       else { if(msh < mx + mw) ctx.fillRect(msh, a.y, mx + mw - msh, my + mh - a.y); }
     }
     ctx.fillStyle = mixRGB(mixRGB(dark ? '#1e232c' : '#191d25', mSnowRoad, mLight),
@@ -16489,19 +16671,27 @@ function drawMirrorFull(mx, my, mw, mh){
            `MIRROR_ROWS` is the lever and it is live through `API.mirrorRows`,
            so the arms can be compared in one sitting.
            -------------------------------------------------------------- */
-        const mrows = Math.max(1, Math.min(mSpec.rows || 1, MIRROR_ROWS));
+        const mrowsBase = Math.max(1, Math.min(mSpec.rows || 1, MIRROR_ROWS));
         for(const mside of [-1, 1]){
           /* nothing stands in the sea in here either, or the glass shows palms
              in the water while the windscreen shows an empty shore */
-          if(mB.sea && mside === seaSide) continue;
+          if(mB.sea && mside === sideRoll) continue;
+          /* the glass reads the same sided answer the windscreen does, so a
+             cornfield is not on the left out of the front and on the right in
+             the mirror (RLG-102) */
+          const mCrop = mB.crop && mside === sideRoll;
+          const mS = mCrop ? SCENERY[mB.crop] : mSpec;
+          const mKey = mCrop ? mB.crop : mB.name;
+          if(!mS) continue;
+          const mrows = mCrop ? Math.max(1, Math.min(mS.rows || 1, MIRROR_ROWS)) : mrowsBase;
           for(let mrow = mrows - 1; mrow >= 0; mrow--){
             const ms = mrow * 101;
-            if(sceneRand(widx, (mside < 0 ? 11 : 23) + ms) > (mSpec.rowDensity || mSpec.density)) continue;
+            if(!mS.lattice && sceneRand(widx, (mside < 0 ? 11 : 23) + ms) > (mS.rowDensity || mS.density)) continue;
             const q1 = sceneRand(widx, (mside < 0 ? 37 : 41) + ms);
             const q2 = sceneRand(widx, (mside < 0 ? 53 : 59) + ms);
-            const mart = sceneryArt(mB.name, Math.floor(q1 * mSpec.kinds) % mSpec.kinds);
+            const mart = sceneryArt(mKey, Math.floor(q1 * mS.kinds) % mS.kinds);
             if(!mart) continue;
-            const mw2 = msc * mSpec.w * (0.72 + q2 * 0.56);
+            const mw2 = msc * mS.w * (mS.lattice ? 1 : 0.72 + q2 * 0.56);
             /* 1.5 pixels, not 0.7. A sub-pixel tree costs a full drawImage and
                contributes a smudge: the forest mirror measured 54.8 fps against
                60 everywhere else, and most of that was spent on objects too
@@ -16528,9 +16718,11 @@ function drawMirrorFull(mx, my, mw, mh){
             const mCap = mw * MIRROR_NEAR;
             if(mw2 > mCap) continue;
             const mh2 = mw2 * (mart.height / mart.width);
-            const mband = (mSpec.rows || 1) > 1 ? (mSpec.outFar - mSpec.out) / mSpec.rows : 0;
-            const moff = mSpec.out + mband * (mrow + q1)
-                       + ((mSpec.rows || 1) > 1 ? 0 : q1 * mSpec.spread);
+            const mband = (mS.rows || 1) > 1 ? (mS.outFar - mS.out) / mS.rows : 0;
+            const moff = mS.lattice
+              ? mS.out + mband * mrow
+              : mS.out + mband * (mrow + q1)
+                       + ((mS.rows || 1) > 1 ? 0 : q1 * mS.spread);
             const mxi = a.x + mside * roadsideAt(a, moff, mw);
             const mxx = mxi + mside * mw2/2;
             if(mxx + mw2 < mx || mxx - mw2 > mx + mw) continue;
@@ -18591,7 +18783,7 @@ requestAnimationFrame(frameLoop);
     }
     biomeFrom = biome; biomeTo = want;
     biomeEdge = Math.floor(pos/SEG) + DRAW;
-    rollSeaSide();          /* the same roll the real placement makes */
+    rollSide();          /* the same roll the real placement makes */
     climTo = rollClimate(want);   /* and the same instance, for the same reason:
                                      a hook that takes a different path from the
                                      thing it stands in for proves less than it
@@ -18881,7 +19073,8 @@ requestAnimationFrame(frameLoop);
   };
   /* which side the water is on for the stretch now in view, and the shoreline's
      distance from the tarmac. -1 left, 1 right (RLG-059). */
-  API.seaSide = function(){ return seaSide; };
+  API.seaSide  = function(){ return sideRoll; };   /* the old name, kept: harnesses use it */
+  API.sideRoll = function(){ return sideRoll; };
   API.roadShape = function(k){
     const B = BIOMES[k || biome] || BIOMES.FOREST;
     return { name:B.name, hill:B.hill, bend:B.bend };
@@ -19700,7 +19893,8 @@ requestAnimationFrame(frameLoop);
      the sea did or did not reach the horizon */
   API.farSea = function(){ return farSea; };
   /* which side the water is on, so a check reads it rather than assuming (RLG-093) */
-  API.seaSide = function(){ return seaSide; };
+  API.seaSide  = function(){ return sideRoll; };   /* the old name, kept: harnesses use it */
+  API.sideRoll = function(){ return sideRoll; };
   API.seaStraight = function(on){ seaStraight = !!on; return seaStraight; };
   /* how much haze the water has taken by the end of the draw. Live, so the value
      can be SWEPT inside one frame - the road is generated per load and the day is
@@ -19710,7 +19904,7 @@ requestAnimationFrame(frameLoop);
   API.headsLit = function(){ const n = headsLit; headsLit = 0; return n; };
   API.scenerySides = function(){
     return { left:sceneSides.left, right:sceneSides.right,
-             mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:seaSide };
+             mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:sideRoll };
   };
   API.resetScenerySides = function(){ sceneSides = { left:0, right:0, mLeft:0, mRight:0 }; };
   API.sceneryProbe = function(name, kind){
