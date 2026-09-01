@@ -14,6 +14,57 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-5"></a>
+## [0.11.5] - 2026-09-01
+- Added: **CANYON - the place whose distance is a wall.** Owner, 2026-08-31: of the four
+  gaps offered, canyon and tunnel are the two to build. **It is the tunnel's opposite.** A
+  tunnel has no distance in it at all, so the far field is painted over; a canyon has
+  plenty of distance and every bit of it is rock
+  ([RLG-104](../fragments/RLG-104.md)).
+- Added: **a horizon that is one mass rather than a row of objects, and it is built once.**
+  Three places asked the skyline generator for the same missing thing before any of them
+  was built - this wall, the bridge towers and the jungle canopy - so it is a table
+  (`SKY_CONTINUOUS`) and a planner (`contPlan`) rather than three special cases. The crest
+  is a bounded random walk and each segment carries the height at both of its ends, so the
+  silhouette is connected by construction instead of by the gaps happening to be zero.
+- Fixed: **and the crest closes on itself, because the skyline sprite tiles.** A walk that
+  ended where it liked would put a cliff at the seam and then repeat that cliff across the
+  whole horizon. The last fifth of the walk is bent back onto its own first sample.
+- Note: **the seam is the only rule that separates a wall from a row of objects, and that
+  was measured.** The first version of the check asserted that a continuous crest never
+  jumps, and it went red on the controls - a peak line overlaps its own neighbours, so
+  MOUNTAIN and TUNDRA have no gaps AND a small step and are still rows of peaks. Nothing
+  but a closed walk plans the two ends of a tile together; MOUNTAIN misses the seam by 60
+  pixels. `tools/canyon-test.py` runs all three rules on every place on the board, which is
+  what makes it a measurement rather than a restatement.
+- Added: **a place says how tall it stands its skyline.** The band was a fixed eighth of the
+  frame everywhere, which is right for a horizon miles off and wrong for a wall a few
+  hundred feet away. The canyon states 2.4, the mirror takes the same multiple, and nothing
+  else on the board changes.
+- Fixed: **the wall's shading is continuous too, and the first capture is why it had to be.**
+  Each falling face was shaded by its own drop, so the shading ended where the segment did
+  and the wall came out as a row of upright panels - the row of objects the form exists to
+  stop, painted back over a continuous silhouette. One cap depth everywhere makes
+  neighbours share an edge exactly.
+- Changed: **two name branches went with it.** `buildSkyline` chose its silhouette colour by
+  testing for TUNDRA; a place states `skyBase` now. `ROCKFACE` took a `snow` boolean and
+  could only ever be grey rock or white rock; it takes a named tone, and the canyon walls
+  are the mountain's own ranks in sandstone rather than a sixth set of art
+  ([RLG-102](../fragments/RLG-102.md) removed the same shape from the horizon forms).
+- Changed: **the walls are the scenery system, not a second one.** RLG-104 calls them the
+  largest possible instance of the far-scenery question, so they are built from the ranks
+  MOUNTAIN already uses - tight to the kerb, packed until the silhouettes overlap into one
+  mass, and reaching back until the rock has no visible far edge. They inherit whatever
+  [RLG-073](../fragments/RLG-073.md) decides about culling instead of needing it now.
+- Fixed: **the engine stamps its own build again.** `window.ROAD_BUILD` sat at 0.9.15 while
+  the shell moved 22 versions past it, so the BUILD row in SETTINGS has been reporting a
+  half-updated cache on every build since - the one instrument for the fault that once
+  black-screened the game was crying wolf
+  ([RLG-139](../fragments/RLG-139.md)).
+- Note: **not judged on a device.** Whether the strip of sky between the masses reads as a
+  canyon at speed, whether the far bands recede or merely go pale, and whether a road at
+  0.90 of bend between walls is comfortable on a phone are the owner's call.
+
 <a id="v0-11-4"></a>
 ## [0.11.4] - 2026-09-01
 - Changed: **traffic engines carry six car lengths, rivals twelve.** Owner, having driven the first

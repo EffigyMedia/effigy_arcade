@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.10.37';
+window.ROAD_BUILD = '0.11.5';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5422,7 +5422,20 @@ function CITY_WINDOWS(bw, bh, x0, y0, put){
 
    `snow` swaps the palette for tundra without touching the shapes.
    ------------------------------------------------------------------------- */
-function ROCKFACE(g, W2, H2, i, snow){
+/* ---- ONE ROCK, THREE PALETTES (RLG-104) --------------------------------
+   `snow` was a boolean, so the art could only be grey rock or white rock. A
+   canyon is the same landform in red sandstone, and a third boolean would have
+   been the start of a list. `tone` NAMES the palette instead, which is the same
+   move the biome table just made for its skyline base.
+   ------------------------------------------------------------------------- */
+const ROCK_TONE = {
+  rock:  [['#3a3a40','#4a4a52','#5d6068'], ['#4c4c54','#5c5f68','#70747e']],
+  snow:  [['#e8eef6','#cfdae8','#aebfd4'], ['#ffffff','#e3ebf4','#c3d1e2']],
+  /* sandstone: the face in shadow is nearly maroon and the sunward slab is the
+     orange a canyon wall goes at any hour with sun on it */
+  sand:  [['#5e3324','#75422c','#8e5738'], ['#7d4630','#96593a','#b0714a']]
+};
+function ROCKFACE(g, W2, H2, i, tone){
   /* ---- THE LAYER HAS TO RISE WITH THE DISTANCE OUT ---------------------
      `kind` and the lateral offset are drawn from the SAME hash, so they move
      together - and the mapping has to keep them together. `i % 3` cycles
@@ -5432,9 +5445,7 @@ function ROCKFACE(g, W2, H2, i, snow){
      is painted. */
   const layer = (i / 2) | 0;           /* 0 near, 2 far */
   const form = i % 2;
-  const pal = snow
-    ? [['#e8eef6','#cfdae8','#aebfd4'], ['#ffffff','#e3ebf4','#c3d1e2']]
-    : [['#3a3a40','#4a4a52','#5d6068'], ['#4c4c54','#5c5f68','#70747e']];
+  const pal = ROCK_TONE[tone] || ROCK_TONE.rock;
   const face = pal[0][layer], lit = pal[1][layer];
 
   /* the slope leans OUT of frame - a wall of rock the road passes between,
@@ -5477,9 +5488,10 @@ function ROCKFACE(g, W2, H2, i, snow){
   g.closePath();
   g.fill();
 
-  /* and a snow line on the rock ones, high up, so a mountain reads as a
-     mountain and not as a quarry. Tundra is white to the ground already. */
-  if(!snow){
+  /* and a snow line on the grey ones, high up, so a mountain reads as a
+     mountain and not as a quarry. Tundra is white to the ground already, and a
+     canyon in the desert has no snow on it at all. */
+  if(tone === 'rock'){
     g.fillStyle = 'rgba(226,236,248,.80)';
     g.beginPath();
     g.moveTo(0, top + H2*0.16);
@@ -5859,7 +5871,7 @@ const SCENERY = {
      ------------------------------------------------------------------- */
   MOUNTAIN: { density:0.85, rowDensity:0.46, rows:3, out:0.35, outFar:8.0,
               w:1.60, h:2.30, spread:2.60, kinds:6,
-              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, false) },
+              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, 'rock') },
   TUNDRA:   { density:0.85, rowDensity:0.46, rows:3, out:0.35, outFar:8.0,
               w:1.60, h:2.30, spread:2.60, kinds:6,
               /* ---- THE SAME ROCK, PAINTED WHITE (RLG-059) --------------
@@ -5869,7 +5881,28 @@ const SCENERY = {
                  is mountain's set with a palette, which halves the work and
                  guarantees the two places read as the same landscape under
                  different weather. */
-              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, true) },
+              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, 'snow') },
+  /* ---- THE WALLS, WHICH ARE MOUNTAIN'S ROCK STOOD CLOSE (RLG-104) -----
+     The ruling calls the walls "the largest possible instance" of the far
+     scenery question [[RLG-073]] settles - outboard, enormous, and on both
+     sides at once. So they are not a new drawing: they are the ranks MOUNTAIN
+     already uses, brought in to the kerb, packed until the ranks overlap, and
+     painted sandstone.
+
+     `out` 0.10 IS WHERE THE CORNFIELD STANDS, which is the number the owner
+     used to say "tight to the road edge" during the tunnel work. `outFar` 9.0
+     carries the ranks back far enough that no far edge of the rock is visible,
+     the way the corn has no far edge.
+
+     AND THE DENSITY IS WHAT MAKES IT A WALL RATHER THAN BOULDERS. At 0.85 over
+     three ranks MOUNTAIN reads as outcrops with land between them; at 0.98 over
+     five, with each object nearly twice as wide, the silhouettes overlap and
+     the eye reads one mass. The far skyline behind it is continuous by
+     construction, so the two agree.
+     ------------------------------------------------------------------ */
+  CANYON:   { density:0.98, rowDensity:0.72, rows:5, out:0.10, outFar:9.0,
+              w:2.10, h:2.90, spread:2.20, kinds:6,
+              build:(g,W2,H2,i)=>ROCKFACE(g, W2, H2, i, 'sand') },
   CITY:   { density:0.62, w:1.10, h:3.40, out:2.24, spread:1.50, kinds:4, lit:true,
             build:(g,W2,H2,i)=>{
               /* ---- A BUILDING, AND ITS WINDOWS ARE A SECOND SHEET ---------
@@ -6328,6 +6361,13 @@ function skylineFor(key){
    without being rebuilt every frame */
 function skyBucket(){ return Math.round(phase() * 40); }
 
+/* how tall a place stands its skyline, as a multiple of the ordinary band. 1 is
+   a horizon miles off, which is every place but the canyon (RLG-104). */
+function skyRiseOf(key){
+  const B = BIOMES[key];
+  return (B && B.skyRise) || 1;
+}
+
 /* ---- THE CITY IS THE PLACE'S, NOT THE HOUR'S (RLG-094) ------------------
    The plan - where every building, peak and tree stands, how wide and how tall,
    and which of a tower's windows exist - was built inside `buildSkyline`, from
@@ -6351,11 +6391,73 @@ function skyBucket(){ return Math.round(phase() * 40); }
    plan is cached per biome and has nowhere else to come from, so a later change
    to the painting cannot reach the shapes even by accident.
    ------------------------------------------------------------------------- */
+/* ---- A HORIZON THAT IS ONE MASS, NOT A ROW OF OBJECTS (RLG-104) ---------
+   THREE PLACES ASKED FOR THE SAME MISSING THING BEFORE ANY OF THEM WAS BUILT,
+   and that is why it is built once and deliberately rather than three times by
+   accident. A canyon wall ([[RLG-104]]), the towers and deck of a bridge
+   ([[RLG-112]]) and a jungle canopy ([[RLG-113]]) are all CONTINUOUS: they have
+   no gaps, no individual object readable in them, and a crest that wanders
+   rather than a set of silhouettes standing apart.
+
+   `skylinePlanFor` could not express that. Every form it had walks along the
+   horizon placing a free-standing shape and then a GAP, and each shape rolls
+   its own height with no memory of its neighbour. Run that with the gap set to
+   zero and the result is a comb of unrelated columns, not a ridge.
+
+   SO A CONTINUOUS FORM IS PLANNED THE OTHER WAY ROUND. The crest is a bounded
+   RANDOM WALK sampled at a fixed step, and each plan entry carries the height at
+   BOTH of its ends - so a segment is a quad from its neighbour's crest to the
+   next one, and the profile is a connected line by construction rather than by
+   the gaps happening to be zero.
+
+   AND IT HAS TO CLOSE ON ITSELF, which is the part a first attempt would miss.
+   The skyline sprite TILES across the frame, so a walk that ends where it likes
+   puts a cliff at the seam and repeats it every tile. The last fifth of the walk
+   is bent back toward its own first sample, which costs one loop and makes the
+   seam unfindable.
+
+   THE THREE PLACES DIFFER ONLY IN THIS TABLE. A wall is coarse, tall and steep;
+   a canopy will be fine, low and gentle. Neither needs a line of code.
+   ------------------------------------------------------------------------- */
+const SKY_CONTINUOUS = {
+  /* step  how far apart the crest is sampled, in sprite pixels
+     lo/hi the crest's range, as a fraction of the band's own height
+     rough  how far one sample may move from the last, as a fraction of that
+            range. Low is a plateau, high is a saw. */
+  ridge: { kind:'ridge', step:44, lo:0.30, hi:1.00, rough:0.30 }
+};
+function contPlan(C, band, w, h){
+  const segs = Math.max(6, Math.round(w / (C.step * band.gap)));
+  const step = w / segs;
+  const lo = C.lo * h * band.tall, hi = C.hi * h * band.tall;
+  const ys = [];
+  let y = lo + Math.random() * (hi - lo);
+  for(let i = 0; i < segs; i++){
+    ys.push(y);
+    y = clamp(y + (Math.random()*2 - 1) * C.rough * (hi - lo), lo, hi);
+  }
+  /* the seam: bend the tail back onto the head, so the tile repeats without a
+     step in it. Over a fifth of the walk, which is long enough that the bend
+     reads as a slope rather than as a correction. */
+  const back = Math.max(2, Math.round(segs * 0.2));
+  for(let i = segs - back; i < segs; i++){
+    const t = (i - (segs - back) + 1) / back;
+    ys[i] = ys[i] * (1 - t) + ys[0] * t;
+  }
+  const plan = [];
+  for(let i = 0; i < segs; i++)
+    plan.push({ x: i * step, bw: step, bh: ys[i], bh1: ys[(i + 1) % segs],
+                wins: [], kind: C.kind });
+  return plan;
+}
+
 const skylinePlans = {};
 function skylinePlanFor(B, w, h, BANDS){
   const hit = skylinePlans[B.name];
   if(hit) return hit;
   const plans = BANDS.map(band => {
+    const cont = SKY_CONTINUOUS[B.skyForm];
+    if(cont) return contPlan(cont, band, w, h);
     const plan = [];
     let x = 0;
     while(x < w){
@@ -6445,7 +6547,14 @@ function buildSkyline(){
   /* the sky where it meets the ground: what distance washes a silhouette
      toward, and the reason the skyline changes colour at dusk on its own */
   const haze = hexRGB(skyStops()[3]);
-  const base = B.name === 'TUNDRA' ? [200,214,230] : [21,12,34];
+  /* ---- WHAT THE SILHOUETTE IS MADE OF, STATED BY THE PLACE (RLG-104) ----
+     This branched on `B.name === 'TUNDRA'`, which is the same fall-through
+     shape [[RLG-102]] already had to remove from `skylinePlanFor` when a
+     farmland was given a city. A place STATES its rock the way it states its
+     rain: the canyon's wall is red sandstone and the tundra's ridges are ice,
+     and neither needs the painter to recognise a name.
+     ------------------------------------------------------------------ */
+  const base = hexRGB(B.skyBase || '#150c22');
   const mixTo = (t) => 'rgb(' + Math.round(base[0] + (haze[0]-base[0])*t) + ','
                               + Math.round(base[1] + (haze[1]-base[1])*t) + ','
                               + Math.round(base[2] + (haze[2]-base[2])*t) + ')';
@@ -6618,6 +6727,47 @@ function paintSkylineShape(g, h, b, face, flank, band){
     g.lineTo(b.x + b.bw*0.62, h);
     g.closePath(); g.fill();
     g.restore();
+  } else if(b.kind === 'ridge'){
+    /* ---- A SEGMENT OF A CONTINUOUS CREST (RLG-104) ------------------
+       A quad from this sample's crest to the next one. Because the next
+       segment starts where this one ends, a run of them is one unbroken
+       line, and no gap between objects has to be avoided.
+       ------------------------------------------------------------ */
+    const y0 = h - b.bh, y1 = h - b.bh1;
+    g.beginPath();
+    g.moveTo(b.x, h);
+    g.lineTo(b.x, y0);
+    g.lineTo(b.x + b.bw, y1);
+    g.lineTo(b.x + b.bw, h);
+    g.closePath(); g.fill();
+    /* ---- AND THE RELIEF HAS TO BE CONTINUOUS TOO (RLG-104) -----------
+       Every other form reads as a solid because there is SKY either side of
+       it telling the eye where the object ends. A continuous mass has none,
+       so without a second tone it is a flat cut-out the whole width of the
+       frame.
+
+       THE FIRST ATTEMPT SHADED EACH FALLING FACE BY ITS OWN DROP, and the
+       capture showed exactly what that costs: a segment's shading ended
+       where the segment did, so the wall came out as a row of upright
+       panels - the row of objects this form exists to stop, painted back on
+       top of a continuous silhouette.
+
+       A CAP OF ONE DEPTH FIXES IT BY CONSTRUCTION. Both edges of the band
+       are the crest itself, one offset from the other by the same amount
+       everywhere, so neighbours share an edge exactly and the ribbon is as
+       unbroken as the crest above it. What it reads as is rim rock with the
+       sun on it, which is what the top of a canyon wall does.
+       ------------------------------------------------------------ */
+    const cap = h * 0.055 * (1 - band.haze);
+    if(cap > 0.5){
+      g.fillStyle = flank;
+      g.beginPath();
+      g.moveTo(b.x, y0);
+      g.lineTo(b.x + b.bw, y1);
+      g.lineTo(b.x + b.bw, y1 + cap);
+      g.lineTo(b.x, y0 + cap);
+      g.closePath(); g.fill();
+    }
   } else if(b.kind === 'mesa'){
     g.beginPath();
     g.moveTo(b.x, h);
@@ -8604,7 +8754,41 @@ const BIOMES = {
   TUNDRA:   { name:'TUNDRA',   temp:0.05, vary:0.10, precip:0.15, bias:0.90,
               hill:0.80, bend:0.75,
               grassLo:'#3e4a52', grassHi:'#54626c',
-              sky:'#2e3c50', city:0.06, trees:0.22, skyForm:'peak' }
+              /* ice rather than rock, and it is STATED now - it used to be a
+                 name branch inside `buildSkyline` (RLG-104) */
+              skyBase:'#c8d6e6',
+              sky:'#2e3c50', city:0.06, trees:0.22, skyForm:'peak' },
+  /* ---- THE PLACE WHOSE DISTANCE IS A WALL (RLG-104) -------------------
+     Owner, 2026-08-31: of the four gaps offered, canyon and tunnel are the two
+     to build. THE TUNNEL AND THIS ARE OPPOSITE PROBLEMS. A tunnel has no
+     distance in it at all, so the far field is painted over; a canyon has
+     plenty of distance and every bit of it is rock. That is the first place
+     where a horizon of free-standing shapes with sky between them does not
+     hold, and `skyForm:'ridge'` is the answer - see `SKY_CONTINUOUS`.
+
+     `skyRise` IS THE SECOND HALF OF IT AND IT IS NOT DECORATION. The skyline
+     band is a fixed eighth of the frame for every place on the board, which is
+     right for something miles off and wrong for a wall a few hundred feet away.
+     At 2.4 the crest leaves the top of the frame in the high places and drops
+     to show sky in the low ones, so the sky is a strip between masses rather
+     than the top two thirds - which is what the ruling asked for.
+
+     HIGH ON BEND AND MODERATE ON HILL, and the ruling says why: a canyon floor
+     follows the water that cut it, so the road turns constantly and climbs
+     little. Nothing else on the board is that pair - MOUNTAIN is 1.00 on both
+     and FOREST is 0.85 over 0.70. NOT 1.00 on bend: the corner cap in this
+     renderer is a limit rather than a taste, and the ruling's own warning is
+     that this place must not become a corridor the player cannot leave.
+
+     AND IT IS HOT, DRY AND CLEAR. A slot canyon is cut in desert rock. `precip`
+     0.10 is the second driest on the board after the desert's 0.04, and `bias`
+     0.55 keeps the sky open between the rare showers.
+     ------------------------------------------------------------------ */
+  CANYON:   { name:'CANYON',   temp:0.85, vary:0.15, precip:0.10, bias:0.55,
+              hill:0.40, bend:0.90,
+              grassLo:'#6b4a30', grassHi:'#8c6242',
+              skyBase:'#4a2318', skyRise:2.4,
+              sky:'#5e3524', city:0.00, trees:0.04, skyForm:'ridge' }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
 let biome = 'FOREST';
@@ -13843,8 +14027,19 @@ function drawSky(){
   const skyT = bioMix(farIdx);
   const outSky = skylineFor(biomeFrom), inSky = skylineFor(biomeTo);
   const sw = inSky.body.width, sh = inSky.body.height;
-  const scale = (H*0.13)/sh;
+  /* ---- HOW TALL THE BAND STANDS IS THE PLACE'S TO SAY (RLG-104) --------
+     H*0.13 is right for a horizon that is miles off, and every place had it.
+     A canyon wall is a few hundred feet away and has to leave the top of the
+     frame, so the place states a multiple. The scale is uniform, so a taller
+     band is a wider tile too - which is correct: a nearer mass is bigger in
+     both directions, and the seam falls off the edge of the screen more often
+     rather than less.
+     -------------------------------------------------------------------- */
+  const scaleFor = (k) => (H*0.13*skyRiseOf(k))/sh;
+  const scale = scaleFor(biomeTo);
   const dw = sw*scale, dh = sh*scale;
+  const oScale = scaleFor(biomeFrom);
+  const odw = sw*oScale, odh = sh*oScale;
   /* The skyline is miles off, so it should barely move. It was sliding at
      0.07 of the camera, which read as a wall a few streets away. */
   /* the bend swings the city across the glass — a right-hander pushes it left */
@@ -13937,11 +14132,15 @@ function drawSky(){
      receding is faked: the outgoing one sinks and shrinks, the incoming one
      rises from behind the horizon. Sideways would read as the world rotating.
      -------------------------------------------------------------------- */
-  const paint = (art, lit, alpha, drop, sc) => {
+  /* `bdw`/`bdh` default to the incoming skyline's own size. The OUTGOING one
+     passes its own, because the two places may not stand the same height -
+     a canyon handing over to a desert is a wall giving way to a horizon
+     (RLG-104). */
+  const paint = (art, lit, alpha, drop, sc, bdw, bdh) => {
     if(alpha <= 0.002) return;
-    const w2 = dw * sc, h2 = dh * sc;
-    let o2 = ox;
-    if(w2 !== dw){ o2 = ox % w2; if(o2 > 0) o2 -= w2; }
+    const w2 = (bdw === undefined ? dw : bdw) * sc, h2 = (bdh === undefined ? dh : bdh) * sc;
+    let o2 = ox % w2;
+    if(o2 > 0) o2 -= w2;
     const y2 = horizon - h2 + 1 + drop;
     ctx.globalAlpha = alpha;
     for(let x=o2; x<W+w2; x+=w2) ctx.drawImage(art, x, y2, w2, h2);
@@ -13957,19 +14156,19 @@ function drawSky(){
   };
 
   if(skyT <= 0.002){
-    paint(outSky.body, outSky.lit, 1, 0, 1);
+    paint(outSky.body, outSky.lit, 1, 0, 1, odw, odh);
   } else if(skyT >= 0.998){
     paint(inSky.body, inSky.lit, 1, 0, 1);
   } else if(SKY_SWAP === 'fade'){
-    paint(outSky.body, outSky.lit, 1 - skyT, 0, 1);
+    paint(outSky.body, outSky.lit, 1 - skyT, 0, 1, odw, odh);
     paint(inSky.body,  inSky.lit,  skyT,     0, 1);
   } else {
     /* the old place sinks behind the horizon and shrinks with distance; the new
        one comes up from behind it. Alpha still carries some of the hand-over,
        because a silhouette sliding under the horizon line would otherwise be
        cut in half by it rather than fading into the haze. */
-    paint(outSky.body, outSky.lit, Math.max(0, 1 - skyT*1.35), dh * skyT * 0.85,
-          1 - skyT * 0.30);
+    paint(outSky.body, outSky.lit, Math.max(0, 1 - skyT*1.35), odh * skyT * 0.85,
+          1 - skyT * 0.30, odw, odh);
     paint(inSky.body,  inSky.lit,  Math.min(1, skyT * 1.35),   dh * (1 - skyT) * 0.85,
           0.70 + skyT * 0.30);
   }
@@ -17161,7 +17360,9 @@ function drawMirrorFull(mx, my, mw, mh){
        tall against a horizon at H*0.40 - about a third of the sky band. At 1.15
        of the mirror's band the treeline filled the glass and read as a hedge
        three feet behind the car. */
-    const sh2 = (vpy - my) * 0.38;
+    /* and the place's own rise applies here too, or a canyon behind you is a
+       distant ridge while the same wall ahead leaves the frame (RLG-104) */
+    const sh2 = (vpy - my) * 0.38 * skyRiseOf(biomeFrom);
     const sw2 = sh2 * (mSky.body.width / mSky.body.height);
     let sox = (camX * mw * 0.02) % sw2;
     if(sox > 0) sox -= sw2;
@@ -19757,6 +19958,16 @@ requestAnimationFrame(frameLoop);
   API.skyForm = function(k){
     const B = BIOMES[k] || BIOMES.FOREST;
     return B.skyForm || 'tower';
+  };
+  /* how tall a place stands its skyline, as a multiple of the ordinary band.
+     A check reads it to prove a wall is not drawn at horizon scale (RLG-104). */
+  API.skyRise = function(k){ return skyRiseOf(k || biome); };
+  /* the sprite's own size, because `skylineProfile` reports an EMPTY column as
+     the sprite height - so a check that counts gaps has to know what that is
+     rather than typing 220 into the harness */
+  API.skylineSize = function(k){
+    const a = skylineFor(k || biome);
+    return { w: a.body.width, h: a.body.height };
   };
   API.roadShape = function(k){
     const B = BIOMES[k || biome] || BIOMES.FOREST;
