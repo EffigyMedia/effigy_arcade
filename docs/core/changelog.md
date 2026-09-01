@@ -14,6 +14,42 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-16"></a>
+## [0.11.16] - 2026-09-01
+- Fixed: **the tunnel wall is not painted over the traffic any more.** Owner, 2026-09-01, from
+  the device, with a capture: cars inside the bore had the wall and the floor drawn straight
+  across them ([RLG-145](../fragments/RLG-145.md), item 4).
+- Note: **both halves of the draw order were already right and they contradicted each other.**
+  `drawRoad` paints the ground out to the frame edge, so the bore has to come after it or the
+  verge buries the foot of the wall - that is [RLG-105](../fragments/RLG-105.md) and it was
+  measured. But `drawRoad` also EMITS THE SPRITES as it walks, so the one call that must
+  precede the bore also puts every car underneath it.
+- Changed: **so the cars leave the road pass.** While a bore is on the screen the sprite pass
+  records the buckets it was asked to paint instead of painting them, and they are painted
+  after the walls. The EMISSION DECISION does not move, and that decision is the occlusion: a
+  bucket the road never reached is still never painted, which is how a car behind a brow stays
+  hidden. The partial crest clip reads `hillClip` and does not care when it is called.
+- Changed: **and only what stands on the road is held back.** The first build held back every
+  sprite and a capture showed why that is wrong - a bridge tower came up through the tunnel
+  ceiling in red lattice. A sign, a gantry and a tower are OUTSIDE the tube and the wall is
+  correctly in front of them. Traffic, police, rivals, roadblocks and crates are on the
+  carriageway with you, and only those go over the wall.
+- Changed: **the far end still goes black, over the cars as well as the road.** The depth fade
+  moved into its own pass after the traffic, so a car deep in the bore is swallowed by the same
+  darkness the tarmac is instead of hanging in it as a lit sprite. The fade and the ceiling
+  lamps keep the order they had with respect to each other.
+- Added: **`tools/bore-order-test.py`**, which settles a draw order in pixels. The road is
+  frozen, one car is parked at a stated distance and offset, and the canvas is differenced with
+  and without it. The control is that same car moved back to the middle of the road: the walls
+  converge on the vanishing point, so they close over the EDGES long before the middle, and the
+  centred car is an identical sprite at an identical size under identical light.
+- Note: **the first version of that check passed with the defect present.** It compared a
+  tunnel against FARMLAND, which has moving scenery and so differs from itself by hundreds of
+  pixels, and it measured a car at the centre of the road where the bore never covered it. The
+  defect was put back and watched failing before the rewrite was believed: a car at the road
+  edge keeps 15 to 75 per cent of itself with the bore over it and 82 to 99 with the bore under
+  it, and the check reads the worst of twelve placements.
+
 <a id="v0-11-15"></a>
 ## [0.11.15] - 2026-09-01
 - Fixed: **the tunnel is not transparent any more.** Owner, 2026-09-01, on a capture of the

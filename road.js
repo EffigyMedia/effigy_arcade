@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.15';
+window.ROAD_BUILD = '0.11.16';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -15483,12 +15483,28 @@ function borePoints(far){
   }
   return pts;
 }
+/* the two lines a bore is measured between: the top of the wall, and the crown
+   of the vault that springs from it. MODULE SCOPE because both passes ask for
+   them - they were locals of `drawBore` until the depth pass moved out. */
+const wallTop = (q) => q.top;
+const crownOf = (q) => q.top - (q.xr - q.xl) * BORE.arch;
+
+/* ---- THE TUBE IS TWO PASSES NOW, WITH THE CARS BETWEEN THEM (RLG-145) --
+   The walls and the vault go over the verge, and the cars go over the walls -
+   but the DEPTH FADE has to go over the cars as well, or a car standing in the
+   black far end is a bright sprite hanging in nothing. So `drawBore` builds the
+   tube and stops, `flushSprites` paints the traffic, and `drawBoreDepth` closes
+   the far end over both. The fade and the lamps keep the order they had with
+   respect to each other, because that order is what the owner has seen.
+   ------------------------------------------------------------------------ */
+let borePts = null;
 function drawBore(){
+  borePts = null;
   const d = placeDark();
   if(d <= 0.01) return;
   const pts = borePoints();
   if(pts.length < 3) return;
-  const lit = lampsOn();
+  borePts = pts;
   ctx.save();
   /* SOLID. The walls are not a matter of degree - see `borePoints` (RLG-144). */
 
@@ -15503,8 +15519,6 @@ function drawBore(){
      there. Everything below is repainted from those photographs, and the
      proportions stay where the previous correction put them.
      ---------------------------------------------------------------- */
-  const wallTop = (q) => q.top;
-  const crownOf = (q) => q.top - (q.xr - q.xl) * BORE.arch;
 
   /* the vault: a shallow arch springing from the wall tops, ribbed across */
   ctx.fillStyle = '#8d8577';
@@ -15593,6 +15607,17 @@ function drawBore(){
     ctx.closePath(); ctx.fill();
   }
 
+  ctx.restore();
+}
+
+/* the far end going black, and the lamps in it - drawn after the traffic so a
+   car deep in the bore is swallowed by the same darkness the road is (RLG-145) */
+function drawBoreDepth(){
+  const pts = borePts;
+  if(!pts) return;
+  const d = placeDark();
+  const lit = lampsOn();
+  ctx.save();
   /* ---- AND THE LIGHTING, WHICH IS A STRIP AND NOT A ROW OF BLOBS -----
      Both photographs show a continuous run down the crown and a second along
      each wall top. That continuity is most of what says "tunnel" rather than
@@ -17068,11 +17093,64 @@ function sweepUnemitted(){
   }
 }
 
+/* ---- THE BORE GOES OVER THE VERGE AND UNDER THE CARS (RLG-145) ---------
+   Owner, 2026-09-01, with a capture: traffic inside a tunnel had the wall and
+   the floor painted straight across it.
+
+   BOTH HALVES OF THE ORDER WERE ALREADY RIGHT AND THEY CONTRADICTED EACH OTHER.
+   `drawRoad` paints the ground out to the frame edge, so the bore has to be
+   drawn AFTER it or the verge buries the foot of the wall - that is RLG-105 and
+   it was measured. But `drawRoad` also EMITS THE SPRITES as it walks, so the
+   same call that must precede the bore also puts every car underneath it.
+
+   SO THE CARS LEAVE THE ROAD PASS. While `spriteDefer` is armed, `emitBucket`
+   records the bucket it was asked to paint and paints nothing; `flushSprites`
+   walks that record in the order it was made, after the bore. The EMISSION
+   DECISION does not move, and it is the emission decision that is the occlusion
+   (see `drawSprite`) - a bucket the road never reached is still never painted,
+   which is how a car behind a brow stays hidden. The partial crest clip is
+   `crestGate`, which reads `hillClip` and does not care when it is called.
+
+   IT IS ARMED ONLY WHERE THERE IS A BORE. Out in the open the sprites paint
+   inside the road pass exactly as before, so nothing outside a tunnel changes
+   its draw order at all.
+   ------------------------------------------------------------------------ */
+let spriteDefer = null;
+/* ---- AND ONLY WHAT IS STANDING ON THE ROAD (RLG-145) -------------------
+   THE FIRST BUILD HELD BACK EVERY SPRITE AND THE CAPTURE SHOWED WHY THAT IS
+   WRONG: a bridge tower came up through the tunnel ceiling in red lattice. A
+   sign, a gantry and a tower are OUTSIDE the tube, and the wall is correctly in
+   front of them - that is the RLG-105 order doing its job, not a fault.
+
+   So the split is by where the thing stands. Traffic, police, rivals, a
+   roadblock and a crate are all on the carriageway, inside the bore with you,
+   and they go over the wall. Everything else stays under it.
+   ---------------------------------------------------------------------- */
+const ON_ROAD = { t:1, k:1, g:1, b:1, r:1 };
 function emitBucket(n){
   const list = spriteBuckets[n];
   if(!list || emitted[n]) return;
   emitted[n] = 1;
+  if(spriteDefer){
+    paintBucket(list, false);            /* the scenery, in its own place */
+    for(const it of list) if(ON_ROAD[it.kind]){ spriteDefer.push(n); break; }
+    return;
+  }
+  paintBucket(list, null);               /* no bore: the whole bucket, as before */
+}
+/* the buckets the road pass held back, in the order it would have painted them */
+function flushSprites(){
+  if(!spriteDefer) return;
+  const q = spriteDefer;
+  spriteDefer = null;
+  for(const n of q) paintBucket(spriteBuckets[n], true);
+}
+/* `onRoad` selects half a bucket: true for what stands on the carriageway,
+   false for everything else, null for all of it */
+function paintBucket(list, onRoad){
+  if(!list) return;
   for(const it of list){
+    if(onRoad !== null && !!ON_ROAD[it.kind] !== onRoad) continue;
     if(it.kind==='c'){
       drawGantry(it.o);
     } else if(it.kind==='w'){
@@ -18248,6 +18326,13 @@ function draw(){
   /* the bore goes over the sky, the skyline and the haze, and UNDER the road -
      you are inside it, and the tarmac is still lit (RLG-105) */
   drawWorld();          /* buckets the sprites */
+  /* ---- AND THE CARS COME OUT OF THE ROAD PASS WHERE THERE IS A BORE ------
+     RLG-145. Inside a tunnel the sprites are recorded by the road pass and
+     painted after the walls, because the walls have to be over the verge and
+     under the cars and one pass cannot be both. See `emitBucket`. The test is
+     the same one `drawBore` makes, so the two can never disagree about whether
+     a bore is on the screen this frame. */
+  spriteDefer = placeDark() > 0.01 ? [] : null;
   drawRoad();           /* paints the road AND emits them, far to near */
   /* A COAST'S BOATS ARE SCENERY and are drawn by the road pass itself - see
      `drawScenery`. A distance-placed fleet was tried here first and the owner
@@ -18269,6 +18354,13 @@ function draw(){
 
      A wall is nearer than the ground behind it, so it draws after it. */
   drawBore();
+  /* the cars the road pass held back, in the order it would have painted them.
+     Before `drawPortal`, because the portal is a rock wall standing across the
+     road and a car behind a wall is behind it. */
+  flushSprites();
+  /* and the far end closes over them, so distance swallows a car in a tunnel
+     the same way it swallows the tarmac */
+  drawBoreDepth();
   drawPortal();
   /* the headlights land on the road and on whatever is standing in them, so
      they go after the road and its sprites and before the player's own car -
