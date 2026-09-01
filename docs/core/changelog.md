@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-45"></a>
+## [0.10.45] - 2026-08-31
+- Changed: **it precipitates about half as often.** Owner, after twenty to thirty minutes of play:
+  "it seemed to precipitate a lot. Maybe we should reduce the overall chances of precipitation." The
+  table averaged 0.366 and the weather rolls every 35 to 80 seconds, which is nine or ten events in a
+  twenty-five minute session - a dry road was the exception. One multiplier at 0.55 over the whole
+  board, so the places keep their relationship to each other
+  ([RLG-136](../fragments/RLG-136.md)).
+- Changed: **the scale is applied at the roll, not to the table.** Scaling the stated precipitation
+  would have dragged everything derived from it down too: a tundra's snow chance would have fallen
+  under the taper threshold, so snow carried into a tundra would have started tapering and silently
+  reversed an owner ruling, and the cloud would have thinned with the rain. Applied at the roll, only
+  the frequency moves - and an overcast day with no rain in it becomes commoner, which the sky model
+  already calls the commonest sky there is.
+- Measured through the engine's own roll: a forest has weather on 31% of rolls against 52% unscaled,
+  and a swamp still has it on 37% against a desert's 2% - so the board was scaled rather than
+  flattened. `API.precipScale` is live, because how much weather a session carries is judged by
+  playing rather than by reading.
+
 <a id="v0-10-44"></a>
 ## [0.10.44] - 2026-08-31
 - Verified: **a slick road runs you wide in a bend, and by two mechanisms that compound.** Owner: "I

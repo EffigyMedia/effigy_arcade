@@ -777,7 +777,11 @@ def main():
             print('      the ENGINE rolling in a %s CITY (temp %.2f): snow %.3f  rain %.3f  dry %.3f'
                   % (label, live[label]['temp'], live[label]['snow'],
                      live[label]['rain'], live[label]['dry']))
-        res.check(live['cold']['snow'] > 0.25 and live['warm']['snow'] == 0,
+        # 0.10, NOT 0.25. This was calibrated against the table's own precipitation, before
+        # RLG-136 scaled how often it rains at all - a cold city rolled snow on 0.362 of
+        # rolls and now rolls it on 0.167. What is asserted is unchanged in kind: a cold
+        # city snows and a warm one cannot. Only the frequency behind it moved.
+        res.check(live['cold']['snow'] > 0.10 and live['warm']['snow'] == 0,
                   'the ENGINE rolls its weather against the instance, so a cold city snows and a warm one cannot',
                   'cold %.3f, warm %.3f' % (live['cold']['snow'], live['warm']['snow']))
         # AND THE PLACE'S TOTAL WEATHER IS UNCHANGED BY ITS TEMPERATURE, which is the
@@ -789,6 +793,52 @@ def main():
                   'and it rolls weather as often either way - the temperature says what falls, not whether',
                   'cold has weather on %.1f%% of rolls, warm on %.1f%%'
                   % (100 * wet_cold, 100 * wet_warm))
+        page.evaluate("() => window.__probe.road.setBiomePair('FOREST','FOREST')")
+
+        # ---- AND HOW OFTEN IT RAINS AT ALL (RLG-136) ------------------------------------
+        # Owner, 2026-08-31, after twenty to thirty minutes of play: "it seemed to precipitate
+        # a lot. Maybe we should reduce the overall chances of precipitation." The table
+        # averaged 0.366 and the weather rolls every 35 to 80 seconds, which is nine or ten
+        # events in a twenty-five minute session.
+        #
+        # THE LEVER IS ASSERTED, NOT THE NUMBER. How much weather a session should carry is
+        # the owner's to choose by playing, so what this checks is that ONE multiplier moves
+        # the whole board and that the places keep their relationship to each other - which is
+        # what makes it a lever rather than eleven separate edits.
+        print()
+        print('  AND HOW OFTEN IT RAINS AT ALL, AS ONE LEVER')
+        scale = page.evaluate('() => window.__probe.road.precipScale()')
+        page.wait_for_timeout(150)
+        here = page.evaluate('(n) => window.__probe.road.sampleWeatherRolls(n)', 900)
+        page.evaluate('() => window.__probe.road.precipScale(1.0)')
+        full = page.evaluate('(n) => window.__probe.road.sampleWeatherRolls(n)', 900)
+        page.evaluate('(v) => window.__probe.road.precipScale(v)', scale)
+        back = page.evaluate('() => window.__probe.road.precipScale()')
+        wet_now, wet_full = 1 - here['dry'], 1 - full['dry']
+        print('      a forest: weather on %.0f%% of rolls at a scale of %.2f, %.0f%% unscaled'
+              % (wet_now * 100, scale, wet_full * 100))
+        res.check(0 < scale < 1,
+                  'the board is scaled back from the table it states',
+                  'the scale is %.2f' % scale)
+        res.check(wet_now < wet_full * 0.8,
+                  'and it really does rain less often, measured through the engine own roll',
+                  '%.3f of rolls against %.3f unscaled' % (wet_now, wet_full))
+        res.check(abs(back - scale) < 1e-9,
+                  'and the lever is live, so it can be dialled on a device without a rebuild',
+                  'it read %.2f after being set back' % back)
+        # AND THE PLACES KEEP THEIR ORDER. A lever that flattened the board would make every
+        # place equally wet, which is a different change from making everywhere drier.
+        page.evaluate("() => window.__probe.road.setBiomePair('SWAMP','SWAMP')")
+        page.wait_for_timeout(200)
+        swamp = page.evaluate('(n) => window.__probe.road.sampleWeatherRolls(n)', 900)
+        page.evaluate("() => window.__probe.road.setBiomePair('DESERT','DESERT')")
+        page.wait_for_timeout(200)
+        desert = page.evaluate('(n) => window.__probe.road.sampleWeatherRolls(n)', 900)
+        print('      a swamp still has weather on %.0f%% of rolls, a desert on %.0f%%'
+              % ((1 - swamp['dry']) * 100, (1 - desert['dry']) * 100))
+        res.check((1 - swamp['dry']) > (1 - desert['dry']) * 5,
+                  'and a swamp is still far wetter than a desert, so the board was scaled not flattened',
+                  'swamp %.3f against desert %.3f' % (1 - swamp['dry'], 1 - desert['dry']))
         page.evaluate("() => window.__probe.road.setBiomePair('FOREST','FOREST')")
 
         # ------------------------------ the biome shapes the road itself

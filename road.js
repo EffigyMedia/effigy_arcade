@@ -8363,6 +8363,10 @@ function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
    each weather event. Nothing is rolled per frame.
    ------------------------------------------------------------------------- */
 const CLIMATE_SWING = 0.25;
+/* how often it precipitates anywhere, against the table's own figures. Live
+   through `API.precipScale`, because how much weather a session should carry is
+   a judgment made by playing rather than by reading (RLG-136). */
+let PRECIP_SCALE = 0.55;
 /* ---- HOW MUCH WHITE A FREEZING PLACE HOLDS BEFORE ANYTHING FALLS --------
    Owner, 2026-08-31, having driven it: "The mountains base snow floor should be
    .1 snowiness. The tundra base snow floor should be .25 snowiness. Falling snow
@@ -9267,7 +9271,29 @@ function rollWeather(){
   /* the moment's temperature, and the share of this fall that is snow at it */
   const mt = clamp(B.temp + rnd(-CLIMATE_SWING, CLIMATE_SWING), 0, 1);
   const share = clamp((0.50 - mt) / 0.50, 0, 1);
-  const p = B.precip;
+  /* ---- HOW OFTEN IT RAINS AT ALL, AS ONE LEVER (RLG-136) --------------
+     Owner, 2026-08-31, after twenty to thirty minutes of play: "it seemed to
+     precipitate a lot. Maybe we should reduce the overall chances of
+     precipitation."
+
+     It did. The table averages 0.366 across the board and the weather rolls
+     every 35 to 80 seconds, which is about nine or ten events in a
+     twenty-five minute session - close enough to continuous that a dry road
+     was the exception.
+
+     ONE MULTIPLIER OVER THE WHOLE BOARD, so the places keep their relationship
+     to each other: a swamp is still sixteen times wetter than a desert, and one
+     number moves all of them. A per-place edit would have been eleven decisions
+     where the owner made one.
+
+     AND IT IS APPLIED HERE RATHER THAN IN `climateAt`, WHICH MATTERS. Scaling
+     the instance would drag everything derived down with it: the taper
+     thresholds read those same chances and would silently start tapering snow
+     as it entered a tundra, and the cloud would thin with the rain. Applied at
+     the roll, only the FREQUENCY moves. An overcast day with no rain in it then
+     becomes commoner, which is the commonest sky there is.
+     ---------------------------------------------------------------- */
+  const p = B.precip * PRECIP_SCALE;
   const r = Math.random();
   /* ONE PRECIPITATION CHANCE, SPLIT. `p * share` and then `p` rather than
      `snow` and then `snow + rain`: the second bound IS the place's whole chance
@@ -19331,6 +19357,7 @@ requestAnimationFrame(frameLoop);
      back. It writes the same variable the road writes, so everything downstream
      cannot tell the difference. */
   API.holdCurve = function(k){ curveHold = (k === null || k === undefined) ? null : k; return curveHold; };
+  API.precipScale = function(v){ if(v !== undefined) PRECIP_SCALE = v; return PRECIP_SCALE; };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };
   API.mass = function(){ return bodyMass(); };
