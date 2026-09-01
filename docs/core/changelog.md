@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-41"></a>
+## [0.10.41] - 2026-08-31
+- Changed: **transient messages sit under the mirror instead of across the road ahead.** Owner: "the
+  UI elements that pop up in the dead center of the screen block my view of the upcoming road, so I
+  think we should move that to just under the other information that's below the rearview mirror."
+  TWO mechanisms were printing in the middle - the DOM banner and the canvas labels - and moving one
+  would have left half the messages where they were, which no single screenshot would show
+  ([RLG-134](../fragments/RLG-134.md)).
+- Changed: **the band is measured from the information row rather than set as a percentage.**
+  `top:38%` is why it landed on the road on one phone and not another. The row already anchors itself
+  under the glass, so its own bottom is the honest answer to "just under the other information": the
+  engine reads that rect and publishes `--msg-top`, and the canvas labels ask for the same number. A
+  distance follows the thing it is a distance from.
+- Changed: **the floating labels stop climbing back over the road.** They drifted 75 pixels upward,
+  which was fine from the middle of an empty windscreen and would carry them into the mirror from the
+  new band. And the banner is smaller - it was sized to be read across an empty windscreen and now
+  shares the busiest band on the screen.
+- Added: **`tools/message-band-test.py`**, which checks both cabinets and both mechanisms. Its first
+  version compared the labels with the published variable, which is the engine agreeing with itself;
+  it compares them with the banner's own rect. Falsified by putting `top:38%` back: the banner sat at
+  328 against labels at 136, and every other check still passed - "below the row", "in the top half"
+  and "clears the horizon" are all true of 328 on a 900-tall screen.
+- Note: this answers the question [RLG-082](../fragments/RLG-082.md) was blocked on. It asked for
+  anchored relative spacing without knowing which elements on which screen; playing the game named
+  them.
+
 <a id="v0-10-40"></a>
 ## [0.10.40] - 2026-08-31
 - Fixed: **the checkpoint boards stay in the mirror instead of vanishing a second after you pass

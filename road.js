@@ -7055,6 +7055,58 @@ function blockClearance(b){
   return best;
 }
 
+/* ---- WHERE A TRANSIENT MESSAGE GOES (RLG-134) ---------------------------
+   Owner, 2026-08-31, having played through: "the UI elements that pop up in the
+   dead center of the screen block my view of the upcoming road, so I think we
+   should move that to just under the other information that's below the rearview
+   mirror."
+
+   THIS IS THE ANSWER [[RLG-082]] WAS BLOCKED ON. That fragment recorded a request
+   for "the anchored relative spacing of UI elements" and could not start, because
+   which elements on which screen was unknown and the note said to ask with a
+   capture rather than guess. Playing the game answered it: the transient
+   messages, on the driving screen, in the wrong PLACE rather than at the wrong
+   size.
+
+   TWO MECHANISMS PRINT IN THE MIDDLE AND BOTH HAD TO MOVE. `#warn` is a DOM
+   element styled at `top:38%` in both driving cabinets; the floating labels are
+   canvas text in `fx`, pushed between `H*0.50` and `H*0.62`. Moving one would
+   have left half the messages over the road, and they cannot share a mechanism
+   because canvas text cannot read a CSS variable.
+
+   SO THE BAND IS COMPUTED ONCE, HERE, AND PUBLISHED TO BOTH. The canvas reads
+   the number and the stylesheet reads `--msg-top`, which is what stops the two
+   drifting apart the way the mirror and the gantry cull did.
+
+   AND IT IS MEASURED RATHER THAN GUESSED AT. A percentage is what put the
+   banner at 38% and is why it lands on the road on one phone and not another.
+   `.toprow` already anchors itself under the glass with `--mirror-top` and
+   `--mirror-h`, so its own BOTTOM is the honest answer to "just under the other
+   information" - read from the element rather than reconstructed from the
+   numbers that placed it. The canvas is sized in CSS pixels, so a DOM
+   measurement and a canvas coordinate are the same unit.
+   ------------------------------------------------------------------------- */
+let msgTopPx = -1, msgPub = -1;
+function publishMsgBand(){
+  let y;
+  const row = document.querySelector('.toprow');
+  const r = row && row.getBoundingClientRect();
+  if(r && r.height > 0 && cv){
+    /* the row's bottom, in the canvas's own coordinates */
+    y = (r.bottom - cv.getBoundingClientRect().top) + 10;
+  } else {
+    /* no row on this screen: clear the glass and a line's worth of nothing */
+    y = mirrorRect.y + mirrorRect.h + 34;
+  }
+  msgTopPx = Math.round(y);
+  if(msgPub !== msgTopPx){
+    msgPub = msgTopPx;
+    document.documentElement.style.setProperty('--msg-top', msgTopPx + 'px');
+  }
+}
+/* the canvas labels ask for the same band the banner uses */
+function msgY(){ return msgTopPx > 0 ? msgTopPx : H * 0.38; }
+
 function flashWarn(t){
   if (t.indexOf('ROADBLOCK') === 0) snd.warn();
   warnEl.textContent = t;
@@ -12558,7 +12610,7 @@ function step(dt){
       const fast     = spd > MAX_SPD * 0.62;
       if(sideOn && closing && fast){
         wreckCop(k, 'pit');
-        fx.push({txt:'PIT MANOEUVRE', x:W/2, y:H*0.50, vy:-60, age:0, life:1.3});
+        fx.push({txt:'PIT MANOEUVRE', x:W/2, y:msgY()+16, vy:-26, age:0, life:1.3});
         spd *= 0.94;
         shake = Math.max(shake, 0.5);
         iframe = 0.6;
@@ -12657,7 +12709,7 @@ function step(dt){
       if(won.length){
         snd.threaded();
         fx.push({txt: won.join('  '),
-                 x:W/2, y:H*0.62, vy:-60, age:0, life:1.2});
+                 x:W/2, y:msgY()+16, vy:-26, age:0, life:1.2});
         burst(c, '#3ddc84');
         /* ---- AND THE GAUGES SAY IT WHERE THE RESOURCE LIVES -------------
            A line in the middle of the screen is read once and gone. The clock
@@ -12704,7 +12756,7 @@ function step(dt){
            scored in MILES and in where you finish; a floating "+1500" promises
            a number the player will never see again. The event still gets its
            shout, without the fiction. */
-        fx.push({txt:'THREADED THE GAP', x:W/2, y:H*0.6, vy:-60, age:0, life:1.3});
+        fx.push({txt:'THREADED THE GAP', x:W/2, y:msgY()+16, vy:-26, age:0, life:1.3});
       } else {
         hurt(28,'roadblock');
         spd *= 0.3;
@@ -12800,7 +12852,7 @@ function wreckCop(k, how){
      makes it worth crossing the road for - and no slug at all for a car with
      nowhere to put it (RLG-107) */
   awardNos(25); dmg = Math.max(0, dmg - 25);
-  fx.push({txt:'CRUISER DOWN', x:W/2, y:H*0.58, vy:-55, age:0, life:1.2});
+  fx.push({txt:'CRUISER DOWN', x:W/2, y:msgY()+16, vy:-26, age:0, life:1.2});
   burst(k, '#ff9a5a');
 }
 function burst(o,color){
@@ -16523,6 +16575,7 @@ function drawMirror(){
     document.documentElement.style.setProperty('--mirror-h', mh + 'px');
     document.documentElement.style.setProperty('--mirror-top', my + 'px');
   }
+  publishMsgBand();
   ctx.save();
   /* the housing */
   ctx.fillStyle = '#0a0c11';
@@ -18663,6 +18716,11 @@ requestAnimationFrame(frameLoop);
   /* the mirror's glass, so a harness reads the pane the engine actually drew
      rather than a stale copy of the layout formula */
   API.mirrorRect = function(){ return mirrorRect; };
+  /* where a transient message lands, in canvas pixels (RLG-134). The CANVAS
+     labels read this; the DOM banner reads `--msg-top`, set from the same
+     number. A check asks both and compares them, because two mechanisms with
+     two independent positions is the fault this unit exists to remove. */
+  API.msgBand = function(){ return msgTopPx; };
   /* ---- WHERE THE ROADSIDE SITS, IN PIXELS (RLG-024) ---------------------
      For a harness that has to answer "does widening the road move the trees".
      The road edge and the first scenery position at one distance, so the gap

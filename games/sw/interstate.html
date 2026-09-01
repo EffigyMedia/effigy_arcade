@@ -146,9 +146,25 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    canvas, so while a warning was on screen (PIT LANE, WRONG WAY, BUSTED) it
    silently swallowed every tap that landed in its band. Nothing on it is
    interactive; it should never have been a target. */
+/* ---- IT SITS UNDER THE INFORMATION ROW, NOT OVER THE ROAD (RLG-134) ----
+   Owner, 2026-08-31: "the UI elements that pop up in the dead center of the
+   screen block my view of the upcoming road, so I think we should move that to
+   just under the other information that's below the rearview mirror."
+
+   `top:38%` IS THE FAULT AND A PERCENTAGE IS WHY IT RECURS. A fraction of the
+   screen lands wherever the screen happens to put it, so the banner sits on the
+   road on one phone and clear of it on another. `--msg-top` is measured from
+   `.toprow`'s own bottom and published by the engine each frame, which is the
+   whole of what "anchored relative spacing" means: a distance follows the thing
+   it is a distance FROM. The 38% survives only as the fallback for a frame
+   before the first measurement.
+
+   SMALLER, BECAUSE IT IS NO LONGER ALONE IN THE MIDDLE OF THE FRAME. It was
+   sized to be read across an empty windscreen; under the mirror it shares the
+   busiest band on the screen with the glass and the information row. */
 #warn{
-  position:absolute;left:0;right:0;top:38%;text-align:center;pointer-events:none;
-  font-family:var(--disp);font-weight:800;font-size:clamp(20px,6.4vw,30px);letter-spacing:.12em;
+  position:absolute;left:0;right:0;top:var(--msg-top,38%);text-align:center;pointer-events:none;
+  font-family:var(--disp);font-weight:800;font-size:clamp(15px,4.6vw,22px);letter-spacing:.10em;
   color:#fff;text-shadow:0 0 18px var(--red),0 2px 0 #7a0d20;opacity:0;
 }
 #warn.on{animation:wn 1.9s ease-out 1}
