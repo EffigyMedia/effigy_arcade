@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.19';
+window.ROAD_BUILD = '0.11.20';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1369,6 +1369,25 @@ let bendZ0 = 0, curveSegs = [], hillSegs = [];
 
 /* the sequence of bends, generated ahead as the road is consumed */
 let signs = [];
+/* ---- NO SEGMENT MAY STRADDLE A PLACE BOUNDARY (RLG-150) ----------------
+   A segment is scaled by the place at its START, so a segment that begins in
+   one place and ends in the next carries the wrong factor for its whole tail.
+   A bend runs 4,000 to 15,000 units, which is over half of an eighth of a
+   bridge - and that is exactly what the first measurement after the plan was
+   built still showed, an entry reading 0.88 of the ordinary road where it
+   wanted 0.23.
+
+   THE TWO LISTS DO NOT END TOGETHER, WHICH IS WHY THIS IS NEEDED AT ALL. The
+   planned edge is placed past the further of them, so the shorter one always
+   has one segment left to push that starts before the boundary. Cut it at the
+   boundary and the next one starts exactly on it, in the new place, with the
+   new factor.
+   ------------------------------------------------------------------------ */
+function clipToPlan(z0, len){
+  if(!planKey) return len;
+  const edgeZ = planEdge * SEG;
+  return (z0 < edgeZ && z0 + len > edgeZ) ? edgeZ - z0 : len;
+}
 function pushCurve(){
   const roll = Math.random();
   let k, len;
@@ -1381,7 +1400,9 @@ function pushCurve(){
      Scaled at generation rather than at draw, so the geometry is consistent for
      the whole life of the segment - a bend that changed magnitude as you
      approached it would be the road moving under you. */
-  k *= shapeAt(bendZ0 + totalLen(curveSegs)).bend;
+  const cz = bendZ0 + totalLen(curveSegs);
+  len = clipToPlan(cz, len);
+  k *= shapeAt(cz).bend;
   /* the roll and the scaling, kept together so a harness can sample the SHAPE
      of a place without driving through it. Over a short run the roll's own
      variance is far larger than the difference between two biomes - measured, a
@@ -1412,7 +1433,8 @@ function pushCurve(){
      recoverable.
      ------------------------------------------------------------------ */
   curveSegs.push({ k, len });
-  if(k !== 0) curveSegs.push({ k:0, len: rnd(3500, 7000) });
+  if(k !== 0)
+    curveSegs.push({ k:0, len: clipToPlan(cz + len, rnd(3500, 7000)) });
 }
 /* ---- and the road rises and falls -------------------------------------- */
 function pushHill(){
@@ -1422,9 +1444,14 @@ function pushHill(){
   else if(roll < 0.66){ g2 = rnd(1.2, 2.8);   len = rnd(6000, 12000); }
   else {                g2 = rnd(3.4, 5.6);   len = rnd(5000, 9000); }
   if(g2 && Math.random() < 0.5) g2 = -g2;
-  g2 *= shapeAt(bendZ0 + totalLen(hillSegs)).hill;
+  /* cut at the place boundary, for the reason in `clipToPlan` - the relief has
+     the same fault as the bend and the owner reported the bend first */
+  const hz = bendZ0 + totalLen(hillSegs);
+  len = clipToPlan(hz, len);
+  g2 *= shapeAt(hz).hill;
   hillSegs.push({ k:g2, len });
-  if(g2 !== 0) hillSegs.push({ k:0, len: rnd(3000, 6000) });
+  if(g2 !== 0)
+    hillSegs.push({ k:0, len: clipToPlan(hz + len, rnd(3000, 6000)) });
 }
 function segAt(list, z){
   let acc = bendZ0;
@@ -1452,10 +1479,23 @@ function isStraight(z){
 }
 
 function totalLen(list){ let t=0; for(const s2 of list) t += s2.len; return t; }
+/* ---- HOW FAR AHEAD THE ROAD EXISTS, AND WHY IT IS NAMED (RLG-150) -------
+   The curvature and the grade are generated this far in front of the camera,
+   and the bend integration runs over whatever that produces - the far bands
+   need it, so it cannot simply be made smaller.
+
+   IT IS A CONSTANT NOW BECAUSE A SECOND THING READS IT. A place used to be
+   chosen 30,000 ahead while the road was already made to 100,000, so the first
+   70,000 units of every place carried the PREVIOUS place's `bend` and `hill`
+   and nothing ever went back for them. `stepBiome` plans against this number so
+   that the road is never generated into a place that has not been chosen yet.
+   Two copies of it would put the fault straight back.
+   ------------------------------------------------------------------------ */
+const GEN_AHEAD = 100000;
 let bendBuilds = 0;
 function rebuildBend(){
   bendBuilds++;
-  const need = pos + 100000;
+  const need = pos + GEN_AHEAD;
   while(bendZ0 + totalLen(curveSegs) < need) pushCurve();
   while(bendZ0 + totalLen(hillSegs)  < need) pushHill();
   while(curveSegs.length > 1 && bendZ0 + curveSegs[0].len < pos - 40000){
@@ -9411,7 +9451,16 @@ function rollClimate(key){
    through trees winds without needing to be steep.
    ------------------------------------------------------------------------- */
 function shapeAt(z){
-  const B = bioAt(Math.floor(z / SEG));
+  const idx = Math.floor(z / SEG);
+  /* ---- THE PLAN OUTRANKS THE PICTURE HERE, AND ONLY HERE (RLG-150) ----
+     `bioAt` answers what is being SHOWN at a distance, which is what every
+     painter wants. This is the one caller that runs ahead of the picture: it
+     scales a segment as it is made, and a segment beyond `planEdge` is being
+     made into a place the picture has not been told about yet. Asking `bioAt`
+     for it returns the place behind, which is the whole of the fault.
+     ------------------------------------------------------------------ */
+  const B = (planKey && idx >= planEdge) ? (BIOMES[planKey] || BIOMES.FOREST)
+                                         : bioAt(idx);
   return { hill: B.hill === undefined ? 0.8 : B.hill,
            bend: B.bend === undefined ? 0.8 : B.bend };
 }
@@ -9439,6 +9488,22 @@ function shapeAt(z){
    this is a small change rather than a rewrite of every `bio()` call.
    ------------------------------------------------------------------------- */
 let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
+/* ---- THE PLACE THE ROAD IS BEING MADE INTO (RLG-150) --------------------
+   WHERE a place begins and WHEN it was chosen are two questions, and they used
+   to be one variable. `biomeEdge` answers the first and must stay at the
+   horizon, because the colour has to enter the picture there and travel in
+   ([[RLG-022]]). But the geometry at that boundary was made long before, so
+   asking `biomeEdge` at generation time got the answer for the place BEHIND it.
+
+   `planKey` and `planEdge` are the second question. The next place is chosen
+   while the road that will hold it is still unmade - at the generator's own
+   frontier, so nothing already generated is inside it - and `shapeAt` reads
+   them. The picture is not told: the visual crossing is still placed at the
+   horizon, at this same edge, when the camera reaches it.
+
+   `planEdge` is in SEGMENTS, like `biomeEdge`, so the two are comparable.
+   ------------------------------------------------------------------------ */
+let planKey = null, planEdge = -1e9;
 /* ---- THE INSTANCE LIVES BESIDE THE PAIR IT BELONGS TO (RLG-109) ---------
    One per end of the blend, because both ends are asked questions: the place
    being left holds the snow already on its ground, and the place being entered
@@ -9972,6 +10037,9 @@ function openBiome(){
   wxFrom = wxTo = biome;
   biomeFrom = biomeTo = biome;
   biomeEdge = -1e9;
+  /* and no place is planned yet - a fresh run is not carrying the last run's
+     next place, and the road ahead of it is generated into THIS one (RLG-150) */
+  planKey = null; planEdge = -1e9;
   buildSkyline();
   /* ---- AND THE NEXT PLACE IS A FULL RUN AWAY (RLG-088) --------------
      Owner, 2026-08-30, on the build that stopped the whole world changing at
@@ -10154,33 +10222,61 @@ function stepBiome(dt){
        ------------------------------------------------------------------ */
     if(!biomeStarted){
       openBiome();
+      biomeNext = placeSpan(biomeTo);
     } else {
+      /* ---- THE PLACE IS CHOSEN AT THE GENERATOR'S FRONTIER (RLG-150) ---
+         The timer decides WHICH place comes next and WHERE it begins, and it
+         does both here - but it tells nobody yet. The picture is still showing
+         the place behind, and it goes on showing it until the camera arrives.
+
+         THE EDGE IS THE FRONTIER, NOT A FIXED DISTANCE. `GEN_AHEAD` is where
+         the generator has been told to reach, but it overshoots by whatever the
+         last segment's length happened to be, so a fixed offset would leave a
+         segment or two on the wrong side. Reading the lists themselves puts the
+         boundary past everything that exists, which is exact rather than
+         approximately right.
+         ---------------------------------------------------------------- */
       let k = biome;
       while(k === biome) k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
-      /* placed at the furthest slice being drawn, so the new colour enters the
-         picture at the horizon and travels in. It is NOT applied to `biome`. */
-      biomeFrom = biome;
-      biomeTo = k;
-      biomeEdge = here + DRAW;
-      /* a fresh coin for every new place, so two oceans in one run need not
-         put the water on the same side */
-      rollSide();
-      /* ---- AND THE PLACE AHEAD GETS ITS OWN TEMPERATURE (RLG-109) -----
-         THIS IS THE LIKELIEST WAY TO GET THE REFACTOR WRONG. The place being
-         entered is asked two questions before the car ever reaches it - what
-         floor of snow it holds, and how much it wants the weather already
-         falling - and both are answered from the INSTANCE. Roll it only in
-         `openBiome` and the place ahead has no instance, so both questions fall
-         back to the one behind you and nothing says so.
-         -------------------------------------------------------------- */
-      wxFrom = biome; wxTo = k;
-      climTo = rollClimate(k);
-      armEvent(k, biomeEdge * SEG);
+      const made = Math.max(bendZ0 + totalLen(curveSegs),
+                            bendZ0 + totalLen(hillSegs),
+                            pos + GEN_AHEAD);
+      planKey = k;
+      planEdge = Math.ceil(made / SEG);
+      /* the length this place will run for. Counted from the plan rather than
+         from the placing, which is the same period - both move by the same
+         distance - so place lengths are what they always were. */
+      biomeNext = placeSpan(k);
     }
-    /* the place just PLACED is the one whose length this counts down, whichever
-       branch above ran - after `openBiome` the pair holds one place, and after a
-       change `biomeTo` is the new one */
-    biomeNext = placeSpan(biomeTo);
+  }
+  /* ---- AND THE PLAN BECOMES THE PICTURE AT THE HORIZON (RLG-150) --------
+     Everything below this line is what used to happen the moment a place was
+     chosen. It happens later now, when the camera is `DRAW` short of the edge
+     that was decided - which is the furthest slice being drawn, so the new
+     colour still enters the picture at the horizon and travels in, exactly as
+     [[RLG-022]] requires. The edge is the SAME number the road was made
+     against, so the shape of the road and the colour of it change at one place.
+     ------------------------------------------------------------------- */
+  if(planKey && here + DRAW >= planEdge){
+    const k = planKey;
+    biomeFrom = biome;
+    biomeTo = k;
+    biomeEdge = planEdge;
+    planKey = null;
+    /* a fresh coin for every new place, so two oceans in one run need not
+       put the water on the same side */
+    rollSide();
+    /* ---- AND THE PLACE AHEAD GETS ITS OWN TEMPERATURE (RLG-109) -----
+       THIS IS THE LIKELIEST WAY TO GET THE REFACTOR WRONG. The place being
+       entered is asked two questions before the car ever reaches it - what
+       floor of snow it holds, and how much it wants the weather already
+       falling - and both are answered from the INSTANCE. Roll it only in
+       `openBiome` and the place ahead has no instance, so both questions fall
+       back to the one behind you and nothing says so.
+       -------------------------------------------------------------- */
+    wxFrom = biome; wxTo = k;
+    climTo = rollClimate(k);
+    armEvent(k, biomeEdge * SEG);
   }
 }
 
@@ -21198,6 +21294,20 @@ requestAnimationFrame(frameLoop);
     if(v !== undefined) biomeNext = v;
     return biomeNext;
   };
+  /* ---- THE PLACE THE ROAD IS BEING MADE INTO (RLG-150) -----------------
+     `biomeSweep` reports the place the picture is SHOWING. This reports the one
+     the generator is already building for, which is a different place for the
+     70,000-odd units between the two - and the whole of RLG-150 is that those
+     were once the same question. `madeTo` is how far the segment lists actually
+     reach, so a check can see that the planned edge is past everything that
+     exists rather than take it on trust. */
+  API.roadPlan = function(){
+    return { key: planKey, edge: planEdge,
+             edgeZ: planEdge <= -1e8 ? null : planEdge * SEG,
+             madeTo: Math.round(Math.max(bendZ0 + totalLen(curveSegs),
+                                         bendZ0 + totalLen(hillSegs))),
+             pos: Math.round(pos), genAhead: GEN_AHEAD };
+  };
   API.startBiomeChange = function(k){
     let want = k;
     if(!want || !BIOMES[want] || want === biome){
@@ -21206,6 +21316,18 @@ requestAnimationFrame(frameLoop);
     }
     biomeFrom = biome; biomeTo = want;
     biomeEdge = Math.floor(pos/SEG) + DRAW;
+    /* ---- AND IT CANCELS ANY PLAN (RLG-150) ---------------------------
+       A place chosen by the timer is waiting at the generator's frontier, and
+       if it is left there it lands on top of whatever a harness just placed a
+       few seconds later. The setter stands in for the real placement, so it
+       consumes the plan the same way the real one does.
+
+       IT PLACES AT THE HORIZON, WHICH IS THE POINT OF IT - a harness cannot
+       drive 70,000 units first. So this hook does NOT reproduce the corrected
+       generation order, and a check that measures the shape of a place must
+       let the timer place it. `tools/event-test.py` and the RLG-150 measurement
+       both drive into a real one for that reason. */
+    planKey = null; planEdge = -1e9;
     rollSide();          /* the same roll the real placement makes */
     wxFrom = biome; wxTo = want;
     climTo = rollClimate(want);   /* and the same instance, for the same reason:
@@ -21243,6 +21365,10 @@ requestAnimationFrame(frameLoop);
     if(BIOMES[a]){ biomeFrom = a; wxFrom = a; climFrom = climateAt(a, tA === undefined ? BIOMES[a].temp : tA); }
     if(BIOMES[b]){ biomeTo   = b; wxTo   = b; climTo   = climateAt(b, tB === undefined ? BIOMES[b].temp : tB); }
     if(biomeFrom === biomeTo){ biome = biomeFrom; biomeEdge = -1e9; }
+    /* a plan waiting at the generator's frontier would arrive on top of the
+       pair this just pinned, seconds later. Pinning a pair means pinning it
+       (RLG-150) - and see `startBiomeChange` on what that costs a check. */
+    planKey = null; planEdge = -1e9;
     /* ---- AND THE EVENT IS ARMED WITH IT (RLG-112) --------------------
        A debug setter that pinned the pair to a BRIDGE and left the road rolled
        would show a place the game never produces - the deck is the authored

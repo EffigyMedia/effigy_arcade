@@ -1031,18 +1031,66 @@ def main():
 
         # AND DRIVING SPENDS IT. Without this the check above passes on a build where the
         # countdown never moves at all, which is a different bug wearing the same result.
+        #
+        # WHAT SPENDING IT DOES CHANGED AT 0.11.20 (RLG-150). It used to place the boundary
+        # at the horizon there and then, so the pair flipped within a second of driving.
+        # It now PLANS the place at the generator's own frontier and tells the picture
+        # later, when the car arrives - because the road that far ahead is already made,
+        # and a place chosen after its road was built got the previous place's bendiness
+        # for its first 70,000 units. So the countdown running out and the pair changing
+        # are two events with a drive between them, and this checks both.
         page.evaluate("""() => { const R = window.__probe.road;
             R.setSpd(R.MAX_SPD * 0.8); }""")
         page.wait_for_timeout(900)
         drove = page.evaluate("""() => { const R = window.__probe.road;
+            const s = R.biomeSweep(), pl = R.roadPlan();
+            return { left: R.biomeCountdown(), from: s.from, to: s.to,
+                     plan: pl.key, edgeZ: pl.edgeZ, pos: pl.pos, madeTo: pl.madeTo }; }""")
+        print('      then driving for 0.9s: %.0f left, from=%s to=%s, planned=%s at %s'
+              % (drove['left'], drove['from'], drove['to'], drove['plan'], drove['edgeZ']))
+        res.check(drove['left'] > 600,
+                  'and driving spends the distance, which re-arms it for the next place',
+                  'still %.0f units left after driving' % drove['left'])
+        res.check(drove['plan'] is not None,
+                  'and what it buys is a PLANNED place, chosen before its road is made',
+                  'nothing was planned when the countdown ran out')
+        # NOT `edgeZ >= madeTo` HERE, WHICH IS WHAT THIS ASKED FIRST AND WHY IT FAILED.
+        # That holds at the INSTANT of planning and is asserted there, in
+        # `place-shape-test`. Nine tenths of a second later the generator has quite
+        # properly run on past the planned edge - and everything it made out there is
+        # inside the new place, with the new place's factor, which is the fix working.
+        # What is true for as long as a plan is pending is that its edge is still more
+        # than a draw distance ahead, because arriving within one is what places it.
+        res.check(drove['edgeZ'] is not None
+                  and drove['edgeZ'] > drove['pos'] + 150 * 200 - 400,
+                  'whose edge is still beyond the horizon, which is why the picture has '
+                  'not been told (RLG-150)',
+                  'edge %s with the car at %s' % (drove['edgeZ'], drove['pos']))
+        res.check(drove['from'] == drove['to'],
+                  'and the picture is NOT told yet - it is still one place, all the way out',
+                  'the pair already reads %s to %s' % (drove['from'], drove['to']))
+
+        # AND DRIVING TO THE PLANNED EDGE IS WHAT CHANGES THE PICTURE. The boundary still
+        # enters at the horizon and travels in, which is RLG-022 - it is just placed at a
+        # point that was decided earlier.
+        target = drove['edgeZ']
+        for _ in range(900):
+            page.evaluate('() => { const R = window.__probe.road; R.setSpd(R.MAX_SPD); }')
+            page.wait_for_timeout(40)
+            if page.evaluate('() => window.__probe.road.roadPlan()')['key'] is None:
+                break
+        arrived = page.evaluate("""() => { const R = window.__probe.road;
             const s = R.biomeSweep();
-            return { left: R.biomeCountdown(), from: s.from, to: s.to }; }""")
-        print('      then driving for 0.9s: %.0f left, from=%s to=%s'
-              % (drove['left'], drove['from'], drove['to']))
-        res.check(drove['from'] != drove['to'],
-                  'and driving into one does',
-                  'still %s to %s after driving through the boundary'
-                  % (drove['from'], drove['to']))
+            return { from: s.from, to: s.to, edge: s.edge, here: s.here }; }""")
+        print('      driving on to the planned edge at %s: from=%s to=%s'
+              % (target, arrived['from'], arrived['to']))
+        res.check(arrived['from'] != arrived['to'],
+                  'and driving up to that edge is what puts the new place in the picture',
+                  'still %s to %s after driving to the planned edge'
+                  % (arrived['from'], arrived['to']))
+        res.check(arrived['here'] + 150 >= arrived['edge'] > arrived['here'],
+                  'and it is placed AT THE HORIZON, a draw distance ahead, not underfoot',
+                  'edge at segment %s with the car at %s' % (arrived['edge'], arrived['here']))
 
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors during the run', '; '.join(errs[:3]))

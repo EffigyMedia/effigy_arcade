@@ -14,6 +14,52 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-20"></a>
+## [0.11.20] - 2026-09-01
+- Fixed: **a place's own `bend` and `hill` are in force from its first unit.** They were not.
+  The owner reported that the bridge and the tunnel both turn too hard, and those two hold the
+  lowest numbers on the board ([RLG-150](../fragments/RLG-150.md), from
+  [RLG-145](../fragments/RLG-145.md) item 5).
+- Note: **WHERE a place begins and WHEN it was chosen were one variable, and they are two
+  questions.** The road is generated to `pos + 100000`; a place was decided at
+  `biomeEdge = here + DRAW`, which is 30,000 ahead. `pushCurve` scales a segment by its place
+  AT GENERATION - correctly, because a bend that changed magnitude as you approached it would
+  be the road moving under you - so the 70,000 units between the two were made under the
+  PREVIOUS place's factor and nothing ever went back for them.
+- Changed: **the timer now PLANS a place instead of placing one.** It chooses the place and its
+  edge at the generator's own frontier, past every segment that exists, and only `shapeAt`
+  is told. The picture is told later, when the car is a draw distance short of that same edge -
+  so the colour still enters at the horizon and travels in, which is
+  [RLG-022](../fragments/RLG-022.md), and the shape of the road and the colour of it change at
+  one place because it is one number.
+- Fixed: **and no segment straddles the boundary.** A first build planned correctly and still
+  measured an entry at 0.88 of the ordinary road where it wanted 0.23. A bend runs 4,000 to
+  15,000 units and the two segment lists do not end together, so the shorter one always had one
+  segment left that began before the boundary and carried the old factor for its whole tail.
+  `clipToPlan` cuts it at the boundary, and the next one starts exactly on it.
+- Note: **measured by driving, and falsified before it was believed.** A bridge wants 0.23 as
+  bent as ordinary road throughout and read `1.29 1.39 0.28 0.27 0.11 0.30 0.09 0.24` by
+  eighths before; it reads `0.04 0.11 0.08 0.10 0.20 0.06 0.00 0.08` now. A tunnel wants 0.29,
+  read `2.24 0.72 0.82 0.55 0.43 0.15 0.35 0.36` and now reads
+  `0.38 0.51 0.14 0.26 0.19 0.35 0.25 0.37`. With the one line of the fix reverted and the
+  instrument left in place, the check fails again at 0.87 and 3.08.
+- Added: **`tools/place-shape-test.py`.** It drives a passage placed by the TIMER, because
+  `startBiomeChange` and `setBiomePair` both place at the horizon - a harness cannot drive
+  70,000 units before it starts - so they cancel the plan and do not reproduce the corrected
+  order. A check using either would measure the old behaviour and report a pass.
+- Changed: **`biome-test`'s last claim, because the behaviour it described has legitimately
+  changed.** The countdown running out and the pair changing are now two events with a drive
+  between them. It asserts both, plus that the planned edge is still beyond the horizon while
+  the plan is pending. Its first form asserted that the edge is past every generated segment,
+  which is only true at the instant of planning - nine tenths of a second later the generator
+  has properly run on past it, into the new place, with the new factor.
+- Note: **this was never only a passage problem.** Every place was entered through 70,000 units
+  of the previous place's shape; a bridge and a tunnel merely made it obvious because they are
+  the two calmest things in the game. So every transition in the game is affected, the tables
+  were tuned by feel with the fault present, and **the owner has to judge the result on the
+  device.** The numbers now do what the table says they do, which is not the same as being the
+  right numbers.
+
 <a id="v0-11-19"></a>
 ## [0.11.19] - 2026-09-01
 - Changed: **the farmland yards are sparse now** - scenery density 0.30 to 0.14. Owner,
