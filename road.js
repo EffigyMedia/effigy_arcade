@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.14';
+window.ROAD_BUILD = '0.11.15';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -15405,13 +15405,47 @@ let BORE = {
   arch: 0.16
 };
 /* the tube, sampled with the road's own projection so it bends with the road */
+/* ---- A TUNNEL IS THERE OR IT IS NOT (RLG-144) ---------------------------
+   Owner, 2026-09-01, on a capture of the mouth: "why is that tunnel
+   transparent?"
+
+   BECAUSE ITS OPACITY WAS THE TRANSITION. [[RLG-105]] laid the bore over the
+   ordinary world with the place's own darkness as its alpha, which made the
+   entrance and the exit cost nothing - `placeDark` already rides the biome
+   crossing. The cost is that halfway through one, the whole bore is drawn at
+   half opacity and the place behind it shows straight through. It was not a
+   tunnel being approached; it was a tunnel being cross-faded.
+
+   TWO THINGS WERE FUSED AND THEY ARE NOT THE SAME. How DARK it is inside is a
+   property of the place and should ramp with the crossing, exactly as it does.
+   Whether the WALLS EXIST is not a matter of degree. That is the same split
+   [[RLG-094]] had to make between what a city looks like and what colour it is
+   at this hour.
+
+   SO THE EXTENT IS WHAT THE CROSSING DECIDES, NOT THE ALPHA. The bore is built
+   from its own MOUTH inward - the event record already holds where that is, to
+   the world unit - and drawn solid. Approaching, it is a short tube starting
+   ahead of you that grows as you close on it; inside, it starts at the camera.
+   The darkness goes on ramping and gets its real job back.
+   ------------------------------------------------------------------------- */
+function boreMouth(){
+  /* the near end of what exists: the tunnel's own start, or the camera once it
+     is behind you. `eventZ0` is armed when the place is placed (RLG-112). */
+  const own = pos + PLAYER_Z + 40;
+  if(!eventLen || !eventProfile) return own;
+  return Math.max(own, eventZ0);
+}
 function borePoints(far){
   const pts = [];
+  const z0 = boreMouth();
+  /* and it stops at the far portal rather than running on past it */
+  const reach = Math.min(far === undefined ? BORE.far : far,
+                         eventLen ? Math.max(600, eventZ0 + eventLen - z0) : BORE.far);
   for(let i = 0; i <= BORE.segs; i++){
     const t = i / BORE.segs;
     /* SQUARED, so the near mouth gets most of the samples. Evenly in distance
        puts them all at the vanishing point, where they are worth nothing. */
-    const z = pos + PLAYER_Z + 40 + t * t * (far === undefined ? BORE.far : far);
+    const z = z0 + t * t * reach;
     const p = proj(0, z);
     if(!p.ok) continue;
     /* ---- A CEILING IS A PLANE ABOVE THE CAMERA (RLG-105) ------------
@@ -15456,7 +15490,7 @@ function drawBore(){
   if(pts.length < 3) return;
   const lit = lampsOn();
   ctx.save();
-  ctx.globalAlpha = Math.min(1, d);
+  /* SOLID. The walls are not a matter of degree - see `borePoints` (RLG-144). */
 
   /* ---- A ROAD TUNNEL IS BRIGHTLY LIT, NOT DARK (RLG-105) --------------
      Owner, 2026-09-01, with two photographs of real bores. They settle it: the
@@ -21016,6 +21050,12 @@ requestAnimationFrame(frameLoop);
                                      a hook that takes a different path from the
                                      thing it stands in for proves less than it
                                      looks like it proves (RLG-059) */
+    /* AND THE SAME EVENT, for that same reason. Without this the hook placed a
+       tunnel with no profile and no mouth armed, so a harness driving into one
+       measured a bore that began at the camera - which is exactly the state the
+       real game never produces, and it read as a fault in the engine rather
+       than a gap in the setter (RLG-144). */
+    armEvent(want, biomeEdge * SEG);
     return API.biomeSweep();
   };
   /* the hour is an argument so a harness can ask what a biome looks like at
@@ -21543,6 +21583,20 @@ requestAnimationFrame(frameLoop);
      must read zero, because zero SLOPE at a mouth is not zero HEIGHT and it is
      the height that has to meet the next place.
      ------------------------------------------------------------------ */
+  /* ---- WHAT THE BORE IS AND WHERE IT STARTS (RLG-144) ------------------
+     `alpha` is what the walls are drawn at - it was the crossing ramp and is
+     now 1, because a tunnel is there or it is not. `mouth` is where the tube
+     begins in the world and `ahead` is how far in front of the camera that is:
+     positive while you are still approaching, zero once you are inside. The
+     two together say that the CROSSING decides the extent rather than the
+     opacity, which is the whole of the fix.
+     ------------------------------------------------------------------ */
+  API.boreTrace = function(){
+    return { alpha: 1, dark: +placeDark().toFixed(3),
+             mouth: Math.round(boreMouth()),
+             ahead: Math.round(boreMouth() - (pos + PLAYER_Z + 40)),
+             eventZ0: eventLen ? Math.round(eventZ0) : null };
+  };
   API.riseProfile = function(k, n){
     const B = BIOMES[k] || BIOMES.FOREST;
     if(!B.profile || !B.span) return null;

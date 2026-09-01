@@ -303,6 +303,55 @@ def main():
                   'and they still reach every place a run may open in',
                   'reached %d of %d' % (len(seen), len(opens)))
 
+        # --------------------------------------------- and the walls are not a fade
+        print()
+        print('  AND THE BORE IS SOLID, BECAUSE A TUNNEL IS THERE OR IT IS NOT (RLG-144)')
+        # Owner, 2026-09-01, on a capture of the mouth: "why is that tunnel transparent?"
+        # Its opacity WAS the crossing ramp - the bore was laid over the ordinary world
+        # with the place's own darkness as its alpha, so halfway through a transition the
+        # whole thing was at half opacity and the farmland behind it showed through.
+        #
+        # TWO THINGS WERE FUSED. How dark it is inside is a property of the place and
+        # should ramp; whether the walls EXIST is not a matter of degree. So the extent is
+        # what the crossing decides now - the tube is built from the tunnel's own mouth,
+        # which the event record holds to the world unit - and the darkness keeps its real
+        # job. Both halves are checked, because fixing one by breaking the other would
+        # pass a check that only looked at the walls.
+        # THE CAR HAS TO ACTUALLY REACH THE MOUTH, and the first version of this did not
+        # get near it: fourteen samples at 140ms read every value as zero and reported that
+        # the tube never started ahead of the camera. The boundary is placed DRAW segments
+        # away, so the car has about 37,000 units to cover - which is the same trap the
+        # ramp measurement above records falling into, and the note there is why this one
+        # was recognised rather than chased.
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.setBiomePair('FARMLAND','FARMLAND'); R.setPhase(0.75); }")
+        page.wait_for_timeout(300)
+        page.evaluate("() => window.__probe.road.startBiomeChange('TUNNEL')")
+        seen = []
+        for _ in range(110):
+            page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD * 0.90)")
+            page.wait_for_timeout(70)
+            seen.append(page.evaluate("() => window.__probe.road.boreTrace()"))
+        aheads = [t['ahead'] for t in seen]
+        darks = [t['dark'] for t in seen]
+        print('      the mouth ahead of the camera: %s' % ' '.join(str(a) for a in aheads[::12]))
+        print('      and the darkness meanwhile:    %s' % ' '.join('%.2f' % d for d in darks[::12]))
+        res.check(all(t['alpha'] == 1 for t in seen),
+                  'the walls are drawn solid rather than at the crossing amount',
+                  'alphas seen: %s' % sorted({t['alpha'] for t in seen}))
+        res.check(max(aheads) > 0,
+                  'and the tube starts AHEAD of the camera while the mouth is still ahead',
+                  'it never started anywhere but at the camera')
+        res.check(min(aheads) == 0,
+                  'and at the camera once the mouth is behind, so the extent is the crossing',
+                  'it never reached the camera: %s' % aheads)
+        # AND THE DARKNESS STILL RAMPS, which is what the alpha used to be doing and is
+        # the job it gets back. Losing this would be fixing the walls by breaking the
+        # comfort ramp RLG-060 asked for.
+        res.check(len(set(darks)) > 2,
+                  'while the darkness goes on ramping through the crossing',
+                  'it took only these values: %s' % sorted(set(darks)))
+
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))
         browser.close()

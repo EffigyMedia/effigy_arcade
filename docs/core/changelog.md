@@ -14,6 +14,31 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-15"></a>
+## [0.11.15] - 2026-09-01
+- Fixed: **the tunnel is not transparent any more.** Owner, 2026-09-01, on a capture of the
+  mouth: "why is that tunnel transparent?" Its opacity WAS the crossing ramp - the bore was
+  laid over the ordinary world with the place's own darkness as its alpha, so halfway through
+  a transition the whole thing was at half opacity and the farmland behind it showed straight
+  through ([RLG-144](../fragments/RLG-144.md)).
+- Note: **two things were fused and they are not the same.** How dark it is inside a bore is a
+  property of the place and should ramp. Whether the WALLS EXIST is not a matter of degree.
+  That is the same split [RLG-094](../fragments/RLG-094.md) had to make between what a city
+  looks like and what colour it is at this hour.
+- Changed: **so the crossing decides the EXTENT rather than the opacity.** The tube is built
+  from the tunnel's own mouth inward, which the event record already holds to the world unit,
+  and stops at the far portal. Measured across an approach: the mouth stands 27,564 units
+  ahead, closes to 9,741, then reaches the camera - while the darkness ramps 0 to 1 over the
+  same stretch. Two numbers moving independently.
+- Note: **and the darkness kept its real job**, so the mouth is still a ramp rather than a cut
+  and [RLG-060](../fragments/RLG-060.md)'s comfort argument still holds. The check asserts
+  both halves: a build that made the walls solid by freezing the ramp would have passed a
+  check that only looked at the walls.
+- Fixed: **the debug biome setter now arms the event too.** It placed a tunnel without one, so
+  a harness driving into it measured a bore beginning at the camera - a state the real game
+  never produces, and it read as a fault in the engine. The setter already rolled the side and
+  the climate for exactly this reason.
+
 <a id="v0-11-14"></a>
 ## [0.11.14] - 2026-09-01
 - Added: **the tunnel does the opposite of the bridge.** Owner, 2026-09-01: "the tunnel does
