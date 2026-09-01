@@ -8153,6 +8153,31 @@ function autoGear(dt){
 
 let brakeLamp = 0;
 let slipT = 0, coasting = false, slideX = 0;
+/* the wheel's position last frame, so the lateral block can read how fast it
+   was moved rather than how far the car still has to go (RLG-048) */
+let lastTarget = 0;
+/* ---- HOW FAR PAST THE MARK A WET ROAD CARRIES YOU (RLG-048) -------------
+   A fraction of the movement just made: on snow, asking for a full lane at
+   slick 0.40 lands you about 0.22 of a lane past it, and a small correction
+   costs the same fraction of a much smaller number. Snow is more than twice
+   rain, which is the owner's "snow has a higher multiplier of this effect".
+
+   `hold` is the most offset a surface can carry, as a multiple of how slick it
+   is. It is a CEILING rather than a timer: the overshoot does not fade, because
+   an overshoot that fades cannot be learned - see the block in the lateral
+   physics. On a dry road the ceiling is zero and the offset cannot exist.
+
+   Tunable at runtime through `API.slipModel`, so a device report can be
+   answered without a rebuild - the same reason the mirror's rain numbers are
+   live. This is a FEEL change and only the owner can sign it off. */
+let SLIP = { rain: 0.18, snow: 0.38, hold: 1.20 };
+/* the fastest the wheel moves, shared with the steering input above so the
+   rate this block measures is a true fraction of what a thumb can do */
+const STEER_SWING = 2.1;
+/* a harness-driven sweep of the wheel: where from, where to, and how long is
+   left of it. Debug only, and it writes `targetX` exactly as a thumb does, so
+   the slide it produces is the slide a player would get (RLG-048). */
+let steerToX = 0, steerToT = 0, steerFromX = 0, steerLeft = 0;
 
 /* ===========================================================================
    WEATHER
@@ -9368,8 +9393,39 @@ function stepWeather(dt){
    The falling half of rain drops from 0.38 to 0.22 to pay for it, so a shower
    arriving is gentler than it used to be and a rain that has been down for a
    while is worse - which is the whole of what was asked for. */
-function wetGrip(){  return Math.max(0.34, 1 - wet * (snowy ? 0.42 : 0.22) - settle * 0.30 - pool * 0.26); }
-function wetBrake(){ return Math.max(0.32, 1 - wet * (snowy ? 0.38 : 0.18) - settle * 0.28 - pool * 0.24); }
+/* ---- HOW MUCH A WET ROAD TAKES AWAY (RLG-132) ----------------------------
+   Owner, 2026-08-31, having played through: "The slipperiness that a wet or
+   snowy ground creates although realistic, I think makes the game less fun."
+   And then, once the new lateral model was written: "The original numbers may
+   not actually necessarily need to be dialed back. It's just that the
+   implementation we were using before was very unwieldy. Once this new
+   implementation is in, we might need a dial in new numbers for it to be a
+   hindrance, but still fun and playable."
+
+   SO THESE ARE THE ORIGINAL NUMBERS AND THAT IS DELIBERATE. They were halved for
+   one build of this unit, on a diagnosis that the SIZE of the grip loss was what
+   made it unfun. The owner's correction is that the SHAPE was - a proportional
+   term feeding a carried velocity, which wiggles - and that a hindrance is
+   wanted rather than removed. Changing the numbers and the model in the same
+   breath would also have made it impossible to say which of the two did
+   anything.
+
+   THE WHOLE STRUCT IS LIVE THROUGH `API.wetModel`, because dialling this in is a
+   FEEL judgment on a device, and a rebuild between each reading turns one
+   sitting into five.
+
+   ONE THING TO WATCH WHEN IT IS DIALLED, recorded rather than acted on: heavy
+   snow on settled ground computes 0.28 and the floor catches it at 0.34, so in
+   that one case THE FLOOR IS THE MODEL rather than a net under it. It is only
+   worth changing if the owner wants the worst case to differ from the
+   second-worst, and it is not a defect on its own.
+   ------------------------------------------------------------------------- */
+let WET = {
+  fallSnow: 0.42, fallRain: 0.22, settle: 0.30, pool: 0.26, floor: 0.34,
+  brakeSnow: 0.38, brakeRain: 0.18, brakeSettle: 0.28, brakePool: 0.24, brakeFloor: 0.32
+};
+function wetGrip(){  return Math.max(WET.floor, 1 - wet * (snowy ? WET.fallSnow : WET.fallRain) - settle * WET.settle - pool * WET.pool); }
+function wetBrake(){ return Math.max(WET.brakeFloor, 1 - wet * (snowy ? WET.brakeSnow : WET.brakeRain) - settle * WET.brakeSettle - pool * WET.brakePool); }
 let towOverride = -1;               /* -1 = off; a harness may force a tow */
 let horning = false, hornCool = 0, bustT = 0, behindT = 2, slowFor = 0, audioTick = 0, bendT = 0, skySmooth = 0, pushK = 0;
 
@@ -11484,7 +11540,15 @@ function step(dt){
      not, so `camX` keeps converging and arrives at GO already settled */
   if(kd && !held){
     setInputSource(true);
-    targetX = clamp(targetX + kd*2.1*dt*clamp(spd/(MAX_SPD*0.07),0,1), -1.18, 1.18);
+    targetX = clamp(targetX + kd*STEER_SWING*dt*clamp(spd/(MAX_SPD*0.07),0,1), -1.18, 1.18);
+  }
+  /* a harness sweeping the wheel to a mark over a stated time (RLG-048). It
+     writes `targetX` and nothing else, so everything downstream cannot tell it
+     from a thumb - which is the only way the measurement means anything. */
+  if(steerLeft > 0){
+    steerLeft = Math.max(0, steerLeft - dt);
+    const done = steerToT > 0 ? 1 - steerLeft / steerToT : 1;
+    targetX = clamp(steerFromX + (steerToX - steerFromX) * done, -1.18, 1.18);
   }
 
   // right trigger / A holds the nitrous down
@@ -11494,25 +11558,72 @@ function step(dt){
   padNos = AR && AR.pad ? (AR.pad.down('rt') || AR.pad.down('a')) : false;
   /* The car reaches its mark faster and the cap on lateral speed is higher, so
      a lane change lands when you ask for it rather than a beat later. */
-  /* ---- IT DOES NOT STOP SIDEWAYS ON ICE --------------------------------
-     Lateral position converged on the target however wet the road was, so
-     rain and snow changed the cornering force and nothing about the STEERING.
-     A car on a slick surface keeps going the way it was going — you fight the
-     slide rather than placing the car.
+  /* ---- THE CAR GOES FURTHER THAN YOU ASKED IT TO (RLG-048) -------------
+     Owner, 2026-08-31, correcting the first build of this: "Why even restore?
+     It's more that when you turn the vehicle, it moves further than you intend
+     based off of the Delta that you've moved so if you steer discreetly, there
+     will be less slip, but if you make larger movements than the slip is larger
+     too. The function of the slip is the wetness/iciness."
 
-     `slideX` carries lateral velocity forward. Dry, it is thrown away every
-     frame and the handling is exactly what it was. Wet, some of it survives;
-     in snow, most of it does — which is why snow is a curve and not a
-     dimmer version of rain.
+     THAT IS SIMPLER THAN WHAT IT REPLACED AND IT IS THE WHOLE MODEL. Slip is not
+     a force fighting the steering, and it is not a reduction in how fast the car
+     answers. IT IS AN OVERSHOOT OF THE MARK: you ask for a lane and you get a
+     lane and a bit, and how much extra is how big the movement was times how
+     slippery the road is.
+
+     THE COUNTER-PLAY FALLS OUT RATHER THAN BEING ARRANGED. Placing the car with
+     small movements costs a small fraction of a small number; hauling it across
+     two lanes in one go costs a fraction of a large one. Nothing has to detect
+     that the player was careful - carefulness IS a smaller delta.
+
+     AND IT CANCELS, which is what stops it drifting. The extra is signed, so a
+     move out and a move back sum to nothing; a correction is itself a movement
+     and carries its own, smaller, slip. On ice, placing the car exactly takes a
+     few small goes, and that is the mechanic rather than a side effect.
+
+     WHAT WAS HERE BEFORE, AND WHY BOTH VERSIONS WERE WRONG. The original fed the
+     DISTANCE still to travel into a carried lateral velocity, which is an
+     underdamped oscillator - the wiggle the owner named, and unfixable by
+     tuning. The first rewrite made the slide a velocity impulse and then had to
+     weaken the steering to let it show. The owner's question about that -
+     "why even restore?" - is the right one: the slide never needed to fight the
+     steering, because it was never a separate body. It is where the car was
+     going all along.
      ------------------------------------------------------------------- */
   const slick = 1 - wetGrip();
-  const carry = Math.min(0.86, slick * (snowy > 0.5 ? 2.6 : 1.5));
-  const grip = (1 - Math.exp(-STEER.snap*dt)) * (1 - carry*0.72);
+  const dTarget = targetX - lastTarget;
+  lastTarget = targetX;
+  if(slick > 0.02 && dTarget !== 0)
+    slideX += dTarget * slick * (snowy > 0.5 ? SLIP.snow : SLIP.rain);
+  /* ---- IT DOES NOT FADE, AND THAT IS WHAT MAKES IT LEARNABLE ----------
+     Owner, 2026-08-31: "This means that with practice, you can understeer to get
+     the amount of steering you need given the environmental state of the ground.
+     Instead of it being a pure hindrance, it's something you can learn to work
+     with."
+
+     THAT PROPERTY IS DESTROYED BY A TIMER, which the build before this had. If
+     the overshoot washes off, aiming short lands you short - the road gives the
+     extra and then takes it back - and there is nothing to learn. The extra has
+     to STAY, so that asking for four fifths of a lane on snow puts you in the
+     next lane exactly.
+
+     SO IT IS BOUNDED BY THE SURFACE INSTEAD OF BY TIME. The offset belongs to
+     the road: it cannot be larger than the road can produce, and on a dry road
+     it cannot exist at all. Driving out of the snow takes it with you, without a
+     rule that says so.
+
+     AND IT NEEDS NO OTHER WAY BACK, because steering back is itself a movement
+     with its own slip in the opposite direction. An out-and-back cancels exactly.
+     ---------------------------------------------------------------- */
+  const hold = slick * SLIP.hold;
+  slideX = clamp(slideX, -hold, hold);
+  /* the mark the car is actually chasing: where you asked, plus how far past it
+     the road is going to carry you */
+  const aim = clamp(targetX + slideX, -1.18, 1.18);
+  const grip = 1 - Math.exp(-STEER.snap*dt);
   /* the ceiling is this car's, not the fleet's (RLG-119) */
   const lim  = steerRate() * dt;
-  const want2 = clamp((targetX-playerX)*grip, -lim, lim);
-  slideX = slideX * carry + want2;
-  playerX += slideX;
+  playerX += clamp((aim - playerX)*grip, -lim, lim);
   /* a wall does not care how slippery it is */
   if(playerX < -1.18 || playerX > 1.18) slideX = 0;
   playerX = clamp(playerX, -1.18, 1.18);
@@ -18721,6 +18832,43 @@ requestAnimationFrame(frameLoop);
      number. A check asks both and compares them, because two mechanisms with
      two independent positions is the fault this unit exists to remove. */
   API.msgBand = function(){ return msgTopPx; };
+  /* ---- THE WET MODEL, LIVE (RLG-132 / RLG-048) -------------------------
+     Both halves are tunable at runtime, for the reason the mirror's rain
+     numbers are: this is a FEEL change, only the owner on a device can judge
+     it, and a rebuild between each reading turns one sitting into five.
+     ------------------------------------------------------------------- */
+  API.wetModel = function(o){
+    if(o) for(const k in o) if(k in WET) WET[k] = o[k];
+    return { grip:+wetGrip().toFixed(3), brake:+wetBrake().toFixed(3),
+             wet:+wet.toFixed(3), snowy:snowy, settle:+settle.toFixed(3),
+             pool:+pool.toFixed(3), model:Object.assign({}, WET) };
+  };
+  API.slipModel = function(o){
+    if(o) for(const k in o) if(k in SLIP) SLIP[k] = o[k];
+    return Object.assign({}, SLIP);
+  };
+  /* the live lateral state, so a check can watch a slide arrive and wash off
+     rather than infer it from where the car ended up */
+  API.slide = function(){ return { slide:+slideX.toFixed(5), target:+targetX.toFixed(4),
+                                   x:+playerX.toFixed(4), slick:+(1-wetGrip()).toFixed(3) }; };
+  /* ---- STEER IT THE WAY A PERSON WOULD, FOR A CHECK (RLG-048) ----------
+     A delta-driven slide is measured by HOW THE WHEEL WAS MOVED, so a harness
+     that steers by holding a key down measures the key repeat rate. This moves
+     the wheel to a mark over a stated number of seconds - which is the one
+     control the experiment needs, because the whole ruling is that the same
+     movement done gently costs less than the same movement snatched.
+
+     `drive-test`'s autopilot must NOT be used for this. It saws at the wheel,
+     and under this model a sawing driver generates the maximum slip there is -
+     the same trap that once had this project believing Raceway's tyres died in
+     twenty seconds. */
+  API.steerOver = function(to, secs){
+    steerToX = clamp(to, -1.18, 1.18);
+    steerToT = Math.max(0, secs || 0);
+    steerFromX = targetX;
+    steerLeft = steerToT;
+    return { from: steerFromX, to: steerToX, secs: steerToT };
+  };
   /* ---- WHERE THE ROADSIDE SITS, IN PIXELS (RLG-024) ---------------------
      For a harness that has to answer "does widening the road move the trees".
      The road edge and the first scenery position at one distance, so the gap

@@ -14,6 +14,37 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-42"></a>
+## [0.10.42] - 2026-08-31
+- Changed: **a wet road carries you further than you asked, instead of making the steering wiggle.**
+  Owner: "when you turn the vehicle, it moves further than you intend based off of the Delta that
+  you've moved so if you steer discreetly, there will be less slip, but if you make larger movements
+  than the slip is larger too. The function of the slip is the wetness/iciness." The wiggle was the
+  SHAPE of the equation and not a bad coefficient - a proportional term feeding a carried velocity is
+  an underdamped oscillator, so tuning changed how long it wiggled and never whether it did
+  ([RLG-048](../fragments/RLG-048.md)).
+- Added: **the slip can be aimed at, which is the point of it.** Owner: "with practice, you can
+  understeer to get the amount of steering you need given the environmental state of the ground.
+  Instead of it being a pure hindrance, it's something you can learn to work with." That requires the
+  overshoot to be proportional and NOT to fade, so it is bounded by the surface rather than by a
+  timer - a fading slip means aiming short lands you short and there is nothing to learn. Measured on
+  snow: aiming at 0.5596 to arrive at 0.700 landed at 0.7000 exactly.
+- Changed: **the grip numbers are the ORIGINAL ones, deliberately.** They were halved for one build of
+  this work, on a diagnosis that the size of the loss was the problem. Owner: "The original numbers
+  may not actually necessarily need to be dialed back. It's just that the implementation we were using
+  before was very unwieldy." Reverted, and the whole struct is live through `API.wetModel` and
+  `API.slipModel` so it can be dialled in on a device without a rebuild
+  ([RLG-132](../fragments/RLG-132.md)).
+- Unchanged, by ruling: **braking stays a plain multiplier.** Owner: "it also directly affects
+  braking, but that should be modelled more simply such that your braking grip is just reduced based
+  on the wetness/iciness." It already was, and it is now checked as one.
+- Added: **`tools/slip-test.py`**, which measures the model rather than the tuning: the overshoot is
+  proportional to the movement, it survives three seconds, snow is a different curve from rain, a dry
+  road produces none, and understeering by the predicted amount lands on the mark. Snow overshoots
+  0.1978 of the movement, rain 0.0612 against a predicted 0.060, dry 0.0000. Two measurement faults
+  were found and recorded rather than papered over: the first version measured collisions, and the
+  second was reading a slip residue the previous surface had left behind.
+
 <a id="v0-10-41"></a>
 ## [0.10.41] - 2026-08-31
 - Changed: **transient messages sit under the mirror instead of across the road ahead.** Owner: "the
