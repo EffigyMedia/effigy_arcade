@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-18"></a>
+## [0.11.18] - 2026-09-01
+- Changed: **the coast barely rises and falls now** - relief 0.18 to 0.10. Owner, 2026-09-01:
+  "we should minimize the verticality significantly in coastal because when we go up and down
+  in this biome the ocean follows and that's not how that works"
+  ([RLG-145](../fragments/RLG-145.md), item 3).
+- Note: **this is the cheap half and the owner asked for it; it is not the fix.** THE OCEAN
+  FOLLOWING IS THE REAL FAULT. The sea is drawn from the ROAD's own line, so a crest lifts the
+  water with it, and a lower relief only makes the crest smaller. Water drawn at the LAND's
+  level is the honest answer, which is what [RLG-143](../fragments/RLG-143.md) is building for
+  the bridge - a coast is its second customer.
+- Note: **measured, because a relief number is otherwise chosen by eye.** `farSea().y` is where
+  the water meets the near shore on the screen, so its peak-to-peak over a drive IS the
+  movement being complained about. Six runs at each value, trimmed: 0.18 gave 21 to 39 pixels
+  on an 862-pixel screen, 0.10 gave 12 to 20. The ranges do not overlap, which is the bar
+  `fps-test` sets for a change being real, and the medians are 25 against 17.
+- Note: **0.10 is the board's floor and that is why it stops there.** FARMLAND sits at 0.10 and
+  its own note claims that as the thing it is, the flattest place there is. Going below takes
+  that identity off it, and that is the owner's call rather than one to make while tuning a
+  coast. So the water still moves about 17 pixels, and only RLG-143 takes it to zero.
+
 <a id="v0-11-17"></a>
 ## [0.11.17] - 2026-09-01
 - Changed: **the coast's horizon is open water now, with no headlands standing on it.** Owner,

@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.17';
+window.ROAD_BUILD = '0.11.18';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8910,7 +8910,32 @@ const BIOMES = {
      said never completely flat.
      ------------------------------------------------------------------ */
   COASTAL:    { name:'COASTAL',    temp:0.55, vary:0.25, precip:0.38,
-              hill:0.18, bend:0.60,
+              /* ---- 0.10, AND IT IS ONLY HALF THE ANSWER (RLG-145) -------
+                 Owner, 2026-09-01: "we should minimize the verticality
+                 significantly in coastal because when we go up and down in this
+                 biome the ocean follows and that's not how that works."
+
+                 THE OCEAN FOLLOWING IS THE REAL FAULT AND THIS DOES NOT FIX IT.
+                 The sea is drawn from the ROAD's own line, so a crest lifts the
+                 water with it - and a lower relief only makes the crest smaller.
+                 The honest fix is the water drawn at the LAND's level, which is
+                 what [[RLG-143]] is building for the bridge; a coast is its
+                 second customer and this is the cheap half the owner asked for.
+
+                 MEASURED, because a relief number is otherwise chosen by eye.
+                 `farSea().y` is where the water meets the near shore on the
+                 screen, so its peak-to-peak over a drive IS the movement being
+                 complained about. Six runs at each value, trimmed: 0.18 gave 21
+                 to 39 pixels on an 862-pixel screen, 0.10 gave 12 to 20. The
+                 ranges do not overlap, which is the bar `fps-test` sets for a
+                 change being real, and the medians are 25 against 17.
+
+                 AND 0.10 IS THE BOARD'S FLOOR, WHICH IS WHY IT STOPS HERE.
+                 FARMLAND sits at 0.10 and its own note claims that as the thing
+                 it is - the flattest place there is. Going below would take that
+                 identity off it, and that is the owner's call rather than one to
+                 make while tuning a coast. */
+              hill:0.10, bend:0.60,
               /* the open sky the rename asked for: a coast is bright between
                  the showers rather than overcast because it is wet (RLG-059).
                  NOT named `sky` - see the scar in `rollSky`. Was `cover`, and
