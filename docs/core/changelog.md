@@ -14,6 +14,31 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-17"></a>
+## [0.11.17] - 2026-09-01
+- Changed: **the coast's horizon is open water now, with no headlands standing on it.** Owner,
+  2026-09-01, from the device: the islands are masked wrong at the shoreline, "it might just be
+  simpler to remove them" ([RLG-145](../fragments/RLG-145.md), item 2). COASTAL states
+  `skyForm:'none'`.
+- Note: **the mask was measured before it was believed wrong, and it is not wrong.** The clip
+  added at [0.11.13](#v0-11-13) splits the skyline at the road's vanishing point. The water's
+  own far band records where it reaches the horizon, and over fourteen frames the two agreed to
+  0.0 of a pixel. Sampled down the pixel column, the sea begins on the horizon row itself, so
+  an island's base meets the water with no gap under it.
+- Note: **so there was nothing better to clip to.** Above the horizon the shoreline IS a
+  vertical line at the vanishing point - that is what a vanishing point means. What is left is
+  a headland cut in half by that line, and no repositioning of a mask fixes a hard vertical cut.
+  The ruling was to take the owner's simpler option unless the mask could follow the shoreline
+  itself; it cannot, so this takes it.
+- Note: **the clip is left standing and is now unused.** `seaOnly` in the skyline painter has no
+  customer, because the only place with water on one side draws no band. It stays because the
+  measurement said it was right, so restoring the headlands is one word in the COASTAL row -
+  and it should only go back with an answer to the vertical cut.
+- Note: **`coast-test` passed six runs out of six after the change.** It had been failing about
+  three runs in thirteen with the clip live and about one in twelve without it, and the note at
+  0.11.13 said plainly that the cause was never isolated. Six is not a rate and this does not
+  claim the flake is gone - it is recorded so a later session has the before and the after.
+
 <a id="v0-11-16"></a>
 ## [0.11.16] - 2026-09-01
 - Fixed: **the tunnel wall is not painted over the traffic any more.** Owner, 2026-09-01, from

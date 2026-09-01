@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.16';
+window.ROAD_BUILD = '0.11.17';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8939,7 +8939,31 @@ const BIOMES = {
               sea:'#1d4a63', beach:1.3,
               /* what floats on it, drawn as scenery on the seaward side (RLG-059) */
               boats:'COASTAL_BOATS', ships:'COASTAL_SHIPS',
-              sky:'#2f4a63', city:0.08, trees:0.20, skyForm:'open' },
+              /* ---- AND NOTHING STANDS ON THAT HORIZON (RLG-145) ---------
+                 Owner, 2026-09-01, from the device: the islands are masked
+                 wrong at the shoreline, "it might just be simpler to remove
+                 them."
+
+                 THE MASK WAS MEASURED BEFORE IT WAS BELIEVED WRONG, and it is
+                 not. The clip added in v0.11.13 splits the skyline at the
+                 road's vanishing point; the water's own far band records where
+                 it reaches the horizon; over fourteen frames the two agreed to
+                 0.0 of a pixel. Sampled down the column, the sea begins on the
+                 horizon row itself with no gap under an island.
+
+                 SO THERE IS NOTHING BETTER TO CLIP TO. Above the horizon the
+                 shoreline IS a vertical line at the vanishing point - that is
+                 what a vanishing point means - and what is left is a headland
+                 cut in half by it, which no repositioning of the mask can fix.
+                 The fragment's instruction was to take the owner's simpler
+                 option unless the mask could follow the shoreline itself. It
+                 cannot, so this takes it.
+
+                 `none` rather than a deleted clip: `seaOnly` in the skyline
+                 painter is left standing and is now unused, so restoring the
+                 headlands is this one word going back. Bring them back only
+                 with an answer to the vertical cut. */
+              sky:'#2f4a63', city:0.08, trees:0.20, skyForm:'none' },
   /* ---- THE FLATTEST PLACE ON THE BOARD (RLG-102) ----------------------
      Owner, 2026-08-31: "I want to add another biome farmland. This one would
      have one side with a cornfield and the other side flat with houses and
@@ -15141,6 +15165,14 @@ function drawSky(){
      is where the shoreline arrives at the horizon - exact, and the same value
      the sea's far band is built on. A bridge is excluded: its water IS on both
      sides, so its horizon should be too.
+     ------------------------------------------------------------------ */
+  /* ---- AND IT HAS NO CUSTOMER NOW (RLG-145) --------------------------
+     COASTAL states `skyForm:'none'`, so its band is empty and this clips
+     nothing. It is left standing because the measurement said the clip was
+     RIGHT - it agreed with the water's own reach to 0.0 of a pixel - and what
+     removed the headlands was the hard vertical cut through one, which is not
+     this function's fault. Restoring them is one word in the COASTAL row, and
+     the clip they need is already here.
      ------------------------------------------------------------------ */
   const seaOnly = (key) => {
     const B = BIOMES[key];
