@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.18';
+window.ROAD_BUILD = '0.11.19';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5872,7 +5872,20 @@ const SCENERY = {
 
      `lit` AND `litKinds` PUT THE LAMPS IN THE RIGHT PLACES: a house and a barn
      have windows, a silo and a tree do not. */
-  FARMLAND: { density:0.30, w:1.45, h:1.55, out:1.30, spread:2.20, kinds:4,
+  /* ---- 0.14, BECAUSE A FARM IS NOT A VILLAGE (RLG-145) ----------------
+     Owner, 2026-09-01, from the device: "the houses and barns in the farmland
+     biome need to be more sparse."
+
+     0.30 stood ABOVE the coast's 0.24, and a beach strip is a row of houses
+     while a farmstead is a yard with fields either side of it. The capture
+     showed the consequence exactly - an unbroken run of roofs from the
+     vanishing point to the near verge, with no field between any two of them.
+
+     THE GAP IS THE SUBJECT, which is the same thing the coast's own horizon
+     spec says about its islands. 0.14 is under half, and it leaves the yards
+     clearly further apart than the beach houses while staying well above the
+     desert's 0.055, which is a thing every few hundred yards. */
+  FARMLAND: { density:0.14, w:1.45, h:1.55, out:1.30, spread:2.20, kinds:4,
             lit:true, litKinds:[0, 1],
             build:(g,W2,H2,i)=>{
               const ground = H2 * 0.97;

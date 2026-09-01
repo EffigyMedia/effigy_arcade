@@ -14,6 +14,21 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-19"></a>
+## [0.11.19] - 2026-09-01
+- Changed: **the farmland yards are sparse now** - scenery density 0.30 to 0.14. Owner,
+  2026-09-01, from the device: "the houses and barns in the farmland biome need to be more
+  sparse" ([RLG-145](../fragments/RLG-145.md), item 7).
+- Note: **0.30 stood ABOVE the coast's 0.24, which is the wrong way round.** A beach strip is a
+  row of houses; a farmstead is a yard with fields either side of it. The capture showed the
+  consequence exactly - an unbroken run of roofs from the vanishing point to the near verge
+  with no field between any two of them.
+- Note: **the gap is the subject**, which is the same thing the coast's own horizon spec says
+  about its islands. 0.14 leaves the yards clearly further apart than the beach houses and
+  stays well above the desert's 0.055, which is a thing every few hundred yards.
+- Note: **the look is the owner's call and the capture is in `_shots/biome-farmland.png`.**
+  A density is a number a harness can read back; whether a farm reads as a farm is not.
+
 <a id="v0-11-18"></a>
 ## [0.11.18] - 2026-09-01
 - Changed: **the coast barely rises and falls now** - relief 0.18 to 0.10. Owner, 2026-09-01:
