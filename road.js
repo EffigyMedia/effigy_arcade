@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.21';
+window.ROAD_BUILD = '0.11.22';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -9195,15 +9195,23 @@ const BIOMES = {
      builds from it in the ordinary way and the unwind stops at it instead of at
      zero. IT IS NO LONGER STATED HERE. It derives from the instance's
      temperature, so a cold-rolled city lies under snow for the same reason a
-     tundra does, and the tundra's own floor comes out at 0.48 against the 0.50
-     that used to be typed in.
+     tundra does. THE FIGURE IN THIS NOTE WAS STALE: it said 0.48, from before
+     `SNOW_FLOOR_K` moved. The tundra's floor derives to 0.247, which is the
+     number the owner quoted back from the device, and `climateAt` works it out.
 
      AND ITS PRECIPITATION FALLS HARD, from 0.72 of rolls to 0.15. Owner,
      2026-08-31: "a lower chance for snow and an even lower chance for rain, but
      still a baseline coverage on the ground." A cold DRY place precipitates
      rarely - it is the ground cover that makes it read as a tundra, not
      constant snowfall. */
-  TUNDRA:   { name:'TUNDRA',   temp:0.05, vary:0.10, precip:0.15, bias:0.90,
+  /* ---- AND ITS TEMPERATURE BARELY VARIES, WHICH IS WHAT MAKES IT ONE ----
+     `vary` was 0.10, so an instance rolled anywhere in 0.00 to 0.15 - and at
+     the warm end of that a tundra derives the same floor a mountain does and
+     its ground came out half bare. A tundra is defined by being reliably
+     frozen rather than by being cold on average, so 0.04 is the field that
+     says so. It keeps every instance inside 0.01 to 0.09, which the ground
+     cover reads as 0.77 to 1.00 (RLG-145). */
+  TUNDRA:   { name:'TUNDRA',   temp:0.05, vary:0.04, precip:0.15, bias:0.90,
               hill:0.80, bend:0.75,
               grassLo:'#3e4a52', grassHi:'#54626c',
               /* ice rather than rock, and it is STATED now - it used to be a
@@ -9566,6 +9574,39 @@ let biomeCrossW = 1;
    line - and the melt that follows is then the ordinary unwind rather than a
    special case.
    ------------------------------------------------------------------------- */
+/* ---- THE GROUND IS WHITE, THE TARMAC ACCUMULATES (RLG-145) --------------
+   Owner, 2026-09-01, from the device: "the ground and far ground in tundra
+   should be white as if covered in snow. Only the tarmac should increment and
+   decrement snow (though keep in mind that the tarmac has a capped minimum
+   baseline of .247 I believe it was)."
+
+   THE OWNER'S 0.247 IS EXACT. It is what `climateAt` derives for a tundra at
+   its stated 0.05, and the note above `SNOW_FLOOR_T` works it out. What changes
+   is that this is now the TARMAC's number alone.
+
+   A GROUND COVER IS NOT A FLOOR. `snowFloor` is where accumulation starts from
+   and where melting stops; the ground is simply white, and driving through a
+   blizzard or a thaw does not make a frozen plain more or less frozen. So the
+   ground takes the greater of its permanent cover and whatever has settled,
+   and the road keeps `settle` on its own.
+
+   AND IT IS STILL DERIVED, WHICH RLG-109 REQUIRES. Nothing new is stated in the
+   table. The cover is the place's own floor read against the coldest floor the
+   model produces, so a place as cold as a tundra is white, a mountain at half
+   that floor is half covered, and a temperate place is bare. A cold-rolled city
+   lies under snow for the same reason a tundra does, which is the whole point
+   of deriving it.
+   ------------------------------------------------------------------------- */
+const GROUND_WHITE_FLOOR = 0.247;
+function groundCoverNow(){
+  return clamp(snowFloorNow() / GROUND_WHITE_FLOOR, 0, 1);
+}
+/* what the GROUND is showing: its permanent cover, or the snow that has fallen
+   on top of it, whichever is more. The road never asks this. */
+function groundSnow(){
+  const c = groundCoverNow();
+  return settle > c ? settle : c;
+}
 function snowFloorNow(){
   /* the INSTANCES, not the recipes. A city that rolled cold lies under snow and
      a city that rolled warm does not, and the recipes cannot tell them apart
@@ -9691,7 +9732,7 @@ function groundTone(idx, dark, nAmt, gAmt){
   if(gAmt === undefined) gAmt = goldenHour();
   /* the same strengths the three branches used, applied as amounts (RLG-091) */
   const c = hourTint(hexRGB(raw), nAmt, gAmt, dark ? 0.62 : 0.55, dark ? 0.34 : 0.30);
-  return rgb(mix3(c, snowHue(nAmt, gAmt), settle * 0.85));
+  return rgb(mix3(c, snowHue(nAmt, gAmt), groundSnow() * 0.85));
 }
 
 /* LIFT A COLOUR TOWARD ANOTHER ONE. It reads both colour forms, because its own
@@ -19007,7 +19048,9 @@ function drawMirrorFull(mx, my, mw, mh){
      it is scaled by distance ahead and there is no equivalent looking back.
      -------------------------------------------------------------------- */
   const mRain = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
-  const mSnowRoad = settle * 0.55, mSnowGround = settle * 0.85;
+  /* the GROUND behind you is covered the same way the ground ahead is - one
+     quantity, or the mirror shows a different winter (RLG-145) */
+  const mSnowRoad = settle * 0.55, mSnowGround = groundSnow() * 0.85;
   const mNight = nightFall(), mGold = goldenHour();
   /* the same blend the road ahead uses, or the mirror snaps while the road
      in front of it crossfades (RLG-091) */
@@ -21619,6 +21662,12 @@ requestAnimationFrame(frameLoop);
     return prof;
   };
   API.snowFloor = function(){ return +snowFloorNow().toFixed(3); };
+  /* THE GROUND'S OWN WHITE, which is not the road's (RLG-145). `snowFloor` is
+     where the TARMAC's accumulation starts and stops; this is how covered the
+     land is regardless of what has fallen. A check that read only one of them
+     could not tell a white plain with a wet road from a white road. */
+  API.groundCover = function(){ return +groundCoverNow().toFixed(3); };
+  API.groundSnow  = function(){ return +groundSnow().toFixed(3); };
   /* the mirror's eye height, and where a car a given distance behind lands in
      the glass as a fraction of it - 0 at the mirror's horizon, 1 at the bottom.
      It is the number that says whether the view looks DOWN on the road or along

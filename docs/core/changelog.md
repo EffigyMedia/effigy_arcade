@@ -14,6 +14,37 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-22"></a>
+## [0.11.22] - 2026-09-01
+- Changed: **a tundra's ground is white before anything falls, and only the tarmac
+  accumulates.** Owner, 2026-09-01, from the device: "the ground and far ground in tundra should
+  be white as if covered in snow. Only the tarmac should increment and decrement snow (though
+  keep in mind that the tarmac has a capped minimum baseline of .247 I believe it was)"
+  ([RLG-145](../fragments/RLG-145.md), item 1).
+- Note: **the owner's 0.247 is exact.** It is what `climateAt` derives for a tundra at its
+  stated 0.05. The note above the table said 0.48, from before `SNOW_FLOOR_K` moved, and that
+  figure is corrected.
+- Changed: **a ground cover is not a floor, and they are two quantities now.** `snowFloor` is
+  where the TARMAC's accumulation starts and where melting stops - it keeps that job and its
+  number. The ground takes the greater of its permanent cover and whatever has settled, because
+  driving through a blizzard or a thaw does not make a frozen plain more or less frozen.
+- Note: **and it is still derived, which [RLG-109](../fragments/RLG-109.md) requires.** Nothing
+  new is stated in the table. The cover is the place's own floor read against the coldest floor
+  the model produces, so a cold-rolled city lies under snow for the same reason a tundra does.
+  Measured over 400 rolls each: TUNDRA 0.77-1.00 cover, median 0.99. MOUNTAIN 0.00-1.00, median
+  0.39 - a mountain is sometimes bare and sometimes buried, which is what a mountain is. FOREST
+  and DESERT are 0.00 throughout and unchanged. A CITY is 0.00 at its median and 1.00 at its
+  cold end.
+- Changed: **TUNDRA's `vary` from 0.10 to 0.04**, which is what makes the first claim true. At
+  0.10 an instance could roll to 0.15, where a tundra derives the same floor a mountain does
+  and its ground came out half bare. A tundra is defined by being reliably frozen rather than
+  by being cold on average, and `vary` is the field that says so.
+- Changed: **the mirror's ground takes the same quantity**, or the glass shows a different
+  winter from the road.
+- Note: **the mountain is the visible side effect and it was not asked for.** Its ground cover
+  goes from a flat 0.10 to a median 0.39 that varies run to run. It follows from the owner's own
+  model rather than from a decision made here, and it is the owner's call on the device.
+
 <a id="v0-11-21"></a>
 ## [0.11.21] - 2026-09-01
 - Changed: **the city carries far more lit windows.** Owner, 2026-09-01, from the device: "the
