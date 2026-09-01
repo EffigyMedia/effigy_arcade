@@ -14,6 +14,40 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-0"></a>
+## [0.11.0] - 2026-08-31
+
+**Slice checkpoint.** The owner played through every tournament, unlocking everything, and reported
+five things; all five are built, and four further rulings arrived while they were being built. That
+is a completed slice, so the minor version moves and the patch count resets - the rule is that a
+minor bump marks a slice completing, and 0.10 ran to forty-six patches without one while several
+slices closed inside it.
+
+WHAT THE SLICE CONTAINED, in the order it was built:
+
+- **0.10.40** the checkpoint boards stay in the mirror, and the finish banner joins them - two faults
+  behind one sentence ([RLG-133](../fragments/RLG-133.md))
+- **0.10.41** the transient messages sit under the mirror rather than across the road ahead, anchored
+  to a measured band instead of a percentage ([RLG-134](../fragments/RLG-134.md))
+- **0.10.42** a wet road carries you further than you asked, and you can aim with it
+  ([RLG-048](../fragments/RLG-048.md), [RLG-132](../fragments/RLG-132.md))
+- **0.10.43** a collision answers where it happened, and moves both cars
+  ([RLG-131](../fragments/RLG-131.md))
+- **0.10.44** a slick road runs you wide in a bend, measured rather than assumed
+- **0.10.45** it precipitates about half as often, by one lever over the whole board
+  ([RLG-136](../fragments/RLG-136.md))
+- **0.10.46** the mirror carries the roadside the windscreen carries
+  ([RLG-130](../fragments/RLG-130.md))
+
+Earlier in the same day, 0.10.38 and 0.10.39 built the biome and climate model and then took the
+owner's snow floors ([RLG-109](../fragments/RLG-109.md)).
+
+**NOT ONE OF THESE HAS BEEN JUDGED ON A DEVICE.** Nine builds. Every one is verified by harness and
+by measurement, and the things a harness cannot judge - whether the slip reads as a skill, whether
+being shoved forward by a rival is satisfying, whether five ranks of mirror scenery is denser or
+merely cluttered, whether a forest still holds 60fps on a phone - are all still open. The tunables
+behind them are live so a device report can be answered without a rebuild.
+
 <a id="v0-10-46"></a>
 ## [0.10.46] - 2026-08-31
 - Changed: **the mirror draws the same ranks of roadside the windscreen does.** Owner: "The scenery in
