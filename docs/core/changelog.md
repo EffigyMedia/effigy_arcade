@@ -14,6 +14,38 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-14"></a>
+## [0.11.14] - 2026-09-01
+- Added: **the tunnel does the opposite of the bridge.** Owner, 2026-09-01: "the tunnel does
+  the opposite - when you enter it goes down and then its verticality is capped to 0, and at
+  the end of the tunnel it moves back up to meet the ground of the next biome." It is the
+  bridge's own profile with the sign turned over, through the same machinery, and nothing new
+  was built for it - which is the test of whether the event mechanism was a mechanism
+  ([RLG-143](../fragments/RLG-143.md)).
+- Note: **[RLG-112](../fragments/RLG-112.md) deliberately withheld this and was right to.** It
+  gave the bridge a profile and not the tunnel, because the owner had already capped a bore's
+  form at 0.10 on both axes and one combined field would have overruled that ruling. The owner
+  has now stated the tunnel's shape directly, so the caution was waiting for a ruling rather
+  than avoiding work. The 0.10 cap stays: the profile governs the vertical inside the event
+  and the cap governs what little the bore does outside it.
+- Note: **and the mouths meet, which RLG-143 named as where it would fail.** Zero SLOPE at
+  each end is not zero HEIGHT, and it is the height that has to match the place either side.
+  The two ramps are equal and opposite so the integral is exactly zero - checked at 0.000000
+  before any of it was wired up. Measured across the crossings: the bridge runs 0 to +42 and
+  back, the tunnel 0 to -24 and back.
+- Added: **a second accumulator that runs the ordinary terrain straight through an event**, as
+  though no profile were in force. It is the level the land would have been at, and the
+  difference between it and the road is the crossing's own height.
+- Note: **the water is NOT yet drawn at it, and the obstacle is a units one.** Both
+  accumulators are read through functions that subtract the player's own value - which is what
+  makes the road drawn relative to the camera, and is correct for the road. It is wrong for
+  the water: at the car's own position the subtraction makes the difference zero, so the sea
+  rose to meet the deck exactly where it should have been furthest below it. The rise has to
+  enter the projection as a WORLD height, the way the tunnel's ceiling does, rather than as a
+  screen offset added afterwards. That is the same mistake the bore's roof made and it cost
+  three builds there. `WATER_DROP` stands until then, and it is still a constant picked by
+  eye.
+
 <a id="v0-11-13"></a>
 ## [0.11.13] - 2026-09-01
 - Added: **a fleet rather than one boat** - sailboats, speedboats, fishing boats, ocean

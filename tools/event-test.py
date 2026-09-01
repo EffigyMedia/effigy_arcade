@@ -166,18 +166,48 @@ def main():
         # ------------------------------------------------ and the shape is a second field
         print()
         print('  AND THE SHAPE IS A SECOND FIELD, WHICH IS THE TEST OF A MECHANISM')
-        # A tunnel takes the length and NOT the shape. If these were one field the tunnel
-        # would have grown a profile it was never meant to have, over the top of the
-        # owner's own ruling that both of its axes are capped at 0.10.
-        res.check(spans['TUNNEL']['profile'] is False,
-                  'a tunnel states a length and no shape - its form is already ruled on',
-                  'it states a profile')
-        res.check(spans['BRIDGE']['profile'] is True,
-                  'and the bridge states both',
-                  'it states no profile')
+        # THE TUNNEL HAS A SHAPE NOW, AND THAT IS A RULING RATHER THAN A DRIFT. This
+        # check used to assert the opposite - that a tunnel states a length and NO shape -
+        # and it was right to, because RLG-112 deliberately withheld one: the owner had
+        # already capped a bore's form at 0.10 on both axes, and a single combined field
+        # would have overruled that ruling to get a bridge. The owner has since stated the
+        # tunnel's shape directly (RLG-143), so the caution was right to WAIT for it rather
+        # than guess it, and the check moves with the ruling rather than being deleted.
+        res.check(spans['TUNNEL']['profile'] is True and spans['BRIDGE']['profile'] is True,
+                  'both events state a shape as well as a length',
+                  'tunnel %r, bridge %r'
+                  % (spans['TUNNEL']['profile'], spans['BRIDGE']['profile']))
+        # AND THE TWO FIELDS ARE STILL SEPARATE, which was the point of the original
+        # check. Every ordinary place states neither; nothing acquired a shape by having
+        # a length, or the other way round.
         res.check(not any(spans[k]['profile'] for k in ordinary),
-                  'and nothing else has one',
+                  'and no ordinary place picked one up along the way',
                   str([k for k in ordinary if spans[k]['profile']]))
+        # ------------------------------------------------ one shape with a sign
+        print()
+        print('  ONE SHAPE WITH A SIGN: A BRIDGE RISES, A TUNNEL DROPS')
+        # Owner, 2026-09-01: a bridge "starts by going up high above the water and then
+        # levels out ... then at the end the roadway goes down to meet the next biome",
+        # and "the tunnel does the opposite".
+        br = page.evaluate("() => window.__probe.road.riseProfile('BRIDGE', 40)")
+        tu = page.evaluate("() => window.__probe.road.riseProfile('TUNNEL', 40)")
+        print('      bridge height across the crossing: %s'
+              % ' '.join('%+.0f' % v for v in br[::5]))
+        print('      tunnel height across the bore:     %s'
+              % ' '.join('%+.0f' % v for v in tu[::5]))
+        res.check(max(br) > 10 and min(br) > -0.5,
+                  'the bridge only ever rises',
+                  'it ran from %+.1f to %+.1f' % (min(br), max(br)))
+        res.check(min(tu) < -10 and max(tu) < 0.5,
+                  'and the tunnel only ever drops, which is the same shape negated',
+                  'it ran from %+.1f to %+.1f' % (min(tu), max(tu)))
+        # AND THE MOUTHS MEET, which RLG-143 names as where this fails. Zero SLOPE at
+        # each end is not zero HEIGHT, and it is the height that has to match the place
+        # either side - or a bridge hands over to a desert from thirty feet up.
+        for nm, prof in (('bridge', br), ('tunnel', tu)):
+            res.check(abs(prof[0]) < 0.5 and abs(prof[-1]) < 0.5,
+                      'the %s meets the ground at both mouths' % nm,
+                      'it ends at %+.2f and %+.2f' % (prof[0], prof[-1]))
 
         # ------------------------------------------------ the shape itself
         print()

@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.13';
+window.ROAD_BUILD = '0.11.14';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1345,6 +1345,26 @@ function cornerG(){
 
 const BEND_STEP = 300;
 let bendCache = [], slopeCache = [], hillCache = [], gradCache = [];
+/* ---- WHERE THE LAND WOULD HAVE BEEN (RLG-143) --------------------------
+   Owner, 2026-09-01: a bridge "starts as a plane of water level to the ground
+   and tarmac", rises over it, and comes back down to meet the next place.
+
+   THE ENGINE HAD NOTHING TO DRAW THAT WATER AT. An authored profile REPLACES the
+   road's slope inside an event, so by the middle of a crossing the road's own
+   accumulated height already carries the whole rise and there is nothing left to
+   subtract it with. The height of a bridge above the sea was therefore not a
+   quantity the engine held - which is why the first version of the water was a
+   constant, `WATER_DROP`, picked by eye. That is the same fault the fleet's two
+   size tables were and the canyon's skyline was: a value typed in beside a value
+   derived from it.
+
+   SO A SECOND ACCUMULATOR RUNS THE ORDINARY ROLLED GRADE STRAIGHT THROUGH the
+   event, as though no profile were in force. It is the level the land would have
+   been at, the difference between the two IS the bridge's height, and it is
+   correct at every point of the crossing including the two ends - where it goes
+   to zero because the road has come back down to meet the land.
+   ------------------------------------------------------------------------- */
+let landCache = [], lgradCache = [];
 let bendZ0 = 0, curveSegs = [], hillSegs = [];
 
 /* the sequence of bends, generated ahead as the road is consumed */
@@ -1460,7 +1480,8 @@ function rebuildBend(){
      ------------------------------------------------------------------------ */
   signs = signs.filter(sg => sg.z > pos - 4000);
   bendCache = []; slopeCache = []; hillCache = []; gradCache = [];
-  let dx = 0, x = 0, dy = 0, y = 0;
+  landCache = []; lgradCache = [];
+  let dx = 0, x = 0, dy = 0, y = 0, dyL = 0, yL = 0;
   /* ---- THE ROAD WAS DRAWN STRAIGHT ON EVERY CIRCUIT --------------------
      `span` is how far ahead the bend is integrated, and it was measured from
      `curveSegs` — the ENDLESS road's segment list, which a circuit never
@@ -1478,6 +1499,7 @@ function rebuildBend(){
   for(let z = bendZ0; z < bendZ0 + span; z += BEND_STEP){
     bendCache.push(x);  slopeCache.push(dx);
     hillCache.push(y);  gradCache.push(dy);
+    landCache.push(yL); lgradCache.push(dyL);
     dx += curvatureAt(z) * 0.010;
     x  += dx;
     /* an EVENT states its slope outright; ordinary terrain accumulates one from
@@ -1487,6 +1509,9 @@ function rebuildBend(){
     if(au === null) dy += gradeAt(z) * 0.010;
     else            dy  = au;
     y  += dy;
+    /* the land, which never hears the profile (RLG-143) */
+    dyL += gradeAt(z) * 0.010;
+    yL  += dyL;
   }
 }
 /* ===========================================================================
@@ -1795,6 +1820,14 @@ function hillPx(z){
   return lookup(hillCache, z) - lookup(hillCache, pos)
        - lookup(gradCache, pos) * ((z - pos)/BEND_STEP);
 }
+/* the same reading of the land's own line, so the two can be subtracted */
+function landPx(z){
+  return lookup(landCache, z) - lookup(landCache, pos)
+       - lookup(lgradCache, pos) * ((z - pos)/BEND_STEP);
+}
+/* how high the road stands over the land at this distance, in screen pixels.
+   Zero everywhere except inside an event, and zero at an event's two mouths. */
+function riseOverLand(z){ return landPx(z) - hillPx(z); }
 
 function proj(worldX, worldZ){
   const dz = worldZ - pos;
@@ -8950,6 +8983,29 @@ const BIOMES = {
                  grown - and one number for both is simpler than two arguments
                  about which matters more. Not zero: nothing in this game is. */
               hill:0.10, bend:0.10, dark:1,
+              /* ---- AND IT DOES THE OPPOSITE OF THE BRIDGE (RLG-143) -----
+                 Owner, 2026-09-01: "the tunnel does the opposite - when you
+                 enter it goes down and then its verticality is capped to 0, and
+                 at the end of the tunnel it moves back up to meet the ground of
+                 the next biome."
+
+                 ONE SHAPE WITH A SIGN. It is the bridge's own profile negated,
+                 through the same `authoredSlope`, so nothing new is built for
+                 it. RLG-112 deliberately withheld a profile from the tunnel
+                 because the owner had already capped a bore's form and one field
+                 would have overruled that ruling; the owner has now stated the
+                 shape directly, so the caution was right to wait rather than
+                 guess.
+
+                 A BORE DROPS LESS THAN A BRIDGE RISES. A span has to clear
+                 shipping and a tunnel only has to get under the ground, so 0.34
+                 against the bridge's 0.50.
+
+                 AND THE 0.10 CAP ABOVE STAYS. The profile governs the vertical
+                 INSIDE the event and the cap governs what little the bore does
+                 outside it - two numbers answering two questions, and RLG-143
+                 says so explicitly. */
+              profile: { ramp:0.16, rise:-0.34 },
               /* ---- AND IT LASTS A TUNNEL'S LENGTH (RLG-112) -----------
                  It was the ordinary roll, six and a half to twelve miles - at
                  the speed the interstate is actually driven, two and a half to
@@ -21480,6 +21536,28 @@ requestAnimationFrame(frameLoop);
     const perM = 380 / 4.5;
     return BOAT_KINDS.map(k => ({ name:k.name, units:k.len,
                                   metres:+(k.len / perM).toFixed(1) }));
+  };
+  /* ---- HOW HIGH THE ROAD STANDS OVER THE LAND (RLG-143) ----------------
+     Sampled across a crossing. Positive is above the land and negative is below
+     it, so one probe answers for a bridge and a tunnel both - and the two ends
+     must read zero, because zero SLOPE at a mouth is not zero HEIGHT and it is
+     the height that has to meet the next place.
+     ------------------------------------------------------------------ */
+  API.riseProfile = function(k, n){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    if(!B.profile || !B.span) return null;
+    const out = [];
+    n = n || 40;
+    const len = B.span * MILE, step = len / n;
+    /* integrated the same way the road is - the slope times the step - so this
+       reads the profile the engine drives on rather than a copy of it */
+    let h = 0;
+    out.push(0);
+    for(let i = 1; i <= n; i++){
+      h += profileSlope((i - 0.5) / n, B.profile) * (step / BEND_STEP);
+      out.push(+h.toFixed(3));
+    }
+    return out;
   };
   API.waterPlane = function(){
     const dy = H - horizon;
