@@ -1238,6 +1238,32 @@ const CORNER_G_BASE = 0.42, CORNER_LAG = 1.8;
    places have to agree about it: where the glass starts its walk, where its
    horizon band is measured, and where the scenery fades away (RLG-128). */
 const MIRROR_BACK = 34000;
+/* ---- HOW MANY RANKS OF ROADSIDE THE GLASS DRAWS (RLG-130) --------------
+   5 is a CEILING rather than a count: each place draws its own `rows`, and no
+   place on the board declares more than five. So the mirror now draws the same
+   ranks the windscreen does, which is what the owner asked for.
+
+   THE COST COULD NOT BE MEASURED HERE AND THAT IS STATED RATHER THAN GUESSED.
+   Nine samples per arm in a forest: one rank ran 52.4-60.4, two ran 49.2-60.4
+   and five ran 46.4-60.8. The arms overlap almost completely and the forest's
+   own spread on an unchanged build is eight frames, so the difference between
+   two ranks and five is not separable on this machine. One rank with a TIGHTER
+   far cutoff even scored a lower minimum than the baseline, which is what says
+   the minimum is noise rather than signal.
+
+   SO THE DEVICE IS THE JUDGE, and this is the biome it will show in. All three
+   levers are live - `API.mirrorRows`, `API.mirrorNear`, `API.mirrorMin` - so a
+   report from a phone can be answered without a rebuild. */
+let MIRROR_ROWS = 5;
+/* how large an object may be before the glass drops it, as a fraction of the
+   pane's width. The near field is what buries a 44-pixel mirror, so this is a
+   separate lever from the rank count (RLG-130). */
+let MIRROR_NEAR = 0.20;
+/* the smallest object the glass bothers with, in pixels. The far end of a
+   second rank is where a rank costs its frames and where it contributes least:
+   an object under two pixels in a pane 44 tall is a smudge that still costs a
+   full drawImage (RLG-130). */
+let MIRROR_MIN = 2.2;
 /* ---- AND GRIP DECIDES HOW SHARPLY THE CAR ANSWERS (RLG-119) -------------
    Owner, 2026-08-31: "should grip not only affect being pushed on the corner,
    but also your steering rate? A formula should handle extremely well and a
@@ -16446,11 +16472,24 @@ function drawMirrorFull(mx, my, mw, mh){
     if(mSpec){
       const msc = a.scale * SCENE_UNIT * mw/2;
       if(msc > 0.6){
-        /* ONE ROW. Two cost about four frames a second in a forest and put a
-           second rank of trees inside a strip of glass where the first rank
-           already reaches the top of the pane. The mirror is a glance, not a
-           second window. */
-        const mrows = 1;
+        /* ---- AS MANY RANKS AS THE PLACE HAS, WITHIN A CEILING (RLG-130) ---
+           Owner, 2026-08-31, after playing through: "The scenery in the rearview
+           mirror is much more sparse than what it actually is in the front view.
+           It should be the same or at least closely comparable."
+
+           IT WAS ONE ROW WHERE A FOREST HAS FIVE, which is the largest of the
+           three reasons the glass looked empty - the mirror was drawing a fifth
+           of the ranks the windscreen draws, and then thinning that one rank
+           with the per-rank density on top.
+
+           THE CEILING IS THE FRAME RATE AND IT IS MEASURED RATHER THAN GUESSED.
+           The note that used to be here said two rows cost about four frames a
+           second in a forest; the forest's own spread on an unchanged build is
+           eight frames, so that figure could not have been read from the noise.
+           `MIRROR_ROWS` is the lever and it is live through `API.mirrorRows`,
+           so the arms can be compared in one sitting.
+           -------------------------------------------------------------- */
+        const mrows = Math.max(1, Math.min(mSpec.rows || 1, MIRROR_ROWS));
         for(const mside of [-1, 1]){
           /* nothing stands in the sea in here either, or the glass shows palms
              in the water while the windscreen shows an empty shore */
@@ -16467,7 +16506,7 @@ function drawMirrorFull(mx, my, mw, mh){
                contributes a smudge: the forest mirror measured 54.8 fps against
                60 everywhere else, and most of that was spent on objects too
                small to be seen. It is 60 at this threshold. */
-            if(mw2 < 1.5) continue;
+            if(mw2 < MIRROR_MIN) continue;
             /* ---- AND NOTHING LOOMS IN A PANE THIS SMALL -----------------
                The sizes are proportionally right - a tree is the same fraction
                of the road's width here as it is out of the windscreen - but the
@@ -16486,7 +16525,7 @@ function drawMirrorFull(mx, my, mw, mh){
                the glass. Out of the windscreen the same tree eases in. It now
                eases in here too, over the largest fifth of what is allowed.
                ------------------------------------------------------- */
-            const mCap = mw * 0.20;
+            const mCap = mw * MIRROR_NEAR;
             if(mw2 > mCap) continue;
             const mh2 = mw2 * (mart.height / mart.width);
             const mband = (mSpec.rows || 1) > 1 ? (mSpec.outFar - mSpec.out) / mSpec.rows : 0;
@@ -18956,6 +18995,12 @@ requestAnimationFrame(frameLoop);
   /* the mirror's glass, so a harness reads the pane the engine actually drew
      rather than a stale copy of the layout formula */
   API.mirrorRect = function(){ return mirrorRect; };
+  /* how many ranks of roadside the glass draws, and the near-object ceiling as a
+     fraction of the pane. Both live, because the trade between them is a frame
+     rate against a legible mirror and only a device settles it (RLG-130). */
+  API.mirrorRows = function(v){ if(v !== undefined) MIRROR_ROWS = v; return MIRROR_ROWS; };
+  API.mirrorNear = function(v){ if(v !== undefined) MIRROR_NEAR = v; return MIRROR_NEAR; };
+  API.mirrorMin  = function(v){ if(v !== undefined) MIRROR_MIN = v; return MIRROR_MIN; };
   /* where a transient message lands, in canvas pixels (RLG-134). The CANVAS
      labels read this; the DOM banner reads `--msg-top`, set from the same
      number. A check asks both and compares them, because two mechanisms with

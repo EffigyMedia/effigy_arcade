@@ -268,6 +268,59 @@ def main():
                           'and it fades AWAY toward the draw distance rather than into it',
                           'near %.3f against far %.3f, which is the wrong way round' % (mn, mf))
 
+        # ---- THE MIRROR'S ROADSIDE AGAINST THE WINDSCREEN'S (RLG-130) -------------------
+        # Owner, 2026-08-31: "The scenery in the rearview mirror is much more sparse than what
+        # it actually is in the front view. It should be the same or at least closely
+        # comparable."
+        #
+        # IT DREW ONE RANK WHERE A FOREST HAS FIVE, and then thinned that rank with the
+        # per-rank density on top - so the glass carried about a fifteenth of the objects the
+        # windscreen did. This counts what each view actually DRAWS in a frame, through the
+        # engine own trace, rather than judging a 44-pixel pane by eye.
+        #
+        # A RATIO, NOT A COUNT. The mirror can never match a windscreen object for object: it
+        # is a strip of glass looking backward, with a near cull that stops trees burying the
+        # road and a far cutoff that drops sub-pixel smudges. What is asserted is that the gap
+        # closed, and that the rank count is the thing that closed it.
+        print()
+        print('  THE MIRROR CARRIES A COMPARABLE ROADSIDE (RLG-130)')
+
+        def density(rows):
+            page.evaluate("(r) => { const R = window.__probe.road;"
+                          " R.mirrorRows(r); R.setBiomePair('FOREST','FOREST');"
+                          " R.setSpd(R.MAX_SPD*0.5); }", rows)
+            page.wait_for_timeout(700)
+            page.evaluate("() => window.__probe.road.traceScenery(true)")
+            page.wait_for_timeout(120)
+            t = page.evaluate("() => window.__probe.road.sceneryFrame()")
+            page.evaluate("() => window.__probe.road.traceScenery(false)")
+            ahead = sum(1 for r in t if r['view'] == 'ahead')
+            mir = sum(1 for r in t if r['view'] == 'mirror')
+            return ahead, mir
+
+        keep_rows = page.evaluate("() => window.__probe.road.mirrorRows()")
+        a_now, m_now = density(keep_rows)
+        a_one, m_one = density(1)
+        page.evaluate("(r) => window.__probe.road.mirrorRows(r)", keep_rows)
+        share_now = m_now / max(a_now, 1)
+        share_one = m_one / max(a_one, 1)
+        print('      shipping at %d ranks: the front drew %d objects, the glass %d  (%.0f%%)'
+              % (keep_rows, a_now, m_now, share_now * 100))
+        print('      at one rank:          the front drew %d objects, the glass %d  (%.0f%%)'
+              % (a_one, m_one, share_one * 100))
+        res.check(m_now > m_one * 2.5,
+                  'the glass carries far more roadside than it did at one rank',
+                  '%d objects against %d' % (m_now, m_one))
+        res.check(share_now > 0.18,
+                  'and it is a comparable roadside rather than a token one',
+                  'the mirror draws %.0f%% of what the windscreen draws' % (share_now * 100))
+        # AND THE RANK COUNT IS WHAT DID IT. If the ratio were the same at one rank, something
+        # else would be responsible and this check would be watching the wrong thing.
+        res.check(share_one < share_now * 0.6,
+                  'and the rank count is what closed the gap, rather than something else',
+                  '%.0f%% at one rank against %.0f%% shipping'
+                  % (share_one * 100, share_now * 100))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors', str(errs))
         browser.close()

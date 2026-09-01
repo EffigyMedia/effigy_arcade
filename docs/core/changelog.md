@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-46"></a>
+## [0.10.46] - 2026-08-31
+- Changed: **the mirror draws the same ranks of roadside the windscreen does.** Owner: "The scenery in
+  the rearview mirror is much more sparse than what it actually is in the front view. It should be
+  the same or at least closely comparable." It drew ONE rank where a forest has five, and then thinned
+  that rank with the per-rank density on top. Measured through the engine's own scenery trace: the
+  glass drew 6% of the windscreen's objects and now draws 27%
+  ([RLG-130](../fragments/RLG-130.md)).
+- Changed: **the far-end cutoff is 2.2 pixels, not 1.5.** An object under two pixels in a pane 44 tall
+  is a smudge that still costs a full draw, and the far end of a fifth rank is where the ranks cost
+  their frames and contribute least.
+- Note: **the frame-rate cost could not be measured here, and that is the finding.** Nine samples per
+  arm in a forest, the heaviest place on the board: one rank ran 52.4-60.4, two ran 49.2-60.4, five
+  ran 46.4-60.8. One rank with a TIGHTER cutoff - strictly less work than the shipped baseline -
+  scored a LOWER minimum, so the minimum is noise. Two ranks and five are indistinguishable. The
+  device is the judge, and `API.mirrorRows`, `API.mirrorNear` and `API.mirrorMin` are all live so a
+  report from the phone can be answered without a rebuild.
+- Unchanged, deliberately: **the near cull stays at a fifth of the pane.** It is the one of the three
+  culls with a known fault behind it - the nearest trees filled the glass and buried the road and the
+  cars on it. It is a lever now rather than a constant.
+
 <a id="v0-10-45"></a>
 ## [0.10.45] - 2026-08-31
 - Changed: **it precipitates about half as often.** Owner, after twenty to thirty minutes of play:
