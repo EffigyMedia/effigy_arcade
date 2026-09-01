@@ -14,6 +14,39 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-8"></a>
+## [0.11.8] - 2026-09-01
+- Added: **the bridge is over water, on both sides, all the way to the skyline.** Owner,
+  2026-08-31: the water "would be drawn as a complete surface underneath the bridge". Every
+  surface this engine draws sits on one ground plane, so a second altitude is not something
+  the projection can express - and [RLG-112](../fragments/RLG-112.md) says to try the CHEAP
+  answer first and let the picture decide, because the far sea was built twice and the
+  version that measured better made no estimate at all.
+- Note: **the cheat is that the place's GROUND is water.** The whole width of every slice,
+  both sides, out to the frame edges, with the road painted over it exactly as it is painted
+  over grass anywhere else. Every hard part of the coast is absent - no side to roll, no
+  beach to converge, no shoreline, no join. What is kept is the distance recession, because
+  water at one flat colour reads as a painted floor.
+- Fixed: **a far-field rectangle written for it was dead code, and the harness is what
+  proved it.** `groundBase` serves the far field ahead and the band under the mirror's own
+  horizon, so answering the water question there covers both - the band was being painted
+  twice in two slightly different tones. Removing it changed the row under the skyline by
+  nothing at all: 480 of 480 pixels either way.
+- Fixed: **the bridge's unused ground colour was water-coloured, which made the check
+  unfalsifiable.** It was written as a second sea tone on the reasoning that a place with no
+  ground colour reads as an omission - and then removing the water left a ground that was
+  still blue and still passed every pixel test. A FALLBACK THAT LOOKS LIKE SUCCESS HIDES THE
+  FAULT. It is the headland the bridge springs from now, so with the water taken out the
+  road runs over grass and all four water checks read 0 of 480.
+- Note: **one control is printed rather than asserted on.** The coast's row under the
+  skyline came back 238, 183 and 340 of 480 on three runs of one unchanged build - its shore
+  converges on the road's own vanishing point, which the bend moves across the frame. An
+  assertion on it would fail at random, which is the failure mode `occlusion-test.py` was
+  written against.
+- Note: **it is a causeway, not yet a bridge.** The towers, the cables and the deck - its
+  surface, its expansion joints and the rail down each side - are the next two pieces of
+  work, and RLG-112 says the deck is the part a player sees at speed rather than the towers.
+
 <a id="v0-11-7"></a>
 ## [0.11.7] - 2026-09-01
 - Added: **a place can be an EVENT rather than a place - a stated length and an authored

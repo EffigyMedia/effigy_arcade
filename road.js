@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.7';
+window.ROAD_BUILD = '0.11.8';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -8851,9 +8851,23 @@ const BIOMES = {
   BRIDGE:   { name:'BRIDGE',   temp:0.55, vary:0.25, precip:0.38, bias:0.45,
               hill:0.10, bend:0.08, span:1.7, passage:1,
               profile: { ramp:0.16, rise:0.50 },
-              /* what the road runs over. It is a fill under the deck until the
-                 water lands, and the shore colours are the coast's own. */
-              grassLo:'#1a3b4e', grassHi:'#24506a',
+              /* ---- IT IS OVER WATER, ON BOTH SIDES (RLG-112) ------------
+                 `overWater` is the whole of the water cheat: the place's GROUND
+                 is sea, full width, so the road is painted over it exactly as
+                 it is painted over grass anywhere else. `sea` is the colour
+                 that fill uses and is the coast's own.
+
+                 THE GRASS PAIR IS NEVER REACHED AND IS DELIBERATELY NOT BLUE.
+                 It was written as a second water colour first, on the reasoning
+                 that an entry with no ground colour reads as an omission - and
+                 that made the check for the water unfalsifiable, because
+                 removing the water left a ground that was still sea-coloured
+                 and still passed. A FALLBACK THAT LOOKS LIKE SUCCESS HIDES THE
+                 FAULT. These are the headland the bridge springs from, so if
+                 `overWater` ever stops being read the road runs over grass and
+                 anyone can see it. */
+              overWater:1,
+              grassLo:'#3f4a35', grassHi:'#55634a',
               sea:'#1d4a63',
               skyBase:'#1b2b3a',
               sky:'#2f4a63', city:0.00, trees:0.00, skyForm:'open' }
@@ -14015,7 +14029,14 @@ function groundBase(mix, atIdx){
      horizon is the land BEHIND you, and during a biome change that is still the
      place you came from. Absent, it is the far edge of the road ahead. */
   const far = atIdx === undefined ? Math.floor(pos/SEG) + DRAW : atIdx;
-  const c = hexRGB(groundTone(far, false));
+  /* ---- AND OVER WATER THE GROUND IS THE SEA (RLG-112) -----------------
+     Two callers and one definition, which is the whole reason this function
+     exists: the far field ahead and the band under the mirror's own horizon.
+     Answering here means a bridge looks like a bridge in both without either
+     of them learning what a bridge is.
+     ---------------------------------------------------------------- */
+  const fB = bioAt(far);
+  const c = hexRGB(fB.overWater ? seaTone(fB, 0) : groundTone(far, false));
   let r = c[0], g2 = c[1], b2 = c[2];
   const want = LUM(r, g2, b2);
   /* the far field gets the same weather the drawn slices get, or the band under
@@ -15279,6 +15300,28 @@ function drawRoad(){
     const snowLight = nAmt > 0.5 ? SNOW_NIGHT : gAmt > 0.25 ? SNOW_GOLD : SNOW_DAY;
     const groundCol = groundTone(idx, dark, nAmt, gAmt);
     ctx.fillStyle = rainDark > 0 ? mixRGB(groundCol, rainDark * 0.26, WET_DARK) : groundCol;
+    /* ---- A BRIDGE IS A COAST WITHOUT A SHORELINE (RLG-112) -------------
+       Owner, 2026-08-31: the water under a bridge "would be drawn as a
+       complete surface underneath the bridge", and the fragment names the
+       hard part - every surface this engine draws sits on ONE ground plane,
+       so a second altitude is not something the projection can express.
+
+       IT SAYS TO TRY THE CHEAT FIRST, and the reason is in this project's own
+       record: the far sea was built twice and the version that measured
+       better was the one that made no estimate at all. The cheat is this
+       line. The GROUND of the place is water - the whole width of the slice,
+       both sides, out to the frame edges - and the road is painted over it a
+       few lines below, exactly as it is painted over grass everywhere else.
+       Nothing knows the deck is above the water, and at this speed and this
+       size nothing needs to.
+
+       EVERY HARD PART OF THE COAST IS ABSENT, which is what makes it cheap.
+       No side to roll, no beach to converge, no shoreline, no join. The one
+       thing kept is the RECESSION - `seaTone`'s distance term, measured at
+       the coast's own join in RLG-093 - because water that does not recede
+       reads as a painted floor.
+       -------------------------------------------------------------- */
+    if(bioAt(idx).overWater) ctx.fillStyle = seaTone(bioAt(idx), 1 - fade);
     /* ---- CULLED THE RIGHT WAY ROUND -----------------------------------
        The road walks FAR to NEAR, so y grows as we come forward and each
        nearer slice should paint over the last. My first cull tested
@@ -17017,7 +17060,27 @@ function draw(){
      ------------------------------------------------------------------- */
   const fFar = Math.floor(pos/SEG) + DRAW, fB = bioAt(fFar);
   farSea = { sea:!!fB.sea, drew:false };
-  if(fB.sea){
+  /* ---- AND OVER WATER THERE IS NOTHING TO DO HERE AT ALL (RLG-112) ----
+     Everything below exists to carry a SHORELINE from the furthest drawn slice
+     up to the vanishing point, and a bridge has no shoreline: the water is on
+     both sides and reaches the frame edges. So the side, the beach offset, the
+     join and the crease RLG-093 was written for simply do not arise.
+
+     A RECTANGLE WAS WRITTEN HERE FIRST AND IT WAS DEAD CODE. The far field's
+     own ground fill is painted a few lines above from `groundBase`, and that
+     function already answers with the sea for a place over water - so the band
+     was being painted twice, in two slightly different tones, and removing it
+     changed nothing on screen. The harness proved it: the row under the
+     skyline read 480 of 480 pixels of water with the rectangle taken out.
+
+     THAT IS THE ONE-FUNCTION-TWO-CALLERS RULE PAYING OFF rather than a lucky
+     accident. `groundBase` serves the far field ahead and the band under the
+     mirror's own horizon, so answering the water question there covers both,
+     and a bridge needs no far-field case of its own.
+     ---------------------------------------------------------------- */
+  if(fB.overWater){
+    /* nothing: `groundBase` has already filled this band with water */
+  } else if(fB.sea){
     const fa = proj(0, fFar*SEG);
     farSea.y = +fa.y.toFixed(1); farSea.horizon = horizon; farSea.ok = fa.ok;
     if(fa.ok && fa.y > horizon){
@@ -17631,7 +17694,10 @@ function drawMirrorFull(mx, my, mw, mh){
        the last and the shoreline's shape falls out of the order rather than
        being computed.
        ---------------------------------------------------------------- */
-    if(mB.sea){
+    /* over water the whole pane is already sea - there is no shore to draw a
+       strip in from, which is the coast's hard part and a bridge's absence of
+       one (RLG-112) */
+    if(mB.sea && !mB.overWater){
       const msh = a.x + sideRoll * roadsideAt(a, mB.beach, mw);
       ctx.fillStyle = seaTone(mB);
       if(sideRoll < 0){ if(msh > mx) ctx.fillRect(mx, a.y, msh - mx, my + mh - a.y); }
@@ -20160,6 +20226,13 @@ requestAnimationFrame(frameLoop);
   /* how tall a place stands its skyline, as a multiple of the ordinary band.
      A check reads it to prove a wall is not drawn at horizon scale (RLG-104). */
   API.skyRise = function(k){ return skyRiseOf(k || biome); };
+  /* what kind of water a place has, if any. Two different things and a check
+     has to tell them apart: `sea` is a coast, which has a SHORELINE on one
+     rolled side, and `overWater` is a bridge, which has none at all (RLG-112). */
+  API.waterKind = function(k){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    return { name:B.name, sea:!!B.sea, overWater:!!B.overWater };
+  };
   /* ---- WHERE A RUN MAY OPEN (RLG-140) ----------------------------------
      Two lists, and a check has to be able to see BOTH: the places a run may
      open in, and every place the road can reach. A harness that could only see
