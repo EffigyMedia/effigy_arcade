@@ -493,16 +493,16 @@ var snd = {
     if (!AR.audio.ctx) return;  // no engine yet; a real gesture will call us back
     snd.arm();
     if (!snd.eng){
-      snd.eng   = AR.sfx.hold({ freq:70, type:'sawtooth', cutoff:520, q:3.2 });
-      snd.eng2  = AR.sfx.hold({ freq:70, type:'square',  cutoff:400, q:2, detune:14 });
+      snd.eng   = AR.sfx.hold({ freq:70, type:'sawtooth', cutoff:520, q:3.2, space:true });
+      snd.eng2  = AR.sfx.hold({ freq:70, type:'square',  cutoff:400, q:2, detune:14, space:true });
       snd.wind  = AR.sfx.holdNoise({ freq:900, q:0.5 });
-      snd.siren = AR.sfx.hold({ freq:700, type:'sine', cutoff:2600, q:1 });
+      snd.siren = AR.sfx.hold({ freq:700, type:'sine', cutoff:2600, q:1, space:true });
       /* NOS: a wide bandpassed hiss, opened up while the bottle is live */
       snd.thrust = AR.sfx.holdNoise({ freq:1800, q:0.35 });
       /* A real car horn is TWO notes a third apart played together, with a
          buzzy edge — a single sine reads as a doorbell. */
-      snd.horn1 = AR.sfx.hold ? AR.sfx.hold({ freq:440, type:'sawtooth', gain:0, cutoff:1500 }) : null;
-      snd.horn2 = AR.sfx.hold ? AR.sfx.hold({ freq:554.4, type:'sawtooth', gain:0, cutoff:1700 }) : null;
+      snd.horn1 = AR.sfx.hold ? AR.sfx.hold({ freq:440, type:'sawtooth', gain:0, cutoff:1500, space:true, space:true }) : null;
+      snd.horn2 = AR.sfx.hold ? AR.sfx.hold({ freq:554.4, type:'sawtooth', gain:0, cutoff:1700, space:true, space:true }) : null;
       /* Brakes: a tight, high band that only sings while the tyres are losing
          speed. Held at a fixed pitch it would drone; it tracks the rate of
          deceleration instead, so it screeches on the stop and dies as you
@@ -520,9 +520,9 @@ var snd = {
          but only as the scrub underneath — the roar of rubber abrading —
          rather than as the sound itself.
          ------------------------------------------------------------------- */
-      snd.sqA = AR.sfx.hold({ freq:700,  type:'sawtooth', cutoff:2400, q:9 });
-      snd.sqB = AR.sfx.hold({ freq:1057, type:'square',   cutoff:3000, q:7, detune:12 });
-      snd.sqC = AR.sfx.hold({ freq:1412, type:'sawtooth', cutoff:3600, q:6, detune:-16 });
+      snd.sqA = AR.sfx.hold({ freq:700,  type:'sawtooth', cutoff:2400, q:9, space:true });
+      snd.sqB = AR.sfx.hold({ freq:1057, type:'square',   cutoff:3000, q:7, detune:12, space:true });
+      snd.sqC = AR.sfx.hold({ freq:1412, type:'sawtooth', cutoff:3600, q:6, detune:-16, space:true });
       snd.screechLow = AR.sfx.holdNoise({ freq:320, q:0.7 });   /* the scrub */
     }
     AR.music.start(152, 4, snd.bed); menuBedOn = false;
@@ -628,6 +628,20 @@ var snd = {
     return m;
   },
 
+  /* ---- YOU HEAR A CAR WHEN YOU ARE ON IT, NOT A QUARTER MILE OFF -------
+     Owner, 2026-09-01: "I want the fall off for each individual car's engine to
+     be a lot closer to the car so I don't really hear a car engine unless I'm
+     pulled up on it." And, separately: this is general and not a tunnel thing.
+
+     IT WAS 36,000 UNITS, which is over a quarter of a mile - so every car
+     inside a stretch of road longer than the drawn world was contributing to
+     the mix, and the result was a wash of engines with no relationship to what
+     was beside you. 6,000 is about sixteen car lengths: a vehicle you are
+     alongside or closing on, and silence from the rest.
+
+     A TUNABLE RATHER THAN A CONSTANT, because this is a mix judgment and the
+     only place it can be judged is a device.
+     ------------------------------------------------------------------ */
   traffic: function(list){
     if(!AR || !AR.audio.ctx) return;
     if(!snd.voices.length){
@@ -664,7 +678,7 @@ var snd = {
     for(i2=0;i2<near.length;i2++){
       cc = near[i2];
       dd = Math.abs(cc.z - pos);
-      want += Math.pow(Math.max(0, 1 - dd/36000), 1.4);
+      want += Math.pow(Math.max(0, 1 - dd/ENG_FALLOFF), 1.4);
     }
     /* the ceiling rises with the level, or normalising would just undo it */
     var TRAFFIC_CEIL = 5.0;          /* in units of one voice at full level */
@@ -686,7 +700,7 @@ var snd = {
 
          36,000 is roughly the visible road, so a car appearing at the horizon
          fades in and is loudest as it draws alongside. */
-      var fall = Math.max(0, 1 - dist / 36000);
+      var fall = Math.max(0, 1 - dist / ENG_FALLOFF);
       if(fall <= 0.01){ vo.a.set(90, 0, 400, 0.12); continue; }
       /* its own revs: speed against ITS top, through the same gearing */
       /* the same BODY the driveable version uses */
@@ -8531,8 +8545,16 @@ const BIOMES = {
      rather than a tendency of the land, and a tunnel that wanders is a tunnel
      nobody built. The colours are the concrete and the sodium of a real one. */
   TUNNEL:   { name:'TUNNEL',   temp:0.45, vary:0.10, precip:0.00, bias:1.00,
-              hill:0.06, bend:0.20, dark:1,
-              grassLo:'#2a2c30', grassHi:'#3a3d43',
+              /* ---- BOTH AXES CAPPED AT 0.10 (owner, 2026-09-01) ---------
+                 "for simplicity sake we just cap its form on both axis to 0.1".
+                 A bore that climbs and swings reads wrong - it is cut, not
+                 grown - and one number for both is simpler than two arguments
+                 about which matters more. Not zero: nothing in this game is. */
+              hill:0.10, bend:0.10, dark:1,
+              /* the verge IS the foot of the wall in here, so it is concrete
+                 rather than dark ground. Beside the car the bore is closer than
+                 the projection can show it, and this is what carries it. */
+              grassLo:'#6b655a', grassHi:'#8c8578',
               sky:'#0a0c10', city:0.00, trees:0.00, skyForm:'none' },
   SWAMP:    { name:'SWAMP',    temp:0.80, vary:0.10, precip:0.64, bias:1.10,
               hill:0.15, bend:0.70,
@@ -8616,6 +8638,11 @@ function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
    opens, the weather every 35 to 80 seconds, and the moment's temperature with
    each weather event. Nothing is rolled per frame.
    ------------------------------------------------------------------------- */
+/* how wet the car's own voices get at full enclosure (RLG-105) */
+const TUNNEL_VERB = 0.75;
+/* how far away another car's engine can still be heard, in world units. 6,000
+   is about sixteen car lengths; it was 36,000, over a quarter of a mile. */
+const ENG_FALLOFF = 6000;
 const CLIMATE_SWING = 0.25;
 /* how often it precipitates anywhere, against the table's own figures. Live
    through `API.precipScale`, because how much weather a session should carry is
@@ -9339,6 +9366,15 @@ function stepBiome(dt){
       endImpossibleWeather();
     }
   }
+  /* ---- AND THE SOUNDS MOVE INTO THE SPACE WITH THE CAR (RLG-105) ------
+     Owner, 2026-09-01: the engines, brakings, tyre squeals, sirens and horns
+     want "a bunch of reverb" in a tunnel. They are all HELD voices, built once
+     at the start of a run, so nothing about them could be changed after the
+     fact - which is why this is one send on the bus rather than a property of
+     each. `placeDark` is already the ramp the eye follows, so the ears follow
+     the same one and the mouth does not need a second timing.
+     ------------------------------------------------------------------ */
+  if(AR && AR.audio && AR.audio.space) AR.audio.space(placeDark() * TUNNEL_VERB);
   /* the distance travelled this frame, which is zero when the car is parked */
   biomeNext -= spd * dt;
   if(biomeNext <= 0){
@@ -13981,15 +14017,75 @@ function hazeTint(a){
    as tall as it is wide across one carriageway, so the walls come in and the
    roof goes up.
    ------------------------------------------------------------------------- */
-const BORE = {
-  wide: 1.45,   /* how far the walls stand from the centre, in road half-widths */
-  high: 1.05,   /* wall height, in road half-widths                             */
-  far:  26000,  /* how far down the bore is built                               */
+let BORE = {
+  /* ---- TIGHT TO THE ROADWAY (RLG-105) --------------------------------
+     Owner, 2026-09-01: "I'd prefer if the tunnel walls were just outside the
+     roadway. You have built a giant cavernous tunnel and that's not how they
+     are."
+
+     THEY ARE NOT, AND THE PROPORTIONS SAY SO. A real road bore is cut to the
+     carriageway and a hard strip either side, and the crown sits a few metres
+     over it - somewhere near two to one across against up. What was here was
+     1.45 out and 1.05 up, which put the walls half a carriageway clear of the
+     tarmac and the roof a full road-width overhead: a cavern with a road at the
+     bottom of it rather than a tunnel.
+
+     1.12 IS THE HARD STRIP. The walls stand about an eighth of a half-width
+     outside the tarmac, which is where the kerb and the maintenance walkway go.
+     0.55 puts the crown a bit over half a road-width up, so the opening is
+     roughly twice as wide as it is tall - which is what a bore looks like.
+
+     THE HILL GROWS AS THE MOUTH SHRINKS. `mass` and `crown` are multiples of
+     the OPENING, so leaving them alone would have shrunk the hillside with the
+     hole and left a mound rather than a hillside. They are raised to keep the
+     ground above the tunnel looking like ground.
+     ---------------------------------------------------------------- */
+  /* ---- OUTSIDE THE SHOULDER, NOT ON THE KERB (RLG-105) ---------------
+     Owner, 2026-09-01: "I'm more concerned about that picture you showed where
+     the car is clipping through the wall when I pull over to the side. Will
+     there be enough room to put the pick up crates? Will there be enough room
+     to pass someone on the shoulder?"
+
+     THE CAR CLIPPED BECAUSE THE WALL WAS INSIDE ITS REACH. `playerX` clamps at
+     1.18 of a road half-width and the tarmac edge is 1.00, so the player has
+     0.18 of shoulder to use - which is where you pull over, where you pass, and
+     where a crate is parked. At `out` 0.10 the wall stood at 1.083 and the car
+     drove through it.
+
+     MEASURED: the roadside unit is 255 pixels against a 309-pixel half-width at
+     1,500 units out, so `out` 0.30 puts the wall at about 1.25 - clear of the
+     1.18 clamp with room to spare, and still hard against the shoulder rather
+     than a field away. Crates spawn between 0.86 and 1.02 and are untouched.
+
+     THIS IS THE ONE PLACE THE OWNER'S TWO REQUESTS PULL APART: "tight to the
+     road edge" and "do not clip the car" cannot both be taken to the limit, and
+     the drivable shoulder is what decides it.
+     ---------------------------------------------------------------- */
+  out:  0.30,   /* the wall, in ROADSIDE units past the tarmac                */
+  /* ---- AND `high` IS A FRACTION OF THE FULL WIDTH, WHICH IS WHY IT WAS
+     STILL WRONG AFTER THE FIRST TIGHTENING ------------------------------
+     The wall height is `p.w * 2 * high`, and `p.w * 2` is the WHOLE road - so
+     0.55 put the crown at 55% of the carriageway's width above it. On a road
+     this wide that is a cathedral, and it stayed a cathedral after the walls
+     came in because only the walls had moved.
+
+     A motorway bore runs about five metres of clearance over about fifteen of
+     carriageway, which is a third. 0.34 is that. The roof now passes close
+     enough overhead to be seen doing it, which is the whole of what "tight"
+     means from inside.
+     ---------------------------------------------------------------- */
+  h:    1400,   /* the roof, in world units above the road - a plane, not an
+                   offset from the road's own projected height                */
+  far:  33000,  /* how far down the bore is built                               */
   segs: 16,
-  /* and the hill it is cut into: broad and low, so it reads as a hillside
-     rather than as a dome sitting on the road */
-  mass: 4.6,
-  crown: 1.75
+  /* the hill it is cut into: broad and low, so it reads as a hillside rather
+     than as a dome sitting on the road */
+  mass: 5.2,
+  crown: 2.4,
+  /* how far the vault rises above the wall tops, as a fraction of the bore's
+     own width. Both reference photographs show a shallow arch rather than a
+     flat soffit, and it is what the eye reads as a roof. */
+  arch: 0.16
 };
 /* the tube, sampled with the road's own projection so it bends with the road */
 function borePoints(far){
@@ -14001,9 +14097,38 @@ function borePoints(far){
     const z = pos + PLAYER_Z + 40 + t * t * (far === undefined ? BORE.far : far);
     const p = proj(0, z);
     if(!p.ok) continue;
-    const half = p.w * BORE.wide;
-    const hgt  = p.w * 2 * BORE.high;
-    pts.push({ xl: p.x - half, xr: p.x + half, y: p.y, top: p.y - hgt, s: p.scale });
+    /* ---- A CEILING IS A PLANE ABOVE THE CAMERA (RLG-105) ------------
+       THIS IS WHAT WAS WRONG WITH EVERY BUILD BEFORE IT. The roof was placed as
+       an offset from the ROAD's projected y at each distance, which is how a
+       roadside object is placed - and a roof is not a roadside object. Sized
+       that way the whole near section falls below the frame, so nothing
+       converges anywhere the player is looking and the picture is a flat field
+       with a small shape at the vanishing point. Three captures showed that and
+       I read it as a palette problem twice.
+
+       The road is a plane `CAM_H` below the eye and projects to
+       `horizon + scale*CAM_H*H/2`. A ceiling is a plane ABOVE the eye, so its
+       height enters the same expression with the sign that follows from where
+       it is - and it converges DOWN onto the horizon exactly as the road
+       converges up onto it. Directly overhead it is off the top of the frame,
+       which is correct: you cannot see the roof above your own head.
+       ------------------------------------------------------------ */
+    /* ---- THE SAME UNIT THE ROADSIDE USES (RLG-105) ------------------
+       THIS WAS THE FAULT AND IT WAS A UNIT ERROR, not a taste one. `BORE.wide`
+       multiplied `p.w`, the road's HALF-WIDTH - so 1.12 stood the wall a
+       twelfth of a carriageway outside the tarmac, which on a road this wide is
+       a hundred feet of nothing. Every roadside object in the game is placed
+       with `roadsideAt`, whose unit is `SCENE_UNIT` and is an order of
+       magnitude smaller: the cornfield's `out` is 0.12 of THAT and sits hard
+       against the kerb.
+
+       The owner named it exactly - "tight to the road edge would be where the
+       corn is in the farmland biome" - and the bore now uses the same call the
+       corn does, so the two are directly comparable numbers.
+       ------------------------------------------------------------ */
+    const half = roadsideAt(p, BORE.out);
+    const top  = horizon + p.scale * (CAM_H - BORE.h) * H / 2;
+    pts.push({ xl: p.x - half, xr: p.x + half, y: p.y, top: top, s: p.scale, mid: p.x });
   }
   return pts;
 }
@@ -14012,66 +14137,189 @@ function drawBore(){
   if(d <= 0.01) return;
   const pts = borePoints();
   if(pts.length < 3) return;
+  const lit = lampsOn();
   ctx.save();
   ctx.globalAlpha = Math.min(1, d);
 
-  /* ---- THE CEILING, WHICH HAS TO COME OVER THE CAMERA -----------------
-     Owner, 2026-09-01: "The tunnel needs 3D walls and a ceiling above the
-     camera." The first build filled the sky rectangle with a flat gradient,
-     which is a dark backdrop rather than an enclosure - there was nothing over
-     your head, and the eye reads that immediately.
+  /* ---- A ROAD TUNNEL IS BRIGHTLY LIT, NOT DARK (RLG-105) --------------
+     Owner, 2026-09-01, with two photographs of real bores. They settle it: the
+     walls are PALE tiled concrete, the vault is lit right over the camera, the
+     lamps are a continuous strip rather than a row of blobs, and the road
+     surface is bright.
 
-     The near samples project ABOVE the top of the screen, so the vault closes
-     over the camera and the picture is of being inside something. */
-  const roof = ctx.createLinearGradient(0, 0, 0, horizon + 2);
-  roof.addColorStop(0,    '#0d1015');
-  roof.addColorStop(0.70, '#171b22');
-  roof.addColorStop(1,    '#1e232b');
-  /* THE WHOLE SKY FIRST, AND THE TUBE OVER IT. Building the vault as a polygon
-     that also had to reach the top of the frame left a one-pixel seam where the
-     two parts met, and the daylight sky showed through it as a bright line
-     across the bore. A rectangle cannot have a seam. */
-  ctx.fillStyle = roof;
+     I HAD BUILT A CAVE. The darkness of a tunnel is the SKY being gone, not the
+     scene going dark - the lighting exists precisely so that it is not dark in
+     there. Everything below is repainted from those photographs, and the
+     proportions stay where the previous correction put them.
+     ---------------------------------------------------------------- */
+  const wallTop = (q) => q.top;
+  const crownOf = (q) => q.top - (q.xr - q.xl) * BORE.arch;
+
+  /* the vault: a shallow arch springing from the wall tops, ribbed across */
+  ctx.fillStyle = '#8d8577';
   ctx.fillRect(0, 0, W, horizon + 2);
+  const vault = ctx.createLinearGradient(0, crownOf(pts[0]), 0, wallTop(pts[0]));
+  vault.addColorStop(0, '#7c7466');
+  vault.addColorStop(1, '#a49b89');
+  ctx.fillStyle = vault;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].xl, wallTop(pts[0]));
+  for(const q of pts) ctx.lineTo(q.xl, wallTop(q));
+  for(let i2 = pts.length - 1; i2 >= 0; i2--){
+    const q = pts[i2];
+    ctx.lineTo((q.xl + q.xr) / 2, crownOf(q));
+  }
+  for(const q of pts) ctx.lineTo(q.xr, wallTop(q));
+  ctx.closePath();
+  ctx.fill();
+  /* and up over the frame, so the roof closes above the camera */
+  ctx.fillRect(0, 0, W, Math.max(0, crownOf(pts[0])));
 
-  /* ---- THE TWO WALLS, WHICH ARE WHAT MAKE IT A TUBE -------------------
-     Lit a shade differently from each other so the bore has a form rather than
-     being one flat tone: the concrete catches the road's light unevenly and a
-     single colour reads as a hole cut in the picture. */
-  for(const sideL of [true, false]){
-    const wall = ctx.createLinearGradient(0, 0, 0, horizon + 2);
-    wall.addColorStop(0, sideL ? '#1a1e25' : '#161a20');
-    wall.addColorStop(1, sideL ? '#2b3038' : '#252a31');
-    ctx.fillStyle = wall;
+  /* the transverse joints, which are what give a roof its distance */
+  ctx.strokeStyle = 'rgba(60,55,46,.45)';
+  for(let i2 = 1; i2 < pts.length; i2++){
+    const q = pts[i2];
+    if(q.xr - q.xl < 8) continue;
+    ctx.lineWidth = Math.max(0.6, (q.xr - q.xl) * 0.008);
     ctx.beginPath();
-    const get = (q) => sideL ? q.xl : q.xr;
-    ctx.moveTo(get(pts[0]), pts[0].y);
-    for(const q of pts) ctx.lineTo(get(q), q.y);
-    for(let i = pts.length - 1; i >= 0; i--) ctx.lineTo(get(pts[i]), pts[i].top);
-    ctx.closePath();
-    ctx.fill();
-    /* and out to the edge of the frame, so a wall never runs out sideways */
-    ctx.beginPath();
-    const nx = get(pts[0]);
-    ctx.rect(sideL ? -2 : nx, 0, sideL ? nx + 2 : W - nx + 2, horizon + 2);
-    ctx.fill();
+    ctx.moveTo(q.xl, wallTop(q));
+    ctx.quadraticCurveTo((q.xl + q.xr) / 2, crownOf(q) - (q.xr - q.xl) * 0.04,
+                         q.xr, wallTop(q));
+    ctx.stroke();
   }
 
-  /* ---- THE LAMPS ARE WHAT MAKE IT A TUNNEL AND NOT A NIGHT ------------
-     A bore with no lighting is indistinguishable from driving at midnight,
-     which would waste the one thing this place exists for. They sit where the
-     wall meets the ceiling and they bend with the road, because they are placed
-     off the same projected points the tube is. */
-  const lampsLit = lampsOn();
-  if(lampsLit > 0.02){
-    ctx.globalAlpha = Math.min(1, d) * (0.40 + lampsLit * 0.45);
-    ctx.fillStyle = '#ffd9a0';
-    for(let i = 1; i < pts.length; i += 2){
-      const q = pts[i];
-      const wdt = Math.max(1, (q.xr - q.xl) * 0.075);
-      const hgt = Math.max(1, (q.y - q.top) * 0.035);
-      ctx.fillRect(q.xl + wdt * 0.6, q.top + hgt, wdt, hgt);
-      ctx.fillRect(q.xr - wdt * 1.6, q.top + hgt, wdt, hgt);
+  /* ---- THE WALLS, PALE AND PANELLED --------------------------------- */
+  for(const sideL of [true, false]){
+    const get = (q) => sideL ? q.xl : q.xr;
+    const wall = ctx.createLinearGradient(0, wallTop(pts[0]), 0, pts[0].y);
+    wall.addColorStop(0,    sideL ? '#c6bfa9' : '#bdb6a1');
+    wall.addColorStop(0.62, sideL ? '#ada592' : '#a49d8a');
+    wall.addColorStop(1,    '#6d675b');
+    ctx.fillStyle = wall;
+    ctx.beginPath();
+    ctx.moveTo(get(pts[0]), pts[0].y);
+    for(const q of pts) ctx.lineTo(get(q), q.y);
+    for(let i2 = pts.length - 1; i2 >= 0; i2--) ctx.lineTo(get(pts[i2]), wallTop(pts[i2]));
+    ctx.closePath();
+    ctx.fill();
+    /* ---- AND OUTWARD AS A SURFACE, NOT AS A RECTANGLE (RLG-105) -----
+       A blanket rect from the near wall point to the frame edge is fine on a
+       straight and catastrophic on a bend: the near point swings across the
+       screen with the curve, so on a hard corner the fill covered half the
+       frame as a flat slab and buried the road. The capture showed it at once.
+
+       The outside of the wall is drawn as what it is - a second surface a good
+       way further out, receding to the same vanishing point. It leaves the
+       frame at the near end all by itself, and it follows the bend because
+       every point on it is projected. */
+    ctx.beginPath();
+    ctx.moveTo(get(pts[0]), pts[0].y);
+    for(const q of pts) ctx.lineTo(get(q), q.y);
+    for(let i2 = pts.length - 1; i2 >= 0; i2--){
+      const q = pts[i2];
+      const far = q.mid + (sideL ? -1 : 1) * (Math.abs(get(q) - q.mid) + W * 1.6 * q.s * 400);
+      ctx.lineTo(far, q.y + (q.y - wallTop(q)) * 0.0);
+    }
+    ctx.closePath();
+    ctx.fill();
+    /* the panel joints, receding */
+    ctx.strokeStyle = 'rgba(80,74,62,.40)';
+    for(let i2 = 1; i2 < pts.length; i2++){
+      const q = pts[i2];
+      if(Math.abs(q.xr - q.xl) < 8) continue;
+      ctx.lineWidth = Math.max(0.5, (q.xr - q.xl) * 0.005);
+      ctx.beginPath(); ctx.moveTo(get(q), q.y); ctx.lineTo(get(q), wallTop(q)); ctx.stroke();
+    }
+    /* the barrier at the foot of the wall, which is in both photographs */
+    ctx.fillStyle = '#8f887a';
+    ctx.beginPath();
+    ctx.moveTo(get(pts[0]), pts[0].y);
+    for(const q of pts) ctx.lineTo(get(q), q.y);
+    for(let i2 = pts.length - 1; i2 >= 0; i2--){
+      const q = pts[i2];
+      ctx.lineTo(get(q), q.y - (q.y - wallTop(q)) * 0.16);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  /* ---- AND THE LIGHTING, WHICH IS A STRIP AND NOT A ROW OF BLOBS -----
+     Both photographs show a continuous run down the crown and a second along
+     each wall top. That continuity is most of what says "tunnel" rather than
+     "night", and a dotted row of rectangles was reading as neither. */
+  /* ---- THE FAR END IS BLACK UNTIL THERE IS SOMETHING TO SEE (RLG-105) -
+     Owner, 2026-09-01: "Let's have the tunnel at the far perspective to be
+     black until the next biome is rendered through it."
+
+     The tube is built for 26,000 units and the road is drawn to 30,000, so the
+     last stretch of tarmac was visible BEYOND the end of the bore - a lit road
+     hanging in the dark past where the tunnel stopped. Capping the far
+     cross-section closes it: what you see down a tunnel is darkness, and then
+     the exit when there is one. The portal draws over this when a mouth is in
+     range, which is exactly the "until" in the request.
+     ------------------------------------------------------------------ */
+  /* ---- IT GOES BLACK AT THE FAR END, AS A FADE (RLG-105) --------------
+     Owner, 2026-09-01: "Let's have the tunnel at the far perspective to be
+     black until the next biome is rendered through it."
+
+     A HARD CAP AT THE LAST SAMPLE WAS WRONG and the hill capture showed why: on
+     a climb or a bend the far cross-section is displaced from the road you can
+     see, so the cap read as a black rectangle floating beside the tunnel rather
+     than as its end. It is a run of quads over the last stretch with a rising
+     alpha instead - the bore simply gets darker until there is nothing, which
+     is what a long tunnel does and what hides the road drawn beyond the tube.
+     The exit portal draws over this when a mouth is in range, which is the
+     "until" in the request.
+     ------------------------------------------------------------------ */
+  const fadeFrom = Math.max(1, Math.floor(pts.length * 0.55));
+  for(let i2 = fadeFrom; i2 < pts.length; i2++){
+    const a = pts[i2 - 1], q = pts[i2];
+    const t = (i2 - fadeFrom + 1) / (pts.length - fadeFrom);
+    ctx.globalAlpha = Math.min(1, d) * Math.min(1, t * t * 1.35);
+    ctx.fillStyle = '#04060a';
+    ctx.beginPath();
+    ctx.moveTo(a.xl, a.y);
+    ctx.lineTo(a.xl, crownOf(a));
+    ctx.lineTo(a.xr, crownOf(a));
+    ctx.lineTo(a.xr, a.y);
+    ctx.lineTo(q.xr, q.y);
+    ctx.lineTo(q.xr, crownOf(q));
+    ctx.lineTo(q.xl, crownOf(q));
+    ctx.lineTo(q.xl, q.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = Math.min(1, d);
+
+  if(lit > 0.02){
+    /* ---- TWO ROWS OF INTERMITTENT LUMINAIRES (RLG-105) ---------------
+       Owner, 2026-09-01: "let's put back the two rows of intermittent overhead
+       light lamps." They were replaced by continuous runs after the reference
+       photographs, and the owner has seen both - the discrete pair is what they
+       want, and it is also what makes SPEED read: a continuous strip gives the
+       eye nothing to count, and a row of lamps flicking past is the oldest
+       speed cue there is.
+
+       They hang from the CEILING either side of the crown, so they follow the
+       bore's own curve and bend with the road. */
+    ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40);
+    for(let i2 = 0; i2 < pts.length; i2++){
+      const q = pts[i2];
+      const wide = q.xr - q.xl;
+      if(wide < 5) continue;
+      const mid = (q.xl + q.xr) / 2;
+      const y = crownOf(q) + wide * 0.045;
+      const lw = Math.max(1.4, Math.min(W * 0.030, wide * 0.085));
+      const lh = Math.max(1.0, Math.min(H * 0.008, wide * 0.022));
+      ctx.fillStyle = '#fff4d8';
+      ctx.fillRect(mid - wide * 0.26 - lw / 2, y, lw, lh);
+      ctx.fillRect(mid + wide * 0.26 - lw / 2, y, lw, lh);
+      /* the pool each one throws onto the vault, which is what stops them
+         reading as stickers on a flat ceiling */
+      ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40) * 0.22;
+      ctx.fillStyle = '#ffe9bd';
+      ctx.fillRect(mid - wide * 0.26 - lw, y - lh * 0.6, lw * 2, lh * 2.4);
+      ctx.fillRect(mid + wide * 0.26 - lw, y - lh * 0.6, lw * 2, lh * 2.4);
+      ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40);
     }
   }
   ctx.restore();
@@ -14102,9 +14350,13 @@ function drawPortal(){
   const p = proj(0, z);
   if(!p.ok) return;
   const entering = inTun > outTun;
-  const half = p.w * BORE.wide;
-  const hgt  = p.w * 2 * BORE.high;
-  const top  = p.y - hgt;
+  /* the SAME cross-section the bore is built from, so the hole in the hillside
+     and the tube behind it are one shape. This read `BORE.high` after that field
+     was replaced by a ceiling PLANE, so every number here went NaN and the whole
+     frame stopped drawing - a blank sky over a blank field, with no error. */
+  const half = roadsideAt(p, BORE.out);
+  const top  = horizon + p.scale * (CAM_H - BORE.h) * H / 2;
+  const hgt  = Math.max(4, p.y - top);
   /* ---- A HILLSIDE, NOT A CURTAIN ---------------------------------------
      The first build filled the WHOLE frame above the horizon with rock and cut
      the arch out of it, which painted over the farmland the car was still
@@ -14114,7 +14366,11 @@ function drawPortal(){
      pass it. All of that falls out of projecting it like anything else.
      ------------------------------------------------------------------ */
   const mass = half * BORE.mass;               /* how far the hill spreads */
-  const crown = hgt * BORE.crown;              /* and how far it rises */
+  /* OFF THE BORE'S WIDTH, NOT ITS HEIGHT. The opening's height is now measured
+     from a ceiling PLANE, so it grows without bound as the mouth nears - and a
+     crown taken off it put a hillside over the entire sky. The width is the
+     stable dimension and it is what a hill should be proportioned against. */
+  const crown = half * BORE.crown;             /* and how far it rises */
   ctx.save();
   ctx.beginPath();
   /* the hill: a broad mound sitting on the road's own ground line */
@@ -16453,12 +16709,24 @@ function draw(){
   drawHaze();
   /* the bore goes over the sky, the skyline and the haze, and UNDER the road -
      you are inside it, and the tarmac is still lit (RLG-105) */
-  drawBore();
-  /* the face the bore is cut into, over the tube and under the road (RLG-105) */
-  drawPortal();
   drawWorld();          /* buckets the sprites */
   drawRoad();           /* paints the road AND emits them, far to near */
   sweepUnemitted();     /* RLG-041: whatever the road never got to */
+  /* ---- THE BORE GOES OVER THE ROAD, NOT UNDER IT (RLG-105) -------------
+     MEASURED AFTER FOUR REBUILDS THAT MOVED THE WRONG NUMBER. The walls sit
+     25.5 pixels past a 308.8-pixel road half-width - TIGHTER than the
+     cornfield's 30.6 at the same distance, which is the comparison the owner
+     gave. The width was never the fault.
+
+     THE VERGE WAS. `drawRoad` paints the ground outside the tarmac all the way
+     to the frame edge, and it ran AFTER the bore - so whatever width the wall
+     was given, the verge was painted over its foot and what remained on screen
+     was a wide band of ground between the road and a wall that started
+     somewhere out of sight. That is the hundred feet.
+
+     A wall is nearer than the ground behind it, so it draws after it. */
+  drawBore();
+  drawPortal();
   /* the headlights land on the road and on whatever is standing in them, so
      they go after the road and its sprites and before the player's own car -
      a car does not light its own paintwork */
@@ -19991,6 +20259,20 @@ requestAnimationFrame(frameLoop);
      pins the curvature the cornering force reads. `null` gives the real road
      back. It writes the same variable the road writes, so everything downstream
      cannot tell the difference. */
+  /* the bore's own numbers, live, because four rebuilds were spent guessing at
+     them from captures and the owner can dial them in one sitting (RLG-105) */
+  API.boreModel = function(o){
+    if(o) for(const k in o) if(k in BORE) BORE[k] = o[k];
+    return Object.assign({}, BORE);
+  };
+  /* force a place's relief and sinuosity, so a capture can show a bore on a
+     hard climb or a hard bend without waiting for the generator to roll one */
+  API.setBiomeShape = function(k, hill, bend){
+    const B = BIOMES[k]; if(!B) return null;
+    if(hill !== undefined && hill !== null) B.hill = hill;
+    if(bend !== undefined && bend !== null) B.bend = bend;
+    return { name:B.name, hill:B.hill, bend:B.bend };
+  };
   API.holdCurve = function(k){ curveHold = (k === null || k === undefined) ? null : k; return curveHold; };
   API.precipScale = function(v){ if(v !== undefined) PRECIP_SCALE = v; return PRECIP_SCALE; };
   API.coasting = function(){ return coasting; };

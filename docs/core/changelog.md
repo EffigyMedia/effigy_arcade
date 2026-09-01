@@ -14,6 +14,41 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-3"></a>
+## [0.11.3] - 2026-09-01
+- Fixed: **the tunnel walls are tight to the roadway, and the fault was draw order.** Owner: "the
+  walls just aren't tight to the roadway. There's like 100 or 200 feet outside of the roadway to the
+  wall." I moved the width four times and sent a capture each time; the owner was right that they
+  looked identical. TWO real faults: a UNIT ERROR - the cornfield's offset is in roadside units and
+  mine multiplied the road half-width, an order of magnitude larger - and then, after that was fixed
+  and the wall measured TIGHTER than the corn, the verge was still being painted over its foot
+  because `drawRoad` ran after the bore. The bore draws after the road now
+  ([RLG-105](../fragments/RLG-105.md)).
+- Fixed: **the ceiling is a plane above the camera.** It was placed as an offset from the road's own
+  projected height, which is how a roadside object is placed and not how a roof works - so the near
+  section fell below the frame and nothing converged where the player was looking.
+- Changed: **the wall sits outside the drivable shoulder.** Owner: "the car is clipping through the
+  wall when I pull over to the side." The player reaches 1.18 of a half-width and the tarmac ends at
+  1.00, so the shoulder is driven on - the wall was at 1.083 and the car went through it. It is at
+  about 1.25 now, with crates untouched at 0.86 to 1.02.
+- Changed: **a road tunnel is brightly lit.** Two reference photographs from the owner settled it -
+  pale tiled walls, a lit vault, a bright road. The darkness of a tunnel is the sky being gone, not
+  the scene going dark. Two rows of intermittent overhead lamps, at the owner's choice over the
+  continuous runs the photographs also show.
+- Changed: **the far end fades to black**, as a run of quads rather than a hard cap - a cap read as a
+  black rectangle beside the tunnel on any climb or bend. And the outward wall fill is a receding
+  SURFACE rather than a rectangle to the frame edge, which covered half the frame on a hard corner.
+- Changed: **both of the tunnel's shape axes are capped at 0.10.** Owner: a bore that climbs and
+  swings reads wrong.
+- Added: **a wash of reverb on the car's own voices in a tunnel.** Owner: the engines, brakings, tyre
+  squeals, sirens and horns. All of those are HELD voices built once at the start of a run, so a
+  per-voice send could not reach them - there is one send per bus now, opt-in so a crate chime stays
+  dry, driven by the same ramp the eye follows.
+- Changed: **another car's engine is heard at sixteen car lengths, not a quarter of a mile.** Owner:
+  "I don't really hear a car engine unless I'm pulled up on it." It was 36,000 units, so every car in
+  a stretch longer than the drawn world was in the mix. 6,000 now. This one is general and not about
+  tunnels.
+
 <a id="v0-11-2"></a>
 ## [0.11.2] - 2026-09-01
 - Added: **TUNNEL - the one place on the board that is dark by day.** Owner: nothing else is, and that

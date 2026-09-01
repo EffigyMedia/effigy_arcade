@@ -185,6 +185,30 @@ function buildVerb(){
 /* The reverb for one bus, built the first time something asks for it. The
    return lands on the BUS, which is the whole point: a tail rides the gain that
    mutes its own dry signal, and nothing else has to know a reverb is there. */
+/* ---- ONE SEND THAT WASHES EVERY VOICE ON A BUS (RLG-105) ----------------
+   Owner, 2026-09-01: "engine sounds, tyre screeching, and horns need to have a
+   bunch of reverb while in a tunnel."
+
+   A PER-VOICE `verb` COULD NOT DO IT. That send is fixed when the voice is
+   built, so it can colour a horn that is about to sound and can do nothing at
+   all about an ENGINE - a held voice, built once at the start of the run and
+   driven for the whole of it. Driving into a tunnel has to change a sound that
+   is already playing.
+
+   So every voice also connects to a single send per bus whose gain starts at
+   zero. Moving that one parameter moves the whole mix into a space, held voices
+   included, and moving it back takes them out. The place ramps it; nothing else
+   has to know.
+   ------------------------------------------------------------------------- */
+var spaceSends = {};
+function spaceSendFor(which){
+  var name = which === 'music' ? 'music' : which === 'ui' ? 'ui' : 'sfx';
+  if (spaceSends[name]) return spaceSends[name];
+  var s = ctx.createGain(); s.gain.value = 0;
+  s.connect(verbFor(name));
+  spaceSends[name] = s;
+  return s;
+}
 function verbFor(which){
   var name = which === 'music' ? 'music' : which === 'ui' ? 'ui' : 'sfx';
   if (verbs[name]) return verbs[name].conv;
@@ -198,6 +222,18 @@ function verbFor(which){
 /* ------------------------------------------------------------------ */
 A.audio = {
   ready:false,
+  /* ---- HOW MUCH SPACE THE SOUNDS ARE IN (RLG-105) ---------------------
+     0 is the open road and 1 is a bore. It ramps rather than steps, because a
+     mix that snaps into a reverb reads as a bug and because the tunnel's mouth
+     is a ramp for the eye already. Only the sfx bus: music and the interface do
+     not live in the world and should not follow the car into a tunnel. */
+  space: function(v, secs){
+    if (!ctx) return 0;
+    var amt = Math.max(0, Math.min(1, v || 0));
+    var s = spaceSendFor('sfx');
+    s.gain.setTargetAtTime(amt, ctx.currentTime, Math.max(0.02, (secs === undefined ? 0.45 : secs)));
+    return amt;
+  },
   ctx:null,
 
   init: function(){
@@ -235,7 +271,7 @@ A.audio = {
     uiBus  = ctx.createGain(); uiBus.connect(master);
 
     /* the reverbs are built on demand, one per bus - see verbFor */
-    verbs = {};
+    verbs = {}; spaceSends = {};
 
     var n = Math.floor(ctx.sampleRate * 2);
     noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -377,6 +413,12 @@ A.sfx = {
     tail.connect(g);
     g.connect(A.audio.bus(o.bus || 'sfx'));
     if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
+    /* and the space, for the voices that live in the world (RLG-105). Owner,
+       2026-09-01: "Not on every sound effect, only the engines, the brakings,
+       tire squeals, sirens, and horns." A crate chime and a menu blip are not
+       in the tunnel with you, so a voice opts IN with `space:true` rather than
+       everything being washed and a list of exceptions kept. */
+    if (o.space) g.connect(spaceSendFor(o.bus || 'sfx'));
     osc.start(t0); osc.stop(t0 + dur + 0.06);
     return osc;
   },
@@ -404,6 +446,12 @@ A.sfx = {
     src.connect(f); f.connect(g);
     g.connect(A.audio.bus(o.bus || 'sfx'));
     if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
+    /* and the space, for the voices that live in the world (RLG-105). Owner,
+       2026-09-01: "Not on every sound effect, only the engines, the brakings,
+       tire squeals, sirens, and horns." A crate chime and a menu blip are not
+       in the tunnel with you, so a voice opts IN with `space:true` rather than
+       everything being washed and a list of exceptions kept. */
+    if (o.space) g.connect(spaceSendFor(o.bus || 'sfx'));
     src.start(t0); src.stop(t0 + dur + 0.06);
     return src;
   },
@@ -469,6 +517,12 @@ A.sfx = {
       osc.connect(f); f.connect(g); g.connect(A.audio.bus(o.bus || 'sfx'));
     }
     if (o.verb){ var vs = ctx.createGain(); vs.gain.value = o.verb; g.connect(vs); vs.connect(verbFor(o.bus || 'sfx')); }
+    /* and the space, for the voices that live in the world (RLG-105). Owner,
+       2026-09-01: "Not on every sound effect, only the engines, the brakings,
+       tire squeals, sirens, and horns." A crate chime and a menu blip are not
+       in the tunnel with you, so a voice opts IN with `space:true` rather than
+       everything being washed and a list of exceptions kept. */
+    if (o.space) g.connect(spaceSendFor(o.bus || 'sfx'));
     osc.start();
     return {
       osc:osc, filter:f, gain:g,
@@ -605,7 +659,7 @@ function startWatchdog(){
     /* after the opening scramble, back off so we are not polling forever */
     if (Date.now() > wdFast && ctx.state === 'running' && M.timer && !pending) return;
     if (ctx.state === 'closed'){
-      ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; outTap = null;
+      ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; spaceSends = {}; outTap = null;
       A.audio.ctx = null; A.audio.ready = false;
       if (M.timer){ clearInterval(M.timer); M.timer = null; }
       /* `init` fires the subscribers itself now, for every engine after the
@@ -687,7 +741,7 @@ function teardown(){
   if (!ctx) return;
   try { if (master) master.disconnect(); } catch(e){}
   var dying = ctx;
-  ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; outTap = null;
+  ctx = null; master = sfxBus = musBus = uiBus = noiseBuf = null; verbs = {}; spaceSends = {}; outTap = null;
   A.audio.ctx = null; A.audio.ready = false;
   try { if (dying.state !== 'closed') dying.close(); } catch(e){}
 }
