@@ -128,6 +128,12 @@ SWEEP = """([to, secs, hold]) => {
     R.steerOver(to, secs);
     const t0 = performance.now();
     const tick = () => {
+      /* THE ROAD IS KEPT EMPTY FOR THE WHOLE READING, not just at the start. A
+         collision deliberately clears the slip offset - a shunt is not something you
+         steered - so a car spawning behind the parked player during a three-second hold
+         destroys the very thing being measured. It read as the offset failing to persist
+         (RLG-131). */
+      R.clearTraffic(); R.setSpd(0);
       if(performance.now() - t0 < (secs + hold) * 1000) requestAnimationFrame(tick);
       else { const s = R.slide(); done({ end: s.x, slide: s.slide, target: to }); }
     };

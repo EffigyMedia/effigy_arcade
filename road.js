@@ -10203,16 +10203,21 @@ function stepRacers(dt){
        --------------------------------------------------------------------- */
     const pRdz = r.z - (pos + PLAYER_Z), pRdx = Math.abs(r.x - playerX);
     if(iframe <= 0 && Math.abs(pRdz) < ((r.len || 380) + 380)/2 && pRdx < ((r.w || 0.30) + 0.26)/2){
-      hurt(8, 'racer');                       /* less than traffic: it is a rub, not a T-bone */
+      /* ---- THE SAME COLLISION AS EVERYTHING ELSE (RLG-131) -------------
+         What was here pushed both cars apart and took speed off both, which was
+         closer to right than the traffic path - and it still read no geometry,
+         so it was identical whoever ran into whom. Worse, the split was AGAINST
+         the player: 0.80 against 0.86, so a rival who rear-ended you lost less
+         than you did. That is exactly the "they drive by me" the owner reported,
+         stated as two constants.
+
+         Racers keep their SMALLER damage - a rub between two cars racing is the
+         sport, and spinning a rival on contact would empty the field in the
+         first mile - but the physics is now one function for the whole road.
+         ------------------------------------------------------------- */
+      const rsev = impactWith(r);
+      hurt(8 * rsev, 'racer');
       iframe = 0.7;
-      const push = Math.sign(playerX - r.x || 1);
-      /* the bigger the speed difference the harder the shunt */
-      const closing = Math.min(1, Math.abs(spd - r.spd) / 4200);
-      playerX = clamp(playerX + push * (0.16 + closing*0.16), -1.18, 1.18);
-      targetX = playerX;
-      r.x     = clamp(r.x - push * (0.12 + closing*0.12), -0.92, 0.92);
-      spd    *= 0.80 - closing*0.10;
-      r.spd  *= 0.86;
       burst(r, '#ffd27a');
     }
   }
@@ -12503,12 +12508,10 @@ function step(dt){
     const dz = c.z - pz, dx = Math.abs(c.x - playerX);
     const overlap = carW(c.w + PLAYER_W)/2;
     if(iframe<=0 && Math.abs(dz) < (c.len+380)/2 && dx < overlap){
-      hurt(13, 'traffic');
+      /* where it landed decides everything, and both cars move (RLG-131) */
+      const sev = impactWith(c);
+      hurt(13 * sev, 'traffic');
       iframe = 0.9;
-      spd = Math.min(spd*0.55, c.spd*0.80);      // drop behind them so we separate
-      const push = Math.sign(playerX - c.x || 1);
-      playerX = clamp(playerX + push*0.30, -1.18, 1.18);
-      targetX = playerX;
       burst(c, '#ffb066');
     } else if(!c.near && Math.abs(dz) < 260 && dx < overlap+0.20){
       c.near = true;
@@ -12727,13 +12730,14 @@ function step(dt){
         iframe = 0.6;
         continue;
       }
-      hurt(9,'cop');
-      iframe = 1.0;
-      spd *= 0.78;
+      /* the same collision as the rest of the road (RLG-131). A cruiser that
+         is left behaving differently from traffic and rivals recreates the
+         inconsistency this ruling exists to remove. The PIT above is a separate
+         manoeuvre and returns before reaching here. */
       const push = Math.sign(playerX - k.x || 1);
-      playerX = clamp(playerX + push*0.22, -1.18, 1.18);
-      targetX = playerX;
-      k.x -= push*0.16;
+      const ksev = impactWith(k);
+      hurt(9 * ksev, 'cop');
+      iframe = 1.0;
       k.z -= 500;
       k.cool = 2.5 - heat*0.15; k.side = -push;
       burst(k, '#8fd0ff');
@@ -12966,6 +12970,101 @@ function wreckCop(k, how){
   fx.push({txt:'CRUISER DOWN', x:W/2, y:msgY()+16, vy:-26, age:0, life:1.2});
   burst(k, '#ff9a5a');
 }
+/* ---- ONE COLLISION, ANSWERED BY WHERE IT HAPPENED (RLG-131) -------------
+   Owner, 2026-08-31, after playing through: "what happens to your car should be
+   based off of where the collision happened. Right now, no matter where you get
+   hit your car loses a ton of momentum. If you run into someone's rear end, that
+   makes sense - but should also send the car you hit flying forward. If you
+   sideswipe somebody, it should just bump you in the opposite direction of the
+   impact as well as the car that you impact it. If someone hits you from behind,
+   they should get slowed down and you should get pushed forward. Right now if I
+   cut off an opponent and they hit me, I lose all my speed and they drive by me
+   which kind of defeats the entire purpose of defensive maneuvering."
+
+   THE GEOMETRY WAS ALREADY BEING COMPUTED AND THEN THROWN AWAY. Both collision
+   sites worked out `dz` and used it only inside `Math.abs()` for the overlap
+   test, so the SIGN - who is in front - was discarded. Traffic then got one
+   unconditional line, `spd = Math.min(spd*0.55, c.spd*0.80)`, identical whether
+   you rear-ended them or they rear-ended you, and it never wrote `c.spd` at all,
+   so the other car drove on untouched.
+
+   THE THREE CASES THE OWNER NAMES ARE ONE EXPRESSION, and that is the whole
+   design rather than a tidiness. The RELATIVE SPEED already says who ran into
+   whom: catching a slower car makes it positive, being caught by a faster one
+   makes it negative, and the same subtraction then takes speed off one car and
+   puts it on the other in the right direction both times. There is no branch
+   naming a case, which matters here because a fourth case would otherwise need a
+   fourth branch.
+
+   WHERE THE HIT LANDED DECIDES WHAT IT EXCHANGES. `square` is 1 nose-to-tail and
+   0 fully alongside, read from how far apart the two are along the road at the
+   moment of contact. A square hit exchanges speed along the road and barely
+   pushes sideways; a rub down the flank does the opposite. That single number is
+   what separates a rear-ending from a sideswipe.
+
+   MASS DECIDES WHO MOVES, AND IT IS NOT A CLASS BRANCH. Three standing rulings
+   forbid naming a vehicle class to get a behaviour, so mass is read from what a
+   vehicle IS: its own width and length, which every vehicle already carries. A
+   lorry shrugs off a hatchback because it is a bigger object, not because the
+   code knows it is a lorry.
+   ------------------------------------------------------------------------- */
+let IMPACT = {
+  along: 1.35,   /* how much of the closing speed a square hit exchanges */
+  apart: 1.00,   /* how hard a rub throws the two cars apart */
+  ref:   0.26 * 380   /* an ordinary car, so the mass proxy reads near 1 */
+};
+/* a vehicle's mass, from the two dimensions it already carries. Anything that
+   declares a real mass keeps it. */
+function massOf(o){
+  if(o && o.mass) return o.mass / 1200;
+  return ((o && o.w) || 0.26) * ((o && o.len) || 380) / IMPACT.ref;
+}
+/* the player's, from the car in the garage, on the same scale */
+function playerMass(){
+  const m = (BODY[optBody] && BODY[optBody].mass) || 1200;
+  return m / 1200;
+}
+/* Moves BOTH cars and returns how hard it was, 0 to 1, so the damage and the
+   noise can follow the hit instead of being a constant. */
+function impactWith(o){
+  const dz    = o.z - (pos + PLAYER_Z);
+  const reach = ((o.len || 380) + 380) / 2;
+  /* 1 nose-to-tail, 0 fully alongside */
+  const square = clamp(Math.abs(dz) / reach, 0, 1);
+  const flank  = 1 - square;
+  const mA = playerMass(), mB = massOf(o);
+  /* the share of the exchange YOU take. Against something much heavier this
+     goes to 1 and you take all of it; against something much lighter, none. */
+  const share = mB / (mA + mB);
+
+  /* ---- ALONG THE ROAD, and the sign of this IS who hit whom -----------
+     Positive means you were closing on them: you lose speed and they are shoved
+     forward. Negative means they were closing on you: THEY lose it and you are
+     pushed forward, which is the case the owner says defensive driving needs.
+     Only the square part of the hit exchanges any of it.
+     ---------------------------------------------------------------- */
+  const rel   = spd - (o.spd || 0);
+  const along = rel * square * IMPACT.along;
+  spd = Math.max(0, spd - along * share);
+  if(o.spd !== undefined) o.spd = Math.max(0, o.spd + along * (1 - share));
+  /* and you cannot drive through the car you just hit from behind: without
+     this you stay inside it and hit it again every time the mercy window ends */
+  if(square > 0.5 && rel > 0 && o.spd !== undefined) spd = Math.min(spd, o.spd);
+
+  /* ---- AND ACROSS IT, where a rub does its work ------------------------ */
+  const push  = Math.sign(playerX - o.x || 1);
+  const apart = (0.10 + Math.min(1, Math.abs(rel) / MAX_SPD) * 0.34) * flank * IMPACT.apart;
+  playerX = clamp(playerX + push * apart * share * 2, -1.18, 1.18);
+  targetX = playerX;
+  /* the slip offset goes with the car: a shunt is not something you steered */
+  if(typeof slideX !== 'undefined') slideX = 0;
+  if(o.x !== undefined) o.x = clamp(o.x - push * apart * (1 - share) * 2, -0.92, 0.92);
+
+  /* how hard it was: a square hit at a big closing speed is the worst there is,
+     a gentle rub is almost nothing */
+  return clamp((0.25 + square * 0.75) * Math.min(1, 0.30 + Math.abs(rel) / (MAX_SPD * 0.55)), 0, 1);
+}
+
 function burst(o,color){
   const p = proj(o.x*ROAD, o.z||pos+PLAYER_Z);
   const sx = p.ok ? p.x : W/2, sy = p.ok ? p.y : H*0.8;
@@ -19189,6 +19288,36 @@ requestAnimationFrame(frameLoop);
   API.cars = function(){
     return (traffic ? traffic.length : 0) + (cops ? cops.length : 0)
          + (blocks ? blocks.length : 0) + (racers ? racers.length : 0);
+  };
+  /* ---- STAGE ONE COLLISION AND READ BOTH CARS (RLG-131) ----------------
+     A collision is over in a frame and its whole subject is WHERE it happened,
+     so driving into one and hoping for the geometry you wanted measures the
+     traffic AI rather than the impact. This puts one car at a stated offset
+     along and across the road, at a stated speed, runs the collision the game
+     runs, and reports both cars before and after.
+
+     IT CALLS THE ENGINE'S OWN `impactWith`, not a copy of it. A check that
+     restated the formula would agree with a copy of the code rather than with
+     the code, which is a scar this project already carries from `rollSkyFor`.
+     ------------------------------------------------------------------- */
+  API.stageImpact = function(dz, dx, theirSpd, mySpd, len, w){
+    const car = { z: pos + PLAYER_Z + dz, x: dx, spd: theirSpd,
+                  len: len === undefined ? 380 : len,
+                  w:   w   === undefined ? 0.26 : w, type:'sedan' };
+    spd = mySpd; playerX = 0; targetX = 0; slideX = 0;
+    const before = { mine: spd, theirs: car.spd, myX: playerX, theirX: car.x };
+    const sev = impactWith(car);
+    return { before: before,
+             after: { mine: spd, theirs: car.spd, myX: playerX, theirX: car.x },
+             sev: +sev.toFixed(4),
+             dMine: +(spd - before.mine).toFixed(2),
+             dTheirs: +(car.spd - before.theirs).toFixed(2),
+             myShift: +(playerX - before.myX).toFixed(4),
+             theirShift: +(car.x - before.theirX).toFixed(4) };
+  };
+  API.impactModel = function(o){
+    if(o) for(const k in o) if(k in IMPACT) IMPACT[k] = o[k];
+    return Object.assign({}, IMPACT);
   };
   API.coasting = function(){ return coasting; };
   API.superSprite = function(){ return !!SP.superCop; };

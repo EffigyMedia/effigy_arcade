@@ -14,6 +14,35 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-43"></a>
+## [0.10.43] - 2026-08-31
+- Changed: **a collision answers where it happened, and moves both cars.** Owner: "if I cut off an
+  opponent and they hit me, I lose all my speed and they drive by me which kind of defeats the entire
+  purpose of defensive maneuvering." The geometry was already being computed and then thrown away -
+  both collision sites worked out how far apart the cars were and used it only inside `Math.abs()`,
+  so the SIGN, which is who is in front, was discarded ([RLG-131](../fragments/RLG-131.md)).
+- Changed: **the three cases are one expression, not three branches.** The relative speed already
+  says who ran into whom: catching a slower car makes it positive, being caught by a faster one makes
+  it negative, and the same subtraction moves speed the right way in both. Measured: rear-ending
+  costs you 2,736 and gives them 2,303; being rear-ended gives you 2,736 and costs them 2,303. Exact
+  opposites, which is the whole ruling in one line.
+- Changed: **a sideswipe bumps both cars apart and costs almost no speed.** How square the hit is
+  decides what it exchanges - along the road for a rear-ending, across it for a rub. One number
+  separates the two.
+- Changed: **mass comes off the vehicle's own width and length.** Three standing rulings forbid a
+  branch that names a vehicle class to get a behaviour, so a lorry shrugs off a hatchback because it
+  is a bigger object. Measured: hitting a lorry costs 2,837 and moves it only 1,418.
+- Changed: **traffic, rivals and cruisers now share one collision.** Leaving the cruiser on its own
+  path would have recreated the inconsistency this ruling removes. The PIT manoeuvre is untouched.
+  Rivals keep their smaller damage and lose their unfair split - it was 0.80 against 0.86, so a rival
+  who rear-ended the player lost less than the player did.
+- Added: **`tools/impact-test.py`**, which stages a collision at a chosen geometry instead of driving
+  into one and hoping. It also asserts that nothing is conjured: what one car gains the other loses,
+  so a collision cannot become a speed source.
+- Note: drive-test's nitrous assertion failed on two of three runs of this build and one of three of
+  the previous one. Both arms fail it, the samples are too small to separate them, and this change is
+  neither shown innocent nor guilty. Recorded rather than dismissed.
+
 <a id="v0-10-42"></a>
 ## [0.10.42] - 2026-08-31
 - Changed: **a wet road carries you further than you asked, instead of making the steering wiggle.**
