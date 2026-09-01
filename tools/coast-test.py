@@ -261,9 +261,26 @@ def main():
         land_w = s['right'] if s['sea'] < 0 else s['left']
         sea_m = s['mLeft'] if s['sea'] < 0 else s['mRight']
         land_m = s['mRight'] if s['sea'] < 0 else s['mLeft']
-        res.check(sea_w == 0, 'nothing is drawn on the seaward side', 'drew %d' % sea_w)
+        # ---- THE SEAWARD SIDE CARRIES BOATS NOW, AND NOTHING ELSE. This asked for
+        # NOTHING at all until the owner directed boats onto the water as scenery
+        # (RLG-059), and the invariant it was really protecting was never "the sea is
+        # empty" - it was "no palm stands in the water". That is what it asks now, so the
+        # check keeps its teeth instead of being deleted for being in the way.
+        BOAT_SPECS = {'COASTAL_BOATS', 'COASTAL_SHIPS'}
+        print('      on the water: %s   in the glass: %s'
+              % (s.get('seaKeys'), s.get('mSeaKeys')))
+        aground = [k for k in (s.get('seaKeys') or {}) if k not in BOAT_SPECS]
+        res.check(not aground,
+                  'nothing but boats is drawn on the seaward side',
+                  'these stood in the water: %s' % aground)
+        res.check(sea_w > 0,
+                  'and there ARE boats on it, which is what the owner asked for',
+                  'the seaward side drew nothing at all')
         res.check(land_w > 20, 'the landward side is populated', 'drew %d' % land_w)
-        res.check(sea_m == 0, 'nothing is drawn on the seaward side in the glass', 'drew %d' % sea_m)
+        m_aground = [k for k in (s.get('mSeaKeys') or {}) if k not in BOAT_SPECS]
+        res.check(not m_aground,
+                  'nothing but boats is drawn on the seaward side in the glass',
+                  'these stood in the water: %s' % m_aground)
         res.check(land_m > 0, 'the glass shows the landward side', 'drew %d' % land_m)
 
         # ------------------------------------------------ and the water is in the glass

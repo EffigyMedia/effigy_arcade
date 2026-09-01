@@ -14,6 +14,51 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-13"></a>
+## [0.11.13] - 2026-09-01
+- Added: **a fleet rather than one boat** - sailboats, speedboats, fishing boats, ocean
+  liners and tankers. Owner, 2026-09-01: "not just some sailboats. Some speedboats and ocean
+  liner or tanker" ([RLG-112](../fragments/RLG-112.md),
+  [RLG-059](../fragments/RLG-059.md)).
+- Added: **coastal carries them too, as scenery on the seaward side.** Owner: "the boat gonna
+  be painted on the ocean as scenery details." A first attempt placed them by distance the way
+  the bridge does and the owner read them as skyline detail - correctly, because a coast's sea
+  is at the ground's own level and converges on the horizon, so every boat came out in a
+  three-pixel band beside the headlands. The scenery system already knows how to size, cull,
+  fade and mirror a thing, and the seaward side has drawn nothing since the coast was built.
+- Fixed: **a tanker is 330 metres, not 117.** Owner: "had a small tanker - see in that picture
+  tankers are huge." It had been sized by eye against the small craft beside it rather than
+  against the thing it is.
+- Fixed: **and the fleet is ONE table now, which is the real fix.** Owner: "please make sure
+  these sizes are carried over to the bridge biome." They could not have been - the bridge and
+  the coast had two independent size tables, so correcting one left the other. That is the
+  same shape this project has been caught by three times. Every vessel is stated once in
+  METRES and KNOTS and both waters convert through the car's own known length.
+- Added: **and they move, against a clock of their own.** Owner: "can we have them moving from
+  one side to the other?" Against `seaClock` and never against the camera - a lateral position
+  derived from `pos` is not a position in the world. Not the day clock either: a harness has
+  to be able to move the sun, and moving the sun must not teleport the shipping.
+- Note: **the real knots give the owner's ordering for free.** "Tankers will barely be moving,
+  sailboats will be a little bit faster and speedboats will be ripping." In absolute terms a
+  tanker at fifteen knots is faster than a sailboat at six - so that ordering is about the
+  angular rate, and a tanker is a mile out where a sailboat is a few hundred metres. Measured:
+  tanker 0.88 pixels a second, sailboat 3.89, speedboat 35. Nothing is tuned to imitate it.
+- Changed: **the coastal islands are clipped to the water.** Owner: "I don't mind keeping the
+  island looking skyline over the water, but we need to remove it from the land side." The
+  skyline has never known which side the sea is on - one band tiled across the whole horizon,
+  right for every place with the same thing all the way round and wrong for the one that has
+  not. Clipped at the road's own vanishing point, which is where the shoreline reaches the
+  horizon.
+- Changed: **the seaward check was rewritten rather than deleted.** `coast-test` asked that
+  NOTHING be drawn on the seaward side, which the boats violate by design. The invariant it
+  was protecting was never "the sea is empty" but "no palm stands in the water", so it asks
+  that now, by spec key.
+- Note: **not clean, and it should not be read as clean.** With the island clip in, coast-test
+  failed about three runs in thirteen; without it, one in twelve. The failures are spread
+  across three different checks and one is the shoreline-join flake the audit already records
+  at one run in four. The mechanism argues against the clip - it paints only above the horizon
+  and the failing check samples below it - but the cause was not isolated.
+
 <a id="v0-11-12"></a>
 ## [0.11.12] - 2026-09-01
 - Fixed: **the bridge no longer ends in mid-water.** Owner, 2026-09-01: "the end of the

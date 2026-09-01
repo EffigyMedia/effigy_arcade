@@ -422,8 +422,15 @@ def main():
         res.check(bland == 0,
                   'there is no land at the skyline - the water runs all the way to it',
                   '%d land pixels in the row' % bland)
-        res.check((bb['left'] + bb['right']) > bb['width'] * 0.75,
-                  'and most of that row is water, with the bridge standing in the rest',
+        # DELIBERATELY LOOSE, AND IT HAS BEEN MOVED TWICE FOR THE SAME REASON. This started
+        # at 90% of the row as water; then the ironwork was built and a cable and a tower
+        # legitimately crossed it, and then the fleet was built and a liner at the horizon
+        # took another chunk. Every one of those is a thing that is SUPPOSED to stand on the
+        # sea. Chasing the fraction each time is how a check ends up measuring the last
+        # feature added, so the sharp claim is the LAND count above and this one only says
+        # the row has not stopped being water.
+        res.check((bb['left'] + bb['right']) > bb['width'] * 0.55,
+                  'and the row is still mostly water, with the bridge and its shipping in the rest',
                   'only %d water of %d, plus %d ironwork'
                   % (bb['left'] + bb['right'], bb['width'], bbi['left'] + bbi['right']))
         # THE COAST'S FIGURE IS PRINTED AND NOT ASSERTED ON, and that was measured rather
@@ -569,9 +576,59 @@ def main():
         res.check(b1['drawn'] >= 3,
                   'there are boats on the water below',
                   'only %d of %d were on screen' % (b1['drawn'], b1['total']))
-        res.check(all(s['w'] < 40 for s in b1['sample']),
-                  'and they are little, because the water they sit on is a long way down',
-                  'the biggest was %.0f px' % max([s['w'] for s in b1['sample']] or [0]))
+        # ---- AND THE KINDS ARE IN REAL PROPORTION TO EACH OTHER. Owner, 2026-09-01:
+        # "we need to make sure the boats are all the correct relative sizes." The first
+        # set was not, and not by a little - a liner was nine times a speedboat where the
+        # real ratio is forty, the small craft were about twice life size and the big ships
+        # less than half. Four numbers picked to look spaced out are not four sizes.
+        #
+        # THERE IS ONE KNOWN LENGTH IN THIS ENGINE and everything hangs off it: a car is
+        # 380 units and about four and a half metres. So the check is in METRES, against
+        # what these things actually measure, and it is the ratio that is asserted rather
+        # than any one figure.
+        kinds = page.evaluate("() => window.__probe.road.boatKinds()")
+        want = {'speed': 7, 'sail': 11, 'liner': 300, 'tanker': 330}
+        print('      the fleet, in metres against the car own 4.5:')
+        for k in kinds:
+            print('        %-7s %6.1f m  (wanted about %d)' % (k['name'], k['metres'], want[k['name']]))
+        for k in kinds:
+            res.check(abs(k['metres'] - want[k['name']]) < want[k['name']] * 0.15,
+                      'a %s measures about %d metres' % (k['name'], want[k['name']]),
+                      'it is %.1f m' % k['metres'])
+        by = {k['name']: k['metres'] for k in kinds}
+        res.check(by['liner'] / by['speed'] > 30,
+                  'and a liner is more than thirty times a speedboat, as one is',
+                  'it is %.0f times' % (by['liner'] / by['speed']))
+
+        # ---- AND THE SPEEDS GIVE THE OWNER'S ORDERING WITHOUT BEING TUNED TO. Owner,
+        # 2026-09-01: "tankers will barely be moving, sailboats will be a little bit
+        # faster than that and speedboats will be ripping." In ABSOLUTE terms a tanker at
+        # fifteen knots is faster than a sailboat at six - so the ordering the owner
+        # described is about what the EYE reads, and that is the angular rate: a tanker is
+        # a mile out and a sailboat is a few hundred metres. The check asks for the
+        # apparent ordering and the real knots produce it, which is the point.
+        rates = page.evaluate("() => window.__probe.road.boatRates()")
+        print('      apparent motion, in pixels a second at each kind own distance:')
+        for r in rates:
+            print('        %-7s %5.1f kn at %6d units -> %5.2f px/s'
+                  % (r['name'], r['knots'], r['at'], r['px']))
+        rate = {r['name']: r['px'] for r in rates}
+        res.check(rate['tanker'] < rate['sail'] < rate['speed'],
+                  'a tanker crawls, a sailboat is a little faster, a speedboat rips',
+                  'tanker %.2f, sail %.2f, speed %.2f'
+                  % (rate['tanker'], rate['sail'], rate['speed']))
+        res.check(rate['speed'] > rate['tanker'] * 8,
+                  'and the speedboat really is ripping beside the tanker',
+                  'only %.1f times' % (rate['speed'] / max(0.01, rate['tanker'])))
+
+        # AND THE CONSEQUENCE IS CORRECT AND WORTH EXPECTING: from a bridge deck you see
+        # ships, not dinghies. The near water is behind the deck - as it is from a real
+        # bridge - so small craft are rarely in view here, and the coastal boats, which sit
+        # at ground level and far nearer, are what carry the small end of the fleet.
+        spread = [s['w'] for s in b1['sample']]
+        res.check(max(spread) / max(0.1, min(spread)) > 5,
+                  'and the fleet on screen spans a wide range of sizes rather than one',
+                  'the range was %.1f to %.1f px' % (min(spread), max(spread)))
 
         # A BOAT IS A PLACE IN THE WORLD, AND THIS IS THE CHECK THAT MATTERS. Two versions
         # of the scatter derived the lateral offset from the car's own position, so the
@@ -579,6 +636,13 @@ def main():
         # picture. It is the same class of fault as the mirror slices pinned to the segment
         # behind the player, which this engine has been caught by four times: anything whose
         # world position is derived from `pos` is not in the world.
+        #
+        # THE SEA CLOCK IS HELD FIRST, and without that this check cannot mean anything now
+        # that the boats move: "did it move?" has two answers - because time passed, which
+        # is the feature, and because the camera moved, which is the fault. Freezing the
+        # clock and then driving isolates the second exactly.
+        page.evaluate("() => window.__probe.road.holdSeaClock(true)")
+        b1 = page.evaluate("() => window.__probe.road.boats()")
         page.evaluate("() => window.__probe.road.setSpd(window.__probe.road.MAX_SPD)")
         page.wait_for_timeout(900)
         b2 = page.evaluate("() => window.__probe.road.boats()")
@@ -592,8 +656,22 @@ def main():
                   'the same boats are still there after driving on, so this can be compared',
                   'no boat appeared in both samples')
         res.check(not moved,
-                  'and not one of them changed its place in the world as the car moved',
+                  'and with time held still, not one changed its place as the car moved',
                   'these moved: %s' % moved[:5])
+        # AND THEY DO MOVE WHEN TIME RUNS, or the owner's request is not built at all.
+        page.evaluate("() => window.__probe.road.holdSeaClock(false)")
+        b3 = page.evaluate("() => window.__probe.road.boats()")
+        page.wait_for_timeout(700)
+        b4 = page.evaluate("() => window.__probe.road.boats()")
+        was = {s['i']: s['lx'] for s in b3['sample'] + b3['missed']}
+        sailed = [s['i'] for s in (b4['sample'] + b4['missed'])
+                  if s['i'] in was and was[s['i']] != s['lx']]
+        print('      with time running again, %d of the shared boats had sailed on'
+              % len(sailed))
+        res.check(len(sailed) > 0,
+                  'and they DO cross the water once time is running',
+                  'not one moved in three quarters of a second')
+        page.evaluate("() => window.__probe.road.holdSeaClock(false)")
 
         # ------------------------------------------------ the ironwork
         print()

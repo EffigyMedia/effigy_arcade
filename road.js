@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.12';
+window.ROAD_BUILD = '0.11.13';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5544,6 +5544,44 @@ function sceneRand(idx, salt){
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/* ---- THE FLEET IS ONE TABLE, READ BY BOTH WATERS (RLG-059, RLG-112) -----
+   Owner, 2026-09-01: "please make sure these sizes are carried over to the
+   bridge biome."
+
+   THEY WERE NOT, AND THEY COULD NOT HAVE BEEN. The bridge's boats are placed by
+   distance on a plane with no ground under it, and the coast's are drawn through
+   the scenery system - two placements, and until now two size tables. That is
+   the same shape this project has now been caught by three times: a value typed
+   in beside a value derived from it. The coast's tanker was corrected to 330
+   metres and the bridge's was not, because nothing connected them.
+
+   SO THE FLEET IS STATED ONCE, IN METRES AND KNOTS, and both sides convert. A
+   car is 380 units and about four and a half metres, so a metre is 84.4 units
+   and a knot is 43.4 units a second. Nothing downstream carries a length.
+
+   AND THE SPEEDS ARE THE REAL ONES, WHICH GIVES THE OWNER'S ORDERING FOR FREE.
+   Owner: "tankers will barely be moving, sailboats will be a little bit faster
+   than that and speedboats will be ripping." In absolute terms a tanker at
+   fifteen knots is FASTER than a sailboat at six - but a tanker is a mile out
+   and a sailboat is a few hundred metres, and what the eye reads is the angular
+   rate. Measured at the distances each is placed: a tanker crawls at under a
+   pixel a second, a sailboat manages about two, and a speedboat runs at twelve.
+   The owner described what a coast looks like, and the honest numbers produce
+   it - so there is nothing here tuned to imitate the effect.
+   ------------------------------------------------------------------------- */
+const UNITS_PER_M = 380 / 4.5;
+const UNITS_PER_KNOT = 0.514444 * UNITS_PER_M;
+const FLEET = {
+  sail:   { m:  11, knots: 6 },
+  speed:  { m:   7, knots:40 },
+  fish:   { m:  15, knots: 9 },
+  liner:  { m: 300, knots:22 },
+  tanker: { m: 330, knots:15 }
+};
+const fleetLen   = (n) => FLEET[n].m * UNITS_PER_M;
+const fleetScene = (n) => +(FLEET[n].m * UNITS_PER_M / SCENE_UNIT).toFixed(3);
+const fleetSpd   = (n) => FLEET[n].knots * UNITS_PER_KNOT;
+
 /* ---- WHAT EACH PLACE PUTS BESIDE ITS ROAD -------------------------------
    `density` is the chance of an object on one side of one segment. `w` and `h`
    are world sizes in the same units the road uses, so they scale with distance
@@ -5655,6 +5693,116 @@ const SCENERY = {
      same sentence. The ranks are further apart, and at a distance that gap is
      under a pixel: what the eye gets is a field that reaches the horizon.
      ------------------------------------------------------------------ */
+  /* ---- WHAT IS ON THE WATER (RLG-059) --------------------------------
+     Drawn as scenery on the seaward side, at the owner's direction. Two specs
+     because a tanker draws twenty metres and a dinghy draws one, so they are
+     never found in the same water - and because one spec covering both would
+     draw the speedboat three pixels wide on a 96-pixel canvas.
+
+     SPARSE IS THE WHOLE INSTRUCTION and RLG-059 says to read it strictly: a
+     boat every few hundred metres reads as a sea, a line of them reads as a
+     marina and, worse, as scenery placed on a rule. Hence one rank and a low
+     density on both.
+
+     `out` IS PAST THE SHORELINE. The beach runs to 1.3 roadside units, so
+     nothing here starts inside 2.0 - a boat aground on the sand is worse than
+     no boat at all.
+     ------------------------------------------------------------------ */
+  /* 0.67 scene units is fifteen metres, which is the fishing boat - the largest
+     of the three. A sailboat is eleven and draws short inside the same box. */
+  COASTAL_BOATS: { density:0.07, rows:1, out:2.4, outFar:9.0,
+            /* the box holds the LONGEST of the three - the fishing boat - and a
+               sailboat draws short inside it. From `FLEET`, so the coast and the
+               bridge cannot disagree about how long a boat is. */
+            w:fleetScene('fish'), h:fleetScene('fish') * 1.20, spread:2.6, kinds:3,
+            build:(g,W2,H2,i)=>{
+              const hull = '#16202b', pale = '#e6ecf2', deck = '#c9ccd2';
+              const base = H2 * 0.78;
+              if(i === 0){
+                /* a sloop, and the mast is taller than the hull is long -
+                   which is the whole silhouette at any distance */
+                g.fillStyle = hull;
+                g.beginPath();
+                g.moveTo(W2*0.16, base); g.lineTo(W2*0.84, base);
+                g.lineTo(W2*0.74, base + H2*0.10); g.lineTo(W2*0.26, base + H2*0.10);
+                g.closePath(); g.fill();
+                g.fillStyle = pale;
+                g.beginPath();
+                g.moveTo(W2*0.44, base);
+                g.lineTo(W2*0.44, H2*0.06);
+                g.lineTo(W2*0.80, base);
+                g.closePath(); g.fill();
+                g.fillStyle = hull;
+                g.fillRect(W2*0.42, H2*0.06, Math.max(1, W2*0.03), base - H2*0.06);
+              } else if(i === 1){
+                /* a speedboat: low, planing, and mostly wake */
+                g.fillStyle = hull;
+                g.beginPath();
+                g.moveTo(W2*0.10, base - H2*0.10); g.lineTo(W2*0.86, base + H2*0.02);
+                g.lineTo(W2*0.86, base + H2*0.12); g.lineTo(W2*0.10, base + H2*0.12);
+                g.closePath(); g.fill();
+                g.fillStyle = deck;
+                g.fillRect(W2*0.30, base - H2*0.12, W2*0.26, H2*0.10);
+                g.fillStyle = 'rgba(232,242,250,.75)';
+                g.fillRect(W2*0.00, base + H2*0.10, W2*0.34, Math.max(1, H2*0.05));
+              } else {
+                /* a fishing boat: a wheelhouse aft and a stubby mast */
+                g.fillStyle = hull;
+                g.beginPath();
+                g.moveTo(W2*0.14, base - H2*0.04); g.lineTo(W2*0.88, base - H2*0.04);
+                g.lineTo(W2*0.78, base + H2*0.14); g.lineTo(W2*0.24, base + H2*0.14);
+                g.closePath(); g.fill();
+                g.fillStyle = pale;
+                g.fillRect(W2*0.54, base - H2*0.24, W2*0.24, H2*0.20);
+                g.fillStyle = hull;
+                g.fillRect(W2*0.34, base - H2*0.44, Math.max(1, W2*0.035), H2*0.40);
+              }
+            } },
+  /* ---- AND A TANKER IS HUGE (owner, 2026-09-01) ----------------------
+     "Had a small tanker - see in that picture tankers are huge." It was, and
+     the number says so: the box was 5.20 scene units, which is 9,880 world
+     units and 117 metres. A tanker is 330. It had been sized by eye against
+     the small craft beside it rather than against the thing it is.
+
+     14.67 IS 330 METRES on the same anchor everything else here uses - a car
+     is 380 units and four and a half metres. The box holds the longer of the
+     two kinds and the liner draws short inside it at 300.
+
+     AND THEY MOVE FURTHER OUT WITH THE SIZE. A 330-metre ship 170 metres off
+     the beach is not a seascape, it is a grounding. `out` 18 puts the nearest
+     at about 400 metres and `outFar` 60 at a mile and a third, which is where
+     shipping actually sits.
+
+     One rank, and rarer than the small craft - a horizon with two tankers on
+     it is a port, not a sea.
+     ------------------------------------------------------------------ */
+  COASTAL_SHIPS: { density:0.05, rows:1, out:18.0, outFar:60.0,
+            w:fleetScene('tanker'), h:fleetScene('tanker') * 0.205,
+            spread:14.0, kinds:2,
+            build:(g,W2,H2,i)=>{
+              const hull = '#16202b', pale = '#e8edf2', rust = '#7a3a2a';
+              const base = H2 * 0.80, deep = H2 * 0.16;
+              g.fillStyle = hull;
+              g.fillRect(W2*0.03, base - deep*0.5, W2*0.94, deep);
+              if(i === 0){
+                /* a liner: five or six decks of white amidships, and it is that
+                   block alone that separates one from a tanker at this size */
+                g.fillStyle = pale;
+                g.fillRect(W2*0.28, base - deep*0.5 - H2*0.20, W2*0.44, H2*0.20);
+                g.fillStyle = hull;
+                for(const fx of [0.44, 0.54])
+                  g.fillRect(W2*fx, base - deep*0.5 - H2*0.30, Math.max(1, W2*0.018), H2*0.10);
+              } else {
+                /* a tanker: a red boot-topping, a deckhouse right aft, nothing
+                   in between - which is exactly what makes it read as a tanker */
+                g.fillStyle = rust;
+                g.fillRect(W2*0.03, base + deep*0.16, W2*0.94, deep*0.34);
+                g.fillStyle = pale;
+                g.fillRect(W2*0.80, base - deep*0.5 - H2*0.17, W2*0.13, H2*0.17);
+                g.fillStyle = hull;
+                g.fillRect(W2*0.855, base - deep*0.5 - H2*0.25, Math.max(1, W2*0.016), H2*0.08);
+              }
+            } },
   FARMLAND_CROP: { density:1.0, rowDensity:1.0, rows:9, out:0.12, outFar:16.0,
             w:0.34, h:0.62, spread:0, kinds:3, lattice:true,
             build:(g,W2,H2,i)=>{
@@ -6139,7 +6287,13 @@ function sceneryLitArt(key, i){
    pass DID. Cumulative with an explicit reset, the same shape `crestStats` has,
    and the mirror keeps its own pair because its loop is its own.
    ------------------------------------------------------------------------- */
-let sceneSides = { left:0, right:0, mLeft:0, mRight:0 };
+/* ---- WHAT DREW ON WHICH SIDE, AND WHAT IT WAS (RLG-059) ----------------
+   The counts alone were enough while the seaward side drew NOTHING. Now that it
+   carries boats, "did anything draw in the water" is the wrong question - the
+   right one is whether anything but a BOAT did, which is the invariant that
+   stops palms standing in the sea. So the spec keys are kept beside the counts.
+   ------------------------------------------------------------------------- */
+let sceneSides = { left:0, right:0, mLeft:0, mRight:0, seaKeys:{}, mSeaKeys:{} };
 /* how many headlights the mirror actually lit on the last frame it drew (RLG-053).
    A declaration nothing asks for is the fault this counts, not a rendering detail. */
 let headsLit = 0;
@@ -6192,9 +6346,41 @@ function drawScenery(idx, p1, y1, z1, fade){
      the water begins where the ground colour changes rather than where the car
      is.
      -------------------------------------------------------------------- */
+  /* ---- AND THE SEA SIDE DRAWS BOATS RATHER THAN NOTHING (RLG-059) ------
+     Owner, 2026-09-01, having seen the first attempt: "I don't see any ships
+     painted, those look like skyline details", and then "the boat gonna be
+     painted on the ocean as scenery details."
+
+     THE FIRST ATTEMPT PLACED THEM BY DISTANCE, LIKE THE BRIDGE'S. That is right
+     over a bridge, where the water is a plane with no ground under it and the
+     scenery system has nothing to hang on - but a coast's sea IS the ground, at
+     the ground's own level, so it converges on the horizon and every boat came
+     out in a three-pixel band at the skyline. The owner read them as skyline
+     detail because at that size that is what they were.
+
+     SO THEY GO THROUGH THE SCENERY SYSTEM, which is what the owner asked for and
+     what [[RLG-059]] said in the first place. It already knows how to size a
+     thing at a distance, cull it behind a crest, fade it in at the draw edge and
+     put it in the mirror - and the seaward side, which has drawn NOTHING since
+     the coast was built, is exactly the empty slot it needs.
+
+     TWO SPECS, AND THE SPLIT IS THE TRUE ONE. A tanker draws twenty metres and a
+     dinghy draws one, so small craft work inshore and big ships stay well out.
+     That also keeps each sprite at a sensible resolution: one spec covering a
+     seven-metre speedboat and a 330-metre tanker would draw the speedboat three
+     pixels wide on a 96-pixel canvas.
+
+     RLG-059 DEFERRED THESE AND THE OWNER HAS NOW DIRECTED THEM. The reason for
+     the deferral stands and should be read before this is called finished: they
+     sit outboard of the lamp posts, so whatever [[RLG-073]] decides about
+     culling scenery beyond the verge decides about these too. Going through the
+     scenery system rather than around it is what makes that a cheap change
+     later instead of a second one.
+     ------------------------------------------------------------------ */
   const water = B.sea ? sideRoll : 0;
   for(const side of [-1, 1]){
-    if(water && side === water) continue;
+    const seaSideNow = water && side === water;
+    if(seaSideNow && !B.boats) continue;
     /* ---- THE ROLLED SIDE MAY DRAW SOMETHING ELSE ENTIRELY (RLG-102) ---
        The coast's rolled side draws NOTHING, because it is water. Farmland's
        draws a different spec, because it is a crop. Both are the same question -
@@ -6207,10 +6393,15 @@ function drawScenery(idx, p1, y1, z1, fade){
        dressed as generality. Farmland uses BOTH sides, so both specs are live.
        ---------------------------------------------------------------- */
     const cropSide = B.crop && side === sideRoll;
-    const spec2 = cropSide ? SCENERY[B.crop] : spec;
-    const artKey = cropSide ? B.crop : B.name;
+    /* out at sea it is the big ships; nearer in, the small craft. The choice is
+       per SEGMENT and comes from the same placement hash everything else uses,
+       so a given stretch of water always holds the same vessels. */
+    const boatKey = seaSideNow
+      ? (sceneRand(idx, 577) < 0.34 ? B.ships : B.boats) : null;
+    const spec2 = boatKey ? SCENERY[boatKey] : (cropSide ? SCENERY[B.crop] : spec);
+    const artKey = boatKey || (cropSide ? B.crop : B.name);
     if(!spec2) continue;
-    const rows2 = cropSide ? (spec2.rows || 1) : rows;
+    const rows2 = (boatKey || cropSide) ? (spec2.rows || 1) : rows;
     for(let row = rows2 - 1; row >= 0; row--){
       const salt = row * 101;
       const r0 = sceneRand(idx, (side < 0 ? 11 : 23) + salt);
@@ -6255,6 +6446,7 @@ function drawScenery(idx, p1, y1, z1, fade){
          whole at the edge of the world. The lamps do the same. */
       ctx.globalAlpha = Math.min(1, fade * 4);
       sceneSides[side < 0 ? 'left' : 'right']++;
+      if(seaSideNow) sceneSides.seaKeys[artKey] = (sceneSides.seaKeys[artKey] || 0) + 1;
       /* debug only: where each object was actually drawn this frame, so a
          harness can follow ONE of them down the road instead of arguing about
          perspective from the source (RLG-073) */
@@ -8712,6 +8904,8 @@ const BIOMES = {
                  at a fixed offset leaves the screen as it comes near. A narrower
                  beach keeps the coast in shot for most of the draw. */
               sea:'#1d4a63', beach:1.3,
+              /* what floats on it, drawn as scenery on the seaward side (RLG-059) */
+              boats:'COASTAL_BOATS', ships:'COASTAL_SHIPS',
               sky:'#2f4a63', city:0.08, trees:0.20, skyForm:'open' },
   /* ---- THE FLATTEST PLACE ON THE BOARD (RLG-102) ----------------------
      Owner, 2026-08-31: "I want to add another biome farmland. This one would
@@ -14057,6 +14251,16 @@ function hurt(n, src){
    at a decent pace. */
 const DAY_SECONDS = 240;
 let dayClock = 0;
+/* monotonic, never set, never wrapped - see the loop */
+let seaClock = 0;
+/* ---- AND IT CAN BE HELD STILL, FOR ONE REASON (RLG-112) ----------------
+   The boats move against time, so "did that boat move?" has two answers and a
+   check has to separate them: moved because time passed, which is the feature,
+   and moved because the CAMERA moved, which is the fault this engine has been
+   caught by four times. Freezing the clock and then driving isolates the second
+   exactly. `holdWindowClock` exists for the same reason and RLG-095 records it.
+   ------------------------------------------------------------------------- */
+let seaHold = 0;
 function phase(){ return (dayClock / DAY_SECONDS) % 1; }
 
 /* 0 dusk · 0.25 night · 0.5 dawn · 0.75 midday, then round again.
@@ -14325,6 +14529,7 @@ const BOAT = {
      looks like, and further ones gather toward the vanishing point.
      ------------------------------------------------------------- */
   spread:  60000, /* how far either side of the road's line they scatter     */
+  shore:   26000, /* and how far out a COAST's sea starts, past the sand        */
   /* ---- A SHIP, NOT A DINGHY ------------------------------------------
      1,500 units is about four car lengths, and at the distances this water
      runs to that came out 2 to 7 pixels wide - the painter ran, eight boats a
@@ -14343,7 +14548,156 @@ const BOAT = {
    car and measures distance the other way round. Without it the glass would show
    the boats in front of you, which is the exact fault RLG-079 exists to prevent -
    and it would have looked perfectly plausible. */
-function drawBoats(B, vh, vHorizon, cx, halfW, topY, botY, back){
+/* ---- FOUR KINDS, AND THEY ARE NOT FOUR SIZES OF THE SAME THING (RLG-112) -
+   Owner, 2026-09-01: "maybe we can add a few different style of the boat. Not
+   just some sailboats. Some speedboats and ocean liner or tanker."
+
+   WHAT SEPARATES THEM AT THIS SIZE IS PROPORTION, NOT DETAIL. A boat out here is
+   three to thirty pixels wide, so nothing that could be called a feature
+   survives. What does survive is the RATIO of length to height and where the
+   mass sits: a sailboat is a triangle over a short hull, a speedboat is low and
+   almost all wake, a liner is long with a tall white block amidships, and a
+   tanker is longer still with everything at one end and nothing in the middle.
+   Those four silhouettes are distinguishable at four pixels; four levels of
+   detail on one hull would not be.
+
+   `share` IS CUMULATIVE and the roll walks it, so the mix is stated in one place
+   and a kind can be added without touching the others.
+   ------------------------------------------------------------------------- */
+/* ---- AND THE SIZES ARE RELATIVE TO EACH OTHER, WHICH IS A REAL CONSTRAINT
+   Owner, 2026-09-01: "we need to make sure the boats are all the correct
+   relative sizes."
+
+   THE FIRST SET WAS NOT, AND NOT BY A LITTLE. A liner was nine times a
+   speedboat where the real ratio is forty; the small craft were about twice
+   life size and the big ships less than half. Four numbers picked to look
+   spaced out are not four sizes.
+
+   THERE IS ONE KNOWN LENGTH IN THIS ENGINE and everything else can be hung off
+   it: a car is 380 units and about four and a half metres, so a metre is 84.4
+   units. That is the same anchor the towers and the ironwork were sized from.
+
+       speedboat      7 m      591 units
+       sailboat      11 m      929
+       ocean liner  300 m    25,333
+       tanker       330 m    27,867
+
+   THE CONSEQUENCE IS CORRECT AND WORTH EXPECTING: a liner reads at any distance
+   the water runs to, and a speedboat only when it is close. That is what those
+   two things look like from a bridge, and it is the point of getting the ratio
+   right rather than making four legible boats.
+
+   `hull` is the hull's own height as a fraction of its length; anything above
+   the deck is drawn in the painter's own proportions, because a sailboat's mast
+   is taller than the boat is long and no single fraction covers both.
+   ------------------------------------------------------------------------- */
+
+/* ---- AND HOW FAR OUT EACH ONE SITS, WHICH IS WHAT MAKES A COAST READ ----
+   A SEA AT GROUND LEVEL CONVERGES ON THE HORIZON, so on a coast every boat is
+   within a few pixels of the skyline unless it is close - and a boat close
+   enough to sit visibly below the skyline is close enough that a 300-metre
+   liner would be five hundred pixels wide. One lateral range cannot serve both,
+   and the first cut proved it: every coastal boat came out in a three-pixel band
+   at the horizon, indistinguishable from the headlands drawn there.
+
+   THE ANSWER IS THE TRUE ONE. Small craft work inshore and big ships stay well
+   out, because a tanker draws twenty metres and a dinghy draws one.
+   ------------------------------------------------------------------------- */
+const BOAT_KINDS = [
+  { name:'sail',   len:fleetLen('sail'),   hull:0.16,  spd:fleetSpd('sail'),
+    share:0.40, near:  5000, far:  22000 },
+  { name:'speed',  len:fleetLen('speed'),  hull:0.22,  spd:fleetSpd('speed'),
+    share:0.62, near:  4000, far:  16000 },
+  { name:'liner',  len:fleetLen('liner'),  hull:0.10,  spd:fleetSpd('liner'),
+    share:0.82, near: 70000, far: 190000 },
+  { name:'tanker', len:fleetLen('tanker'), hull:0.075, spd:fleetSpd('tanker'),
+    share:1.00, near: 80000, far: 220000 }
+];
+function boatKind(i){
+  const r = sceneRand(i, 233);
+  for(const k of BOAT_KINDS) if(r <= k.share) return k;
+  return BOAT_KINDS[0];
+}
+/* one painter per kind, drawn about (x, y) with `w` the hull's screen length and
+   `dir` the way it is heading, so a bow points where the boat is going */
+function paintBoat(kind, x, y, w, dir){
+  const h = w * kind.tall;
+  const hull = 'rgba(18,26,34,0.78)';
+  const pale = 'rgba(226,232,238,0.85)';
+  const rust = 'rgba(120,58,42,0.85)';
+  /* the wake first, so the hull sits on it */
+  if(w > 3){
+    ctx.fillStyle = 'rgba(228,238,246,0.28)';
+    ctx.fillRect(x - w*0.62, y + h*0.10, w*1.24, Math.max(0.6, w*0.05));
+  }
+  ctx.fillStyle = hull;
+  if(kind.name === 'sail'){
+    ctx.beginPath();
+    ctx.moveTo(x - w*0.42, y - h*0.10); ctx.lineTo(x + w*0.42, y - h*0.10);
+    ctx.lineTo(x + w*0.24, y + h*0.14); ctx.lineTo(x - w*0.24, y + h*0.14);
+    ctx.closePath(); ctx.fill();
+    if(w > 3){
+      ctx.fillStyle = pale;
+      ctx.beginPath();
+      ctx.moveTo(x - dir*w*0.10, y - h*0.10);
+      ctx.lineTo(x - dir*w*0.10, y - h*1.05);
+      ctx.lineTo(x + dir*w*0.30, y - h*0.10);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if(kind.name === 'speed'){
+    /* low, planing, bow up - the wake is most of what says speedboat */
+    ctx.beginPath();
+    ctx.moveTo(x - dir*w*0.50, y - h*0.55);
+    ctx.lineTo(x + dir*w*0.50, y + h*0.10);
+    ctx.lineTo(x + dir*w*0.50, y + h*0.45);
+    ctx.lineTo(x - dir*w*0.50, y + h*0.45);
+    ctx.closePath(); ctx.fill();
+    if(w > 2.5){
+      ctx.fillStyle = 'rgba(228,238,246,0.45)';
+      ctx.fillRect(x + dir*w*0.30, y + h*0.20, w*0.9*dir, Math.max(0.7, h*0.55));
+    }
+  } else if(kind.name === 'liner'){
+    ctx.fillRect(x - w*0.50, y - h*0.25, w, h*0.5);
+    if(w > 4){
+      /* the white block amidships, which is the whole silhouette */
+      ctx.fillStyle = pale;
+      ctx.fillRect(x - w*0.26, y - h*1.05, w*0.52, h*0.82);
+      ctx.fillStyle = hull;
+      ctx.fillRect(x - w*0.06, y - h*1.55, Math.max(0.8, w*0.05), h*0.52);
+    }
+  } else {
+    /* a tanker: long, flat, and everything at the stern */
+    ctx.fillRect(x - w*0.50, y - h*0.30, w, h*0.62);
+    if(w > 4){
+      ctx.fillStyle = rust;
+      ctx.fillRect(x - w*0.50, y - h*0.30, w, Math.max(0.7, h*0.20));
+      ctx.fillStyle = pale;
+      ctx.fillRect(x - dir*w*0.46, y - h*1.10, w*0.16, h*0.84);
+    }
+  }
+}
+/* `back` is the MIRROR, which looks the other way: it walks the water BEHIND the
+   car and measures distance the other way round. Without it the glass would show
+   the boats in front of you, which is the exact fault RLG-079 exists to prevent -
+   and it would have looked perfectly plausible. */
+/* ---- ONE FLEET, TWO WATERS (RLG-112, RLG-059) ---------------------------
+   Owner, 2026-09-01: the same boats "at a larger scale due to perspective
+   non-moving on the coastal biome".
+
+   THE LARGER SCALE COSTS NOTHING AND THAT IS THE POINT. A coast's sea is at the
+   GROUND's own level, which is thirteen camera heights nearer than the water
+   under a bridge, so the identical hull comes out that much bigger without a
+   number being changed. The owner's "due to perspective" is the whole of it.
+
+   `opt` rather than nine positional arguments: `drop` is how far the water lies
+   below the road (zero for a coast), `side` confines them to the rolled side of
+   a coast and is absent on a bridge where the water is on both, `still` holds
+   them at anchor, and `back` is the mirror.
+   ------------------------------------------------------------------------- */
+function drawBoats(B, opt){
+  const vh = opt.vh, vHorizon = opt.horizon, cx = opt.cx, halfW = opt.halfW;
+  const topY = opt.topY, botY = opt.botY, back = opt.back, still = opt.still;
+  const drop = opt.drop === undefined ? WATER_DROP : opt.drop;
   const near = back ? pos - BOAT.far : pos + 2000;
   const far  = back ? pos - 2000     : pos + BOAT.far;
   const first = Math.floor(near / BOAT.step);
@@ -14354,41 +14708,43 @@ function drawBoats(B, vh, vHorizon, cx, halfW, topY, botY, back){
     const dz = back ? pos - z : z - pos;
     if(dz < 500) continue;
     const scale = CAM_D / dz;
-    const y = vHorizon + scale * CAM_H * (1 + WATER_DROP) * vh / 2;
+    const y = vHorizon + scale * CAM_H * (1 + drop) * vh / 2;
     if(y < topY || y > botY) continue;
+    const kind = boatKind(i);
     const side = sceneRand(i, 613) < 0.5 ? -1 : 1;
     const off = BOAT.clear + (1 - BOAT.clear) * sceneRand(i, 419);
-    const lx = side * off * BOAT.spread;
+    /* ---- AND THEY MOVE, AGAINST TIME (RLG-112) ---------------------
+       Owner: "can we have them moving from one side to the other?"
+
+       AGAINST `seaClock`, NEVER AGAINST `pos`. A lateral position derived
+       from the camera is not a position in the world - the boats would swim
+       to stay on screen, which this fragment records having built twice
+       already. Time moves them, the camera does not, and the mirror gets the
+       same answer because it asks the same clock.
+
+       WRAPPED RATHER THAN SAILED OFF. A boat that crosses and keeps going is
+       gone for the rest of the run; wrapping the offset puts it back in at
+       the far side, which is what a shipping lane looks like from a bridge.
+       -------------------------------------------------------------- */
+    const dir = sceneRand(i, 137) < 0.5 ? -1 : 1;
+    const span = (opt.spread === undefined ? BOAT.spread : opt.spread) * 2;
+    /* on a coast the sea is on ONE side and starts beyond the beach, so the
+       scatter is confined to that side and pushed out past the sand */
+    const spread = opt.spread === undefined ? BOAT.spread : opt.spread;
+    /* on a coast the sea is on ONE side and each kind keeps to its own depth of
+       water; on a bridge it is on both and one spread serves */
+    let lx = opt.side
+      ? opt.side * (kind.near + sceneRand(i, 419) * (kind.far - kind.near))
+      : side * off * spread;
+    if(!still){
+      lx += dir * kind.spd * seaClock;
+      lx = ((lx + span) % (span * 2) + span * 2) % (span * 2) - span;
+    }
     const x = cx + scale * (lx - camX * ROAD) * halfW;
-    const w = scale * BOAT.len * halfW;
-    /* under a pixel and a half it is a speck that shimmers rather than a boat */
+    const w = scale * kind.len * halfW;
+    /* under two pixels it is a speck that shimmers rather than a boat */
     if(w < 2 || x < -w || x > cx * 2 + w) continue;
-    const h = w * 0.34;
-    /* the hull is DARKER than the water it sits in and the sail is lighter, so
-       one of the two reads whatever the hour has done to the sea */
-    ctx.fillStyle = 'rgba(18,26,34,0.72)';
-    ctx.beginPath();
-    ctx.moveTo(x - w/2, y - h*0.2);
-    ctx.lineTo(x + w/2, y - h*0.2);
-    ctx.lineTo(x + w*0.30, y + h*0.4);
-    ctx.lineTo(x - w*0.30, y + h*0.4);
-    ctx.closePath(); ctx.fill();
-    if(w > 3){
-      /* a sail on the bigger ones only - below that it is one pale pixel over
-         a dark one, which reads as noise */
-      ctx.fillStyle = 'rgba(226,232,238,0.80)';
-      ctx.beginPath();
-      ctx.moveTo(x - w*0.06, y - h*0.2);
-      ctx.lineTo(x - w*0.06, y - h*1.9);
-      ctx.lineTo(x + w*0.30, y - h*0.2);
-      ctx.closePath(); ctx.fill();
-    }
-    /* and a wake, which is what says the thing is ON a surface rather than in
-       front of one */
-    if(w > 3){
-      ctx.fillStyle = 'rgba(228,238,246,0.30)';
-      ctx.fillRect(x - w*0.75, y + h*0.4, w*1.5, Math.max(0.6, h*0.16));
-    }
+    paintBoat(kind, x, y, w, dir);
   }
 }
 
@@ -14713,8 +15069,38 @@ function drawSky(){
      passes its own, because the two places may not stand the same height -
      a canyon handing over to a desert is a wall giving way to a horizon
      (RLG-104). */
-  const paint = (art, lit, alpha, drop, sc, bdw, bdh) => {
+  /* ---- AN ISLAND STANDS IN THE SEA, NOT IN A FIELD (RLG-059) ----------
+     Owner, 2026-09-01: "I don't mind keeping the island looking skyline over the
+     water, but we need to remove it from the land side or just remove it
+     altogether."
+
+     THE SKYLINE HAS NEVER KNOWN WHICH SIDE THE SEA IS ON. It is one band tiled
+     across the whole horizon, which is right for every place that has the same
+     thing all the way round and wrong for the one place that does not - a coast
+     puts water on one rolled side and land on the other, and the headlands were
+     standing on both.
+
+     CLIPPED RATHER THAN REMOVED, which is the half of the owner's choice that
+     keeps something. The split is the road's own vanishing point, because that
+     is where the shoreline arrives at the horizon - exact, and the same value
+     the sea's far band is built on. A bridge is excluded: its water IS on both
+     sides, so its horizon should be too.
+     ------------------------------------------------------------------ */
+  const seaOnly = (key) => {
+    const B = BIOMES[key];
+    if(!B || !B.sea || B.overWater) return null;
+    return { x: W/2 + viewShift + bendPx(farIdx*SEG), side: sideRoll };
+  };
+  const paint = (art, lit, alpha, drop, sc, bdw, bdh, key) => {
     if(alpha <= 0.002) return;
+    const clip = seaOnly(key);
+    if(clip){
+      ctx.save();
+      ctx.beginPath();
+      if(clip.side < 0) ctx.rect(0, 0, Math.max(0, clip.x), horizon + 2);
+      else              ctx.rect(clip.x, 0, Math.max(0, W - clip.x), horizon + 2);
+      ctx.clip();
+    }
     const w2 = (bdw === undefined ? dw : bdw) * sc, h2 = (bdh === undefined ? dh : bdh) * sc;
     let o2 = ox % w2;
     if(o2 > 0) o2 -= w2;
@@ -14730,24 +15116,25 @@ function drawSky(){
       ctx.restore();
     }
     ctx.globalAlpha = 1;
+    if(clip) ctx.restore();
   };
 
   if(skyT <= 0.002){
-    paint(outSky.body, outSky.lit, 1, 0, 1, odw, odh);
+    paint(outSky.body, outSky.lit, 1, 0, 1, odw, odh, biomeFrom);
   } else if(skyT >= 0.998){
-    paint(inSky.body, inSky.lit, 1, 0, 1);
+    paint(inSky.body, inSky.lit, 1, 0, 1, dw, dh, biomeTo);
   } else if(SKY_SWAP === 'fade'){
-    paint(outSky.body, outSky.lit, 1 - skyT, 0, 1, odw, odh);
-    paint(inSky.body,  inSky.lit,  skyT,     0, 1);
+    paint(outSky.body, outSky.lit, 1 - skyT, 0, 1, odw, odh, biomeFrom);
+    paint(inSky.body,  inSky.lit,  skyT,     0, 1, dw, dh, biomeTo);
   } else {
     /* the old place sinks behind the horizon and shrinks with distance; the new
        one comes up from behind it. Alpha still carries some of the hand-over,
        because a silhouette sliding under the horizon line would otherwise be
        cut in half by it rather than fading into the haze. */
     paint(outSky.body, outSky.lit, Math.max(0, 1 - skyT*1.35), odh * skyT * 0.85,
-          1 - skyT * 0.30, odw, odh);
+          1 - skyT * 0.30, odw, odh, biomeFrom);
     paint(inSky.body,  inSky.lit,  Math.min(1, skyT * 1.35),   dh * (1 - skyT) * 0.85,
-          0.70 + skyT * 0.30);
+          0.70 + skyT * 0.30, dw, dh, biomeTo);
   }
   /* No tint pass. `source-atop` paints over every opaque pixel and the sky is
      opaque, so it washed a visible band across the sky as well as the
@@ -17620,7 +18007,9 @@ function draw(){
   ctx.fillRect(0, horizon, W, H-horizon);
   /* the boats go straight onto the water and under everything the road pass
      draws, so the deck covers any that would otherwise show through it */
-  if(gB.overWater) drawBoats(gB, H, horizon, W/2 + viewShift, W/2, horizon, H);
+  if(gB.overWater)
+    drawBoats(gB, { vh:H, horizon:horizon, cx:W/2 + viewShift, halfW:W/2,
+                    topY:horizon, botY:H });
   /* the deck carried on to the vanishing point, painted before the haze like the
      ground it continues, and under everything the road pass draws (RLG-112) */
   if(gB.truss) drawDeckFar(gB);
@@ -17770,6 +18159,11 @@ function draw(){
      you are inside it, and the tarmac is still lit (RLG-105) */
   drawWorld();          /* buckets the sprites */
   drawRoad();           /* paints the road AND emits them, far to near */
+  /* A COAST'S BOATS ARE SCENERY and are drawn by the road pass itself - see
+     `drawScenery`. A distance-placed fleet was tried here first and the owner
+     read it as skyline detail, which at three pixels tall is what it was
+     (RLG-059). Only the BRIDGE places boats by distance, because its water is a
+     plane with no ground under it for the scenery system to hang on. */
   sweepUnemitted();     /* RLG-041: whatever the road never got to */
   /* ---- THE BORE GOES OVER THE ROAD, NOT UNDER IT (RLG-105) -------------
      MEASURED AFTER FOUR REBUILDS THAT MOVED THE WRONG NUMBER. The walls sit
@@ -18162,8 +18556,14 @@ function drawMirrorFull(mx, my, mw, mh){
   ctx.fillRect(mx, vpy, mw, mh - (vpy - my));
   /* and the boats behind you, on the same water, through the same painter with
      the glass's own scale and horizon (RLG-112) */
-  if(mBfar.overWater)
-    drawBoats(mBfar, H_M, vpy, mx + mw/2, mw/2, vpy, my + mh, true);
+  if(mBfar.overWater || mBfar.sea)
+    drawBoats(mBfar, { vh:H_M, horizon:vpy, cx:mx + mw/2, halfW:mw/2,
+                       topY:vpy, botY:my + mh, back:true,
+                       drop: mBfar.overWater ? undefined : 0,
+                       side: mBfar.overWater ? 0 : sideRoll,
+                       shore: mBfar.overWater ? undefined : 20000,
+                       spread: mBfar.overWater ? undefined : 100000,
+                       still: !mBfar.overWater });
   /* ---- AND THE SAME BAND IN THE GLASS (RLG-059) ------------------------
      The mirror's road walks to 34,000 units and stops, so the same strip of
      land sat between the water and the horizon behind you that sat in front of
@@ -18380,13 +18780,18 @@ function drawMirrorFull(mx, my, mw, mh){
         for(const mside of [-1, 1]){
           /* nothing stands in the sea in here either, or the glass shows palms
              in the water while the windscreen shows an empty shore */
-          if(mB.sea && mside === sideRoll) continue;
+          /* the seaward side carries the boats rather than nothing, and picks
+             the same spec the windscreen picked for this segment (RLG-059) */
+          const mSea = mB.sea && mside === sideRoll;
+          if(mSea && !mB.boats) continue;
+          const mBoatKey = mSea
+            ? (sceneRand(widx, 577) < 0.34 ? mB.ships : mB.boats) : null;
           /* the glass reads the same sided answer the windscreen does, so a
              cornfield is not on the left out of the front and on the right in
              the mirror (RLG-102) */
           const mCrop = mB.crop && mside === sideRoll;
-          const mS = mCrop ? SCENERY[mB.crop] : mSpec;
-          const mKey = mCrop ? mB.crop : mB.name;
+          const mS = mBoatKey ? SCENERY[mBoatKey] : (mCrop ? SCENERY[mB.crop] : mSpec);
+          const mKey = mBoatKey || (mCrop ? mB.crop : mB.name);
           if(!mS) continue;
           const mrows = mCrop ? Math.max(1, Math.min(mS.rows || 1, MIRROR_ROWS)) : mrowsBase;
           for(let mrow = mrows - 1; mrow >= 0; mrow--){
@@ -18469,6 +18874,7 @@ function drawMirrorFull(mx, my, mw, mh){
             const mFade  = Math.min(mGone, mNear);
             if(mFade <= 0.02) continue;
             sceneSides[mside < 0 ? 'mLeft' : 'mRight']++;
+            if(mSea) sceneSides.mSeaKeys[mKey] = (sceneSides.mSeaKeys[mKey] || 0) + 1;
             /* the same trace the forward pass writes, marked as the mirror, so
                the two views can be compared on one timeline (RLG-073) */
             if(sceneTrace) sceneTrace.push({ view:'mirror', idx:widx, side:mside,
@@ -19143,6 +19549,15 @@ function frameLoop(now){
   if(last===undefined) last=now;
   let dt = Math.min(0.05,(now-last)/1000); last=now;
   dayClock += dt;
+  /* ---- THE SEA HAS ITS OWN CLOCK (RLG-112) --------------------------
+     Boats move, and what they move against must be TIME rather than the
+     camera - a position derived from `pos` is not a position in the world,
+     which this engine has been caught by four times. It is not `dayClock`
+     either: that one is settable, because a harness has to be able to put
+     the sun where it wants it, and moving the sun must not teleport the
+     shipping.
+     -------------------------------------------------------------- */
+  if(!seaHold) seaClock += dt;
   if(state==='driving'){
     acc += dt;
     let g=0;
@@ -21000,16 +21415,20 @@ requestAnimationFrame(frameLoop);
       if(dz < 500) continue;
       const scale = CAM_D / dz;
       const y = horizon + scale * CAM_H * (1 + WATER_DROP) * H / 2;
+      const kind = boatKind(i);
       const side = sceneRand(i, 613) < 0.5 ? -1 : 1;
       const off = BOAT.clear + (1 - BOAT.clear) * sceneRand(i, 419);
-      const lx = side * off * BOAT.spread;
+      const dir = sceneRand(i, 137) < 0.5 ? -1 : 1;
+      const span = BOAT.spread * 2;
+      let lx = side * off * BOAT.spread + dir * kind.spd * seaClock;
+      lx = ((lx + span) % (span * 2) + span * 2) % (span * 2) - span;
       const x = W/2 + viewShift + scale * (lx - camX * ROAD) * W/2;
-      const w = scale * BOAT.len * W/2;
+      const w = scale * kind.len * W/2;
       /* `i` and `lx` are the two that matter: a boat is a place in the WORLD, so
          its bucket and its lateral offset must not change as the car moves. Two
          versions of the scatter got that wrong and both looked fine in a still
          picture (RLG-112). */
-      out.push({ i:i, z:Math.round(z), lx:Math.round(lx),
+      out.push({ i:i, kind:kind.name, z:Math.round(z), lx:Math.round(lx),
                  dz:Math.round(dz), x:Math.round(x), y:Math.round(y), w:+w.toFixed(2),
                  onScreen: y >= horizon && y <= H && w >= 2 && x > -w && x < W + w });
     }
@@ -21043,6 +21462,25 @@ requestAnimationFrame(frameLoop);
   /* a shape rather than null when the walk never ran, so a build without it FAILS
      the check rather than crashing the harness */
   API.deckFar = function(){ return deckFarTrace || { walked:0, from:null, to:null }; };
+  /* the fleet's own sizes, in metres against the car's known length, so a check
+     can hold them to real proportions rather than to four numbers that looked
+     spaced out (RLG-112) */
+  API.holdSeaClock = function(on){ seaHold = on ? 1 : 0; return !!seaHold; };
+  /* what each kind's motion LOOKS like: its own speed, seen from the distance
+     that kind is actually placed at, in pixels a second. The owner's ordering is
+     about the eye rather than about knots (RLG-112). */
+  API.boatRates = function(){
+    return BOAT_KINDS.map(k => {
+      const at = (k.near + k.far) / 2;
+      return { name:k.name, knots:FLEET[k.name].knots, at:Math.round(at),
+               px:+((CAM_D / at) * k.spd * W/2).toFixed(3) };
+    });
+  };
+  API.boatKinds = function(){
+    const perM = 380 / 4.5;
+    return BOAT_KINDS.map(k => ({ name:k.name, units:k.len,
+                                  metres:+(k.len / perM).toFixed(1) }));
+  };
   API.waterPlane = function(){
     const dy = H - horizon;
     const dzWater = CAM_D * CAM_H * (1 + WATER_DROP) * H / (2 * dy);
@@ -21911,9 +22349,10 @@ requestAnimationFrame(frameLoop);
   API.headsLit = function(){ const n = headsLit; headsLit = 0; return n; };
   API.scenerySides = function(){
     return { left:sceneSides.left, right:sceneSides.right,
-             mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:sideRoll };
+             mLeft:sceneSides.mLeft, mRight:sceneSides.mRight, sea:sideRoll,
+             seaKeys:sceneSides.seaKeys, mSeaKeys:sceneSides.mSeaKeys };
   };
-  API.resetScenerySides = function(){ sceneSides = { left:0, right:0, mLeft:0, mRight:0 }; };
+  API.resetScenerySides = function(){ sceneSides = { left:0, right:0, mLeft:0, mRight:0, seaKeys:{}, mSeaKeys:{} }; };
   API.sceneryProbe = function(name, kind){
     const art = sceneryArt(name, kind), lit = sceneryLitArt(name, kind);
     if(!art) return null;
