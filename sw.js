@@ -37,14 +37,14 @@
    be JUDGED ON A DEVICE, and a device serving a cached arcade.js reports the version it has
    rather than the version it was sent. Testing 0.10.16 while believing it is 0.10.17 is the
    failure this project has already had, at a cost of forty-six commits. */
-const CORE    = 'effigy-arcade-core-v38';
+const CORE    = 'effigy-arcade-core-v39';
 /* ---- ONE VERSION, NOT TWO ----------------------------------------------
    CORE went to v20 and RUNTIME stayed at v19, so a device kept a runtime cache
    from the broken build alongside a fresh core. They are bumped together from
    here: two names, one version number, so a stale half can never survive an
    update.
    ---------------------------------------------------------------------- */
-const RUNTIME = 'effigy-arcade-runtime-v38';
+const RUNTIME = 'effigy-arcade-runtime-v39';
 /* ---- HARD EVICTION -----------------------------------------------------
    A half-updated cache is worse than no cache: a device holding the previous
    game HTML beside the current shared scripts gets a black screen, because the

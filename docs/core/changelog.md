@@ -14,6 +14,53 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-10-38"></a>
+## [0.10.38] - 2026-08-31
+- Changed: **a place states a climate and a day states its weather.** The biome table stated `rain`
+  and `snow` as two separate chances, and MOUNTAIN declared 0.30 and 0.34 - two independent rolls
+  summing to 0.64, so the place was asked twice whether it had any weather at all. A place now states
+  a temperature and one precipitation chance, and rain, snow and the settled ground floor all derive
+  from the two. The impossible state is not fixed, it is unrepresentable ([RLG-109](../fragments/RLG-109.md)).
+- Changed: **the temperature is rolled once per visit, so one recipe is many places.** A city has no
+  climate of its own and rolls the widest range on the board: drive into one and it is under snow,
+  into the next and it is warm rain, with nothing in the code naming either. This is what replaced a
+  `neutral` flag - neutrality stated by degrees rather than as a boolean, so a narrow-ranged place can
+  only sit among places of its own temperature and a wide-ranged one fits wherever it lands.
+- Added: **a second temperature, so a temperate place has snowy days without being a cold place.**
+  Owner: "farmland can be snowy, but you have snow chance at zero." Computing the rain-or-snow split
+  from the PLACE's temperature dry-locks everything above 0.50 out of snow for ever. A weather event
+  now rolls its own temperature within `CLIMATE_SWING` of the instance's, so snow is an EVENT rather
+  than a property - a place where it always snows is scenery. Measured: the forest snows on 20% of
+  what falls on it, the tundra on 81%, the desert and the swamp on none of 1,200 events each. ONE
+  global swing gives all four, which is the test of a model rather than of a tuning.
+- Changed: **the snow on the ground derives from the cold, so it is no longer the tundra's property.**
+  `snowFloor` was typed into one recipe. It comes off the instance temperature now: the tundra derives
+  0.48 against the 0.50 that was typed in, the mountain gains 0.24, and a city that rolls cold lies
+  under snow for the same reason a tundra does.
+- Changed: **`cover` becomes `bias`, and the cloud calculation gets shorter rather than longer.** It
+  was `(rain + snow) * 1.6`, and `rain + snow` was always exactly `precip` - the two were a split of
+  one quantity, and how the water falls has no bearing on how much cloud is overhead. The field was
+  also renamed because `cover` read as ground cover next to `snowFloor` and a multiplier where 0.45
+  means CLEARER is backwards on a first reading.
+- Added: **any sky can be clear and no sky is ever total.** Owner: "we should probably always allow
+  for some clear sky, no matter what." The roll's low end was 0.35 - a proportion of the place's
+  tendency rather than a floor under it - so a wet place could never roll a clear day. It reaches
+  zero now, and `CLOUD_MAX` at 0.88 is the ceiling. Lowering the roll cannot produce rain from a blue
+  sky, because the floor while it is raining is set by the rain and not by the roll.
+- Changed: **the two taper thresholds moved with the model, so the owner's three cases still behave.**
+  `WEATHER_KEEP` and `WEATHER_THIN` read odds that are now on a different scale - tundra snow was 0.62
+  and is 0.135. Leaving them would have silently reversed the ruling they exist to serve. One case
+  genuinely changes and cannot be avoided: rain into a desert thins over the whole crossing rather
+  than a third of it, because desert rain at 0.04 and city snow at 0.038 cannot be separated by any
+  threshold, and the city is the one the owner ruled on by name.
+- Changed: **the harness reads the instance, and one check proves the engine does too.** Every biome
+  probe read the RECIPE, which is the exact shape this refactor could hide: a check on the recipe stays
+  green while the game reads something else. `biomeOdds()` with no argument returns the running
+  instance; `sampleWeatherRolls` calls the engine's own `rollWeather` and counts what came out.
+  Falsified by putting the half-migration back - with `rollWeather` on the recipe, both a cold city and
+  a warm one give the recipe's answer, that one check fails, AND EVERY OTHER CHECK STAYS GREEN.
+  biome-test is 81 of 81, up from 64.
+
 <a id="v0-10-26"></a>
 ## [0.10.26] - 2026-08-31
 - Added: **race opponents have a chance of wearing stripes.** Owner, correcting what the request could

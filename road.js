@@ -8119,17 +8119,34 @@ let slipT = 0, coasting = false, slideX = 0;
    weather rather than a weather SETTING.
    =========================================================================== */
 /* ===========================================================================
-   BIOMES
+   BIOMES — RECIPES, NOT PLACES (RLG-109)
 
-   The ground, the skyline and the WEATHER ODDS all come from one record, so a
+   The ground, the skyline and the CLIMATE all come from one record, so a
    desert cannot snow and a tundra is rarely dry. Shared, because Interstate
    drives through them and Motorsport builds a circuit in one.
 
-     rain / snow   the chance a front is that kind. They need not sum to 1 —
-                   what is left over is clear weather.
+   A RECORD HERE IS WHAT A PLACE IS LIKE IN GENERAL. What THIS forest is like
+   today is an INSTANCE, rolled once when the place opens and held in `climFrom`
+   and `climTo`. Everything that used to read `B.rain` and `B.snow` reads the
+   instance now, and reading the recipe instead is the one way this refactor can
+   go quietly wrong: a place would roll cold and rain anyway.
+
+     temp          where the place's climate sits, 0 coldest to 1 hottest
+     vary          how far one INSTANCE of it may roll either side of that
+     precip        how often it precipitates at all. What falls is decided by
+                   the temperature at the moment, not stored here.
+     bias          the cloud multiplier: how grey it is for the rain it gets.
+                   1.00 ordinary, below 1 clearer than its rainfall suggests.
+     hill / bend   RELIEF and SINUOSITY — terrain rather than climate, and
+                   untouched by this model
      grass         two shades, the verge gradient
      sky           the horizon tint the sun sets into
      city          how built-up the skyline silhouette is, 0 to 1
+
+   `rain`, `snow`, `snowFloor` and `cover` ARE GONE FROM THIS TABLE. All four
+   derive — see `climateAt`. Losing them deletes an impossible state that used to
+   exist: MOUNTAIN declared rain 0.30 AND snow 0.34, two independent rolls
+   summing to 0.64, so the place was asked twice whether it had weather at all.
    =========================================================================== */
 const BIOMES = {
   /* ---- TWO MORE PLACES (RLG-059) --------------------------------------
@@ -8157,11 +8174,15 @@ const BIOMES = {
      0.18 against the city's 0.30 - still not zero, because the owner has twice
      said never completely flat.
      ------------------------------------------------------------------ */
-  COASTAL:    { name:'COASTAL',    rain:0.34, snow:0.00, hill:0.18, bend:0.60,
+  COASTAL:    { name:'COASTAL',    temp:0.55, vary:0.25, precip:0.38,
+              hill:0.18, bend:0.60,
               /* the open sky the rename asked for: a coast is bright between
                  the showers rather than overcast because it is wet (RLG-059).
-                 NOT named `sky` - see the scar in `rollSky`. */
-              cover:0.45,
+                 NOT named `sky` - see the scar in `rollSky`. Was `cover`, and
+                 the name was backwards: it read as ground cover next to
+                 `snowFloor`, and 0.45 meaning CLEARER is the wrong way round on
+                 a first reading (RLG-109). */
+              bias:0.45,
               grassLo:'#7d7458', grassHi:'#9c9370',
               /* ---- THE SEA IS ON ONE SIDE OF THE ROAD ------------------
                  Owner, 2026-08-30: "I was kind of wanting the ocean to be either
@@ -8182,22 +8203,34 @@ const BIOMES = {
                  beach keeps the coast in shot for most of the draw. */
               sea:'#1d4a63', beach:1.3,
               sky:'#2f4a63', city:0.08, trees:0.20 },
-  SWAMP:    { name:'SWAMP',    rain:0.62, snow:0.00, hill:0.15, bend:0.70,
+  SWAMP:    { name:'SWAMP',    temp:0.80, vary:0.10, precip:0.64, bias:1.10,
+              hill:0.15, bend:0.70,
               grassLo:'#22301f', grassHi:'#33422a',
               sky:'#2c3a2e', city:0.06, trees:0.70 },
-  FOREST:   { name:'FOREST',   rain:0.42, snow:0.06, hill:0.70, bend:0.85,
+  FOREST:   { name:'FOREST',   temp:0.45, vary:0.20, precip:0.52, bias:1.00,
+              hill:0.70, bend:0.85,
               grassLo:'#1d3a24', grassHi:'#2a4f31',
               sky:'#3a2c52', city:0.18, trees:0.85 },
-  DESERT:   { name:'DESERT',   rain:0.04, snow:0.00, hill:0.45, bend:0.40,
+  DESERT:   { name:'DESERT',   temp:0.95, vary:0.10, precip:0.04, bias:1.00,
+              hill:0.45, bend:0.40,
               grassLo:'#6b5330', grassHi:'#8a6d42',
               sky:'#5a3520', city:0.05, trees:0.05 },
-  MOUNTAIN: { name:'MOUNTAIN', rain:0.30, snow:0.34, hill:1.00, bend:1.00,
+  MOUNTAIN: { name:'MOUNTAIN', temp:0.15, vary:0.15, precip:0.45, bias:1.00,
+              hill:1.00, bend:1.00,
               grassLo:'#2b3a33', grassHi:'#3c4f45',
               sky:'#33405e', city:0.10, trees:0.55 },
-  CITY:     { name:'CITY',     rain:0.38, snow:0.10, hill:0.30, bend:0.30,
+  /* ---- A CITY HAS NO CLIMATE OF ITS OWN, SO IT ROLLS ONE (RLG-109) ----
+     `vary` at 0.45 is the widest on the board and it is doing the work a
+     `neutral` FLAG was going to do. A place with a narrow range can only sit
+     among places of its own temperature; a place with a wide one can sit
+     anywhere, because it can roll a temperature that fits wherever it lands.
+     Drive into one city and it is under snow, into the next and it is warm
+     rain. Nothing in the code names any of them. */
+  CITY:     { name:'CITY',     temp:0.45, vary:0.45, precip:0.38, bias:1.00,
+              hill:0.30, bend:0.30,
               grassLo:'#2c2f36', grassHi:'#3b3f48',
               sky:'#2a2438', city:1.00, trees:0.10 },
-  /* ---- TUNDRA IS WHITE BEFORE ANYTHING FALLS (RLG-059) ----------------
+  /* ---- TUNDRA IS WHITE BEFORE ANYTHING FALLS (RLG-059, RLG-109) --------
      Owner, 2026-08-29: "let's make the tundra automatically snow covered
      whether it's snowing or not. So let's assume that base tundra is 50% snow
      coverage and then if it does snow then it just increases from there like
@@ -8205,16 +8238,96 @@ const BIOMES = {
 
      `snowFloor` is that, and it is a FLOOR rather than a level: accumulation
      builds from it in the ordinary way and the unwind stops at it instead of at
-     zero. Every other biome has none, which is why the field is absent from
-     them rather than written as 0 - a place either lies under snow or it does
-     not. */
-  TUNDRA:   { name:'TUNDRA',   rain:0.10, snow:0.62, hill:0.80, bend:0.75, snowFloor:0.50,
+     zero. IT IS NO LONGER STATED HERE. It derives from the instance's
+     temperature, so a cold-rolled city lies under snow for the same reason a
+     tundra does, and the tundra's own floor comes out at 0.48 against the 0.50
+     that used to be typed in.
+
+     AND ITS PRECIPITATION FALLS HARD, from 0.72 of rolls to 0.15. Owner,
+     2026-08-31: "a lower chance for snow and an even lower chance for rain, but
+     still a baseline coverage on the ground." A cold DRY place precipitates
+     rarely - it is the ground cover that makes it read as a tundra, not
+     constant snowfall. */
+  TUNDRA:   { name:'TUNDRA',   temp:0.05, vary:0.10, precip:0.15, bias:0.90,
+              hill:0.80, bend:0.75,
               grassLo:'#3e4a52', grassHi:'#54626c',
               sky:'#2e3c50', city:0.06, trees:0.22 }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
 let biome = 'FOREST';
 function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
+
+/* ---- A PLACE HAS A CLIMATE, A DAY HAS WEATHER (RLG-109) ------------------
+   Owner, 2026-08-31: "instead of having a separate rain and snow chance we
+   could just call it precipitation and it's based off of the temperature."
+
+   THERE ARE TWO TEMPERATURES AND THE FIRST DESIGN ONLY HAD ONE, which is what
+   made snow vanish from everywhere temperate. Computing what falls from the
+   PLACE's temperature dry-locks anything above 0.50 out of snow for ever, so a
+   farmland at 0.60 could never have a snowy day - and widening `vary` would only
+   fix that by making the farmland sometimes BE a cold place, which is not what
+   happens in the world. Temperate farmland is temperate all year and still gets
+   snow in January.
+
+     temp     the PLACE's climate, stated in the recipe
+     vary     how much THIS INSTANCE of it differs — a cold city or a hot one
+     swing    how far a SINGLE WEATHER EVENT departs from that instance
+
+   `swing` is global rather than per place. Every place has weather, and one more
+   per-place field earns less than it costs. At 0.25 a temperate place snows on
+   roughly three precipitation events in ten, a desert never does, and a tundra
+   does at every moment — ONE NUMBER FIXING ALL THREE, which is the test of a
+   model rather than of a tuning.
+
+   TO ROLL SOMETHING is to pick a random number from a range, once, at a stated
+   moment, and keep it until something picks again. Three things roll here and
+   WHEN each rolls is the whole design: the instance temperature when the place
+   opens, the weather every 35 to 80 seconds, and the moment's temperature with
+   each weather event. Nothing is rolled per frame.
+   ------------------------------------------------------------------------- */
+const CLIMATE_SWING = 0.25;
+/* how much settled white a freezing place holds before anything falls. The
+   tundra derives 0.48 from it, against the 0.50 that was typed into the recipe;
+   the owner offered 0.2 as a guess and the answer is to keep the floor derived
+   and move THIS number if the ground reads too white. A number that falls out of
+   a model can be changed in one place; a number typed into one biome cannot. */
+const SNOW_FLOOR_K = 0.60;
+
+/* everything that used to be stated per place, derived from the two that still
+   are. `key` and `name` ride along so a probe can say which place it is. */
+function climateAt(key, t){
+  const B = BIOMES[key] || BIOMES.FOREST;
+  const p = B.precip === undefined ? 0 : B.precip;
+  t = clamp(t, 0, 1);
+  /* the fraction of this place's precipitation that falls as snow rather than
+     rain, at this temperature. Freezing at 0, all rain at 0.50 and above. */
+  const share = clamp((0.50 - t) / 0.50, 0, 1);
+  return {
+    key: key, name: B.name, temp: t, precip: p, bias: B.bias === undefined ? 1 : B.bias,
+    /* the instance's own tendency: how often it snows and how often it rains.
+       These are what a DESTINATION is asked when weather is carried into it. */
+    snow: p * share, rain: p * (1 - share),
+    snowFloor: clamp((0.25 - t) / 0.25, 0, 1) * SNOW_FLOOR_K,
+    /* ---- A TENDENCY IS NOT A CAPABILITY, AND THE TWO MUST NOT BE ONE ----
+       `snow` above is 0.000 for a coast at its stated 0.55, and a coast can
+       still have a snowy day: the moment rolls within `swing` of the instance,
+       so 0.30 is reachable and 0.30 snows. Asking "is the chance above zero" is
+       therefore the wrong question for ending weather that cannot happen here,
+       and it is the question the old `B.snow <= 0` was asking.
+       ---------------------------------------------------------------- */
+    canSnow: p > 0 && (t - CLIMATE_SWING) < 0.50,
+    canRain: p > 0 && (t + CLIMATE_SWING) > 0
+  };
+}
+/* one instance of a place: its temperature rolled once, and everything that
+   follows from it. The same shape as `rollSeaSide` — decided when the place
+   opens, not per frame. */
+function rollClimate(key){
+  const B = BIOMES[key] || BIOMES.FOREST;
+  const vary = B.vary === undefined ? 0.15 : B.vary;
+  const base = B.temp === undefined ? 0.45 : B.temp;
+  return climateAt(key, base + rnd(-vary, vary));
+}
 
 /* ---- HOW MUCH A PLACE CLIMBS AND HOW MUCH IT TURNS (RLG-059) ------------
    Owner, 2026-08-29: "the biome should probably also drive the magnitude of the
@@ -8266,6 +8379,18 @@ function shapeAt(z){
    this is a small change rather than a rewrite of every `bio()` call.
    ------------------------------------------------------------------------- */
 let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
+/* ---- THE INSTANCE LIVES BESIDE THE PAIR IT BELONGS TO (RLG-109) ---------
+   One per end of the blend, because both ends are asked questions: the place
+   being left holds the snow already on its ground, and the place being entered
+   decides whether weather carried into it stays. They are rolled where
+   `rollSeaSide` is called and they are replaced together with the pair.
+
+   `climate()` answers for the place the PLAYER is in, which is always one end or
+   the other — `biome` is set to `biomeTo` at the halfway point of the crossing
+   and to `biomeFrom` at every other time.
+   -------------------------------------------------------------------- */
+let climFrom = climateAt('FOREST', BIOMES.FOREST.temp), climTo = climFrom;
+function climate(){ return biome === biomeTo ? climTo : climFrom; }
 /* the weather target from the moment a band reached the car, so the thinning
    scales one value instead of multiplying the live one down every frame */
 let bandBase = -1;
@@ -8282,8 +8407,10 @@ let biomeCrossW = 1;
    special case.
    ------------------------------------------------------------------------- */
 function snowFloorNow(){
-  const a = (BIOMES[biomeFrom] || {}).snowFloor || 0;
-  const b = (BIOMES[biomeTo] || {}).snowFloor || 0;
+  /* the INSTANCES, not the recipes. A city that rolled cold lies under snow and
+     a city that rolled warm does not, and the recipes cannot tell them apart
+     (RLG-109). */
+  const a = climFrom.snowFloor, b = climTo.snowFloor;
   return a === b ? a : a + (b - a) * biomeCrossW;
 }
 /* how many segments the blend spans. The owner's range was "several to a dozen
@@ -8293,14 +8420,29 @@ const BIOME_BAND = 18;
 /* the weather's own crossing width, four times the colour band. See stepBiome. */
 const WEATHER_BAND = 72;
 /* ---- HOW MUCH A PLACE HAS TO WANT WEATHER TO KEEP IT (RLG-022) ----------
-   Read against a biome's own odds for whatever is falling. Above `KEEP` the new
-   place produces it often enough that carrying it in needs no explanation -
-   tundra snows 0.62 of the time, so snow arriving from a forest simply stays.
-   Below `THIN` it effectively never produces it - a desert snows 0.00 - and it
-   ends quickly. Between them is the ordinary taper: city snow at 0.10, forest
-   snow at 0.06.
+   Read against a biome INSTANCE's own odds for whatever is falling. Above `KEEP`
+   the new place produces it often enough that carrying it in needs no
+   explanation - a tundra snows on most of the little precipitation it gets, so
+   snow arriving from a forest simply stays. Below `THIN` it effectively never
+   produces it - a desert snows 0.00 - and it ends quickly. Between them is the
+   ordinary taper.
+
+   ---- BOTH NUMBERS MOVED WITH THE DERIVED MODEL (RLG-109), AND HAD TO ------
+   They were 0.30 and 0.05, read against odds that were typed into the table. The
+   derived odds are on a different scale, because one precipitation chance is now
+   SPLIT between rain and snow where the old table stated the two separately and
+   let them sum past 1. Tundra snow was 0.62 and is 0.135; city snow was 0.10 and
+   is 0.038. Leaving the thresholds where they were would have silently reversed
+   the owner's three cases - snow into a tundra would have started tapering - so
+   the numbers move and the BEHAVIOUR stays, which is the right way round.
+
+   ONE CASE GENUINELY CHANGES AND IT CANNOT BE AVOIDED. Rain into a DESERT now
+   thins over the whole crossing rather than a third of it: desert rain is 0.04
+   and city snow is 0.038, so no threshold can separate them, and of the two it
+   is the city the owner ruled on by name. A desert does rain 4% of the time, so
+   the ordinary taper is the defensible half of the pair.
    ------------------------------------------------------------------------- */
-const WEATHER_KEEP = 0.30, WEATHER_THIN = 0.05;
+const WEATHER_KEEP = 0.12, WEATHER_THIN = 0.02;
 
 /* how far into the NEW biome segment `idx` is: 0 entirely the old one, 1
    entirely the new, and a ramp across the band in between */
@@ -8508,13 +8650,20 @@ function rollSeaSide(){ seaSide = Math.random() < 0.5 ? -1 : 1; return seaSide; 
    sits.
    -------------------------------------------------------------------------- */
 function endImpossibleWeather(){
-  const B = bio();
-  if(snowy && B.snow <= 0){
+  /* ---- CAN, NOT HOW OFTEN (RLG-109) -----------------------------------
+     This asks a CAPABILITY question, and under the derived model a chance of
+     zero is no longer the answer to it. A coast's instance rains and never
+     snows on its own average, and a single cold moment inside `swing` of that
+     average snows perfectly well. `canSnow` is the honest test and it is stated
+     once, in `climateAt`, rather than inferred from a probability here.
+     ---------------------------------------------------------------- */
+  const B = climate();
+  if(snowy && !B.canSnow){
     wetTarget = 0;
     wetNext = Math.min(wetNext, rnd(3, 8));   /* and try again for this place soon */
     settleMelt = 1;
   }
-  if(!snowy && B.rain <= 0){
+  if(!snowy && !B.canRain){
     wetTarget = 0;
     wetNext = Math.min(wetNext, rnd(3, 8));
     /* and the water on the road goes with it, the way the white does. A place
@@ -8653,6 +8802,10 @@ function openBiome(){
   biomeStarted = 1;
   biome = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
   rollSeaSide();
+  /* and THIS one's temperature, on the same occasion and for the same reason
+     the sea's side is rolled here: a thing decided once when the place opens
+     rather than per frame (RLG-109) */
+  climFrom = climTo = rollClimate(biome);
   biomeFrom = biomeTo = biome;
   biomeEdge = -1e9;
   buildSkyline();
@@ -8675,7 +8828,11 @@ function openBiome(){
 function stepBiome(dt){
   if(CFG.biome){
     const b2 = CFG.biome();
-    if(b2 !== biome){ biome = b2; buildSkyline(); endImpossibleWeather(); }
+    /* a circuit is built in ONE place and never leaves it, so its instance is
+       rolled once when the place is set and both ends of the blend hold it.
+       `biomeFrom` and `biomeTo` are deliberately NOT set here — see RLG-129. */
+    if(b2 !== biome){ biome = b2; climFrom = climTo = rollClimate(b2);
+                      buildSkyline(); endImpossibleWeather(); }
     return;
   }
   /* ---- THE CHANGE IS PLACED, THEN THE PLAYER DRIVES INTO IT (RLG-022) ----
@@ -8729,7 +8886,10 @@ function stepBiome(dt){
   const crossW = clamp((here - (biomeEdge - WEATHER_BAND/2)) / WEATHER_BAND, 0, 1);
   biomeCrossW = crossW;
   if(biomeFrom !== biomeTo){
-    const Bnew = BIOMES[biomeTo] || bio();
+    /* the INSTANCE of the place being entered, rolled when the change was
+       placed. A cold-rolled city keeps snow that a warm-rolled one thins out,
+       and the recipe cannot tell you which city this is (RLG-109). */
+    const Bnew = climTo;
     if(crossW > 0){
       if(bandBase < 0) bandBase = wetTarget;
       /* ---- THE PLACE YOU ARE ENTERING SETS THE RATE (RLG-022) ----------
@@ -8784,6 +8944,9 @@ function stepBiome(dt){
     if(cross >= 1){
       biomeFrom = biomeTo;
       biome = biomeTo;
+      /* the instance travels with the pair. The place behind you has stopped
+         existing, so its temperature stops being blended into the snow floor. */
+      climFrom = climTo;
       bandBase = -1;
       endImpossibleWeather();
     }
@@ -8826,6 +8989,15 @@ function stepBiome(dt){
       /* a fresh coin for every new place, so two oceans in one run need not
          put the water on the same side */
       rollSeaSide();
+      /* ---- AND THE PLACE AHEAD GETS ITS OWN TEMPERATURE (RLG-109) -----
+         THIS IS THE LIKELIEST WAY TO GET THE REFACTOR WRONG. The place being
+         entered is asked two questions before the car ever reaches it - what
+         floor of snow it holds, and how much it wants the weather already
+         falling - and both are answered from the INSTANCE. Roll it only in
+         `openBiome` and the place ahead has no instance, so both questions fall
+         back to the one behind you and nothing says so.
+         -------------------------------------------------------------- */
+      climTo = rollClimate(k);
     }
     biomeNext = rnd(6.5, 12) * MILE;
   }
@@ -8846,6 +9018,9 @@ function stepBiome(dt){
    is dark and heavy snow is bright.
    ------------------------------------------------------------------------- */
 let cloud = 0.15, cloudTarget = 0.15, cloudNext = 0, storm = 0;
+/* the most of the sky any weather may fill. The owner's "always allow for some
+   clear sky" as one tunable rather than as a property of the roll (RLG-109). */
+const CLOUD_MAX = 0.88;
 let boltT = 0, boltNext = rnd(6, 18), boltMag = 0, thunderIn = -1;
 /* how far away the last strike was, 0 overhead and 1 across the valley. It is
    kept because the SOUND needs it and the magnitude cannot carry it: two
@@ -8855,10 +9030,16 @@ let boltFar = 0;
    when its counter runs out, and by `freshWorld` so a run does not start with
    one already due (RLG-090). */
 function rollSky(){
-  const B = bio();
+  const B = climate();
   /* a place with weather in it is a place with cloud in it - the same roll
-     the rain uses, read as a tendency rather than as an event */
-  const base = clamp((B.rain + B.snow) * 1.6, 0.05, 0.75);
+     the rain uses, read as a tendency rather than as an event.
+
+     THIS GOT SIMPLER RATHER THAN NEEDING A CHANGE (RLG-109). It was
+     `(B.rain + B.snow) * 1.6`, and `rain + snow` was always exactly `precip` -
+     the two were a split of one quantity, and the split does not bear on how
+     much cloud is overhead. Whether it falls as rain or as snow is a question
+     about the temperature under the cloud, not about the cloud. */
+  const base = clamp(B.precip * 1.6, 0.05, 0.75);
   /* ---- AND HOW OPEN THE SKY IS OVER IT (RLG-059) ---------------------
      Owner, 2026-08-30, with the coastal rename: the coast gets an open sky.
 
@@ -8881,8 +9062,25 @@ function rollSky(){
      spends less of the dry time under cloud. Lowering the rain instead would
      have changed how the place DRIVES, and nobody asked for that.
      ------------------------------------------------------------------ */
-  const open = B.cover === undefined ? 1 : B.cover;
-  cloudTarget = clamp(base * open * rnd(0.35, 1.5), 0.02, 1);
+  const open = B.bias === undefined ? 1 : B.bias;
+  /* ---- ANY SKY CAN BE CLEAR, AND NO SKY IS EVER TOTAL (RLG-109) ------
+     Owner, 2026-08-31: "we should probably always allow for some clear sky, no
+     matter what."
+
+     THE ROLL HAD NO WAY DOWN TO ZERO. Its low end was 0.35 - a PROPORTION of
+     the place's tendency rather than a floor under it - so a wet place could
+     never roll a clear day at all. A jungle at base 0.75 had a minimum cover of
+     0.26 and would be overcast for ever. Reaching zero is the owner's sentence
+     at the bottom end.
+
+     AND `CLOUD_MAX` IS THE SAME SENTENCE AT THE TOP. Even a storm leaves some
+     sky, stated as one number in one place rather than as a habit of the roll.
+
+     LOWERING THE ROLL CANNOT PRODUCE RAIN FROM A BLUE SKY, which is what makes
+     it safe. `stepSky` takes the greater of this target and what the falling
+     weather needs, so the floor while it is raining is set by the rain.
+     ---------------------------------------------------------------- */
+  cloudTarget = clamp(base * open * rnd(0, 1.25), 0.02, CLOUD_MAX);
   cloudNext = rnd(25, 70);
 }
 function stepSky(dt){
@@ -8890,7 +9088,9 @@ function stepSky(dt){
   if(cloudNext <= 0) rollSky();
   /* rain and snow need a sky to fall out of */
   const need = Math.max(wet, snowy ? wet : 0) * 0.9;
-  const want = Math.max(cloudTarget, need);
+  /* the ceiling binds the weather's own demand too, or a downpour would fill
+     the sky the roll is no longer allowed to fill (RLG-109) */
+  const want = Math.min(Math.max(cloudTarget, need), CLOUD_MAX);
   cloud += (want - cloud) * Math.min(1, dt * 0.10);
   storm += ((snowy ? wet * 0.35 : wet) - storm) * Math.min(1, dt * 0.25);
 
@@ -8945,21 +9145,36 @@ function boltFlash(){
   return clamp(flicker * boltMag, 0, 1);
 }
 
-/* ---- THE BIOME DECIDES WHAT FALLS ---------------------------------
-   A desert has a 4% chance of rain and none at all of snow; a tundra
-   snows more often than not. The roll is against the biome, so weather
-   belongs to a place rather than to a slider.
+/* ---- THE PLACE DECIDES WHETHER, THE MOMENT DECIDES WHAT (RLG-109) --------
+   A desert precipitates on 4% of rolls and a swamp on 64% of them. That much
+   belongs to the place and is asked ONCE - which is the change here, because the
+   old form asked twice, against a stored snow chance and then a stored rain
+   chance, and let the two sum past what the place should have had.
+
+   WHAT FALLS IS A SECOND QUESTION AND IT IS ABOUT TODAY. The moment rolls its
+   own temperature within `swing` of the instance's, and the split follows from
+   that. So a temperate place has snowy days without being a cold place, which is
+   the hole the owner found: snow becomes an EVENT rather than a property, and a
+   place where it always snows is scenery rather than weather.
 
    Lifted out of the stepper so `freshWorld` can roll once at the reset and a
    run does not begin with a roll already due (RLG-090). */
 function rollWeather(){
   if(optWeather === 'dry'){ wetTarget = 0; snowy = 0; wetNext = rnd(35, 80); return; }
-  const B = bio();
+  const B = climate();
+  /* the moment's temperature, and the share of this fall that is snow at it */
+  const mt = clamp(B.temp + rnd(-CLIMATE_SWING, CLIMATE_SWING), 0, 1);
+  const share = clamp((0.50 - mt) / 0.50, 0, 1);
+  const p = B.precip;
   const r = Math.random();
-  if(r < B.snow)              { wetTarget = rnd(0.45, 1.0); snowy = 1; }
-  else if(r < B.snow + B.rain){ wetTarget = rnd(0.35, 0.95); snowy = 0; }
-  else                        { wetTarget = 0; }
-  if(optWeather === 'wet' && wetTarget === 0){ wetTarget = rnd(0.5,0.9); snowy = B.snow > B.rain ? 1 : 0; }
+  /* ONE PRECIPITATION CHANCE, SPLIT. `p * share` and then `p` rather than
+     `snow` and then `snow + rain`: the second bound IS the place's whole chance
+     of weather, which is the property the old pair of fields could violate. */
+  if(r < p * share) { wetTarget = rnd(0.45, 1.0); snowy = 1; }
+  else if(r < p)    { wetTarget = rnd(0.35, 0.95); snowy = 0; }
+  else              { wetTarget = 0; }
+  /* forced weather takes the moment's answer to the same question */
+  if(optWeather === 'wet' && wetTarget === 0){ wetTarget = rnd(0.5,0.9); snowy = share > 0.5 ? 1 : 0; }
   wetNext = rnd(35, 80);
 }
 function stepWeather(dt){
@@ -17944,6 +18159,10 @@ requestAnimationFrame(frameLoop);
     biomeFrom = biome; biomeTo = want;
     biomeEdge = Math.floor(pos/SEG) + DRAW;
     rollSeaSide();          /* the same roll the real placement makes */
+    climTo = rollClimate(want);   /* and the same instance, for the same reason:
+                                     a hook that takes a different path from the
+                                     thing it stands in for proves less than it
+                                     looks like it proves (RLG-059) */
     return API.biomeSweep();
   };
   /* the hour is an argument so a harness can ask what a biome looks like at
@@ -17954,11 +18173,23 @@ requestAnimationFrame(frameLoop);
   /* 'move' or 'fade'. The owner rules on which reads better after seeing both,
      so it is switchable at runtime rather than a rebuild away. */
   API.skySwap = function(v){ if(v === 'move' || v === 'fade') SKY_SWAP = v; return SKY_SWAP; };
-  API.setBiomePair = function(a, b){
-    if(BIOMES[a]) biomeFrom = a;
-    if(BIOMES[b]) biomeTo = b;
+  /* ---- AND THE INSTANCES GO WITH THE PAIR (RLG-109) --------------------
+     Setting the pair without setting the climates leaves the two disagreeing -
+     the ground and the skyline of one place, the weather odds and the snow floor
+     of another - which is the half-migrated state this whole refactor is trying
+     not to produce, reachable through a debug hook.
+
+     THE TEMPERATURES ARE THE STATED ONES, not rolled. A check that pins the pair
+     is asking about a PLACE, and a rolled temperature would make every answer a
+     different one. `tA` and `tB` override them where a check wants a cold city
+     or a warm tundra on purpose.
+     ------------------------------------------------------------------ */
+  API.setBiomePair = function(a, b, tA, tB){
+    if(BIOMES[a]){ biomeFrom = a; climFrom = climateAt(a, tA === undefined ? BIOMES[a].temp : tA); }
+    if(BIOMES[b]){ biomeTo   = b; climTo   = climateAt(b, tB === undefined ? BIOMES[b].temp : tB); }
     if(biomeFrom === biomeTo){ biome = biomeFrom; biomeEdge = -1e9; }
-    return { from:biomeFrom, to:biomeTo };
+    return { from:biomeFrom, to:biomeTo,
+             tempFrom:+climFrom.temp.toFixed(3), tempTo:+climTo.temp.toFixed(3) };
   };
   API.groundBase = function(){ return groundBase(0.30); };
   /* where the day cycle is, 0 to 1: 0 dusk, 0.25 night, 0.5 dawn, 0.75 midday.
@@ -18016,6 +18247,29 @@ requestAnimationFrame(frameLoop);
   };
   API.redline = function(){ return redline(); };
   API.setWet = function(v){ wet = wetTarget = v; };
+  /* ---- THE LIVE ROLL, AGAINST THE LIVE PLACE (RLG-109) -----------------
+     `rollMomentsFor` above re-runs the model for a STATED place at a STATED
+     temperature, which is the right shape for asking what the model does — and
+     it is the wrong shape for asking whether the GAME uses it. It would go on
+     answering correctly on a build whose `rollWeather` had gone back to reading
+     the recipe, which is the exact half-migration this refactor had to avoid.
+
+     THIS CALLS THE GAME'S OWN `rollWeather`, against whatever instance is
+     running, and counts what came out. It restores the weather it disturbed.
+     ------------------------------------------------------------------ */
+  API.sampleWeatherRolls = function(n){
+    const keep = { target:wetTarget, snowy:snowy, next:wetNext };
+    let snowN = 0, rainN = 0, dry = 0;
+    n = n || 400;
+    for(let i = 0; i < n; i++){
+      rollWeather();
+      if(wetTarget <= 0) dry++; else if(snowy) snowN++; else rainN++;
+    }
+    wetTarget = keep.target; snowy = keep.snowy; wetNext = keep.next;
+    return { n:n, snow:+(snowN/n).toFixed(4), rain:+(rainN/n).toFixed(4),
+             dry:+(dry/n).toFixed(4), place:climate().name,
+             temp:+climate().temp.toFixed(3) };
+  };
   /* RLG-057's instrument: the cover and how black it is, and a way to force
      both so a harness can photograph a storm rather than wait for one */
   API.sky = function(){ return { cloud:+cloud.toFixed(3), storm:+storm.toFixed(3),
@@ -18031,11 +18285,17 @@ requestAnimationFrame(frameLoop);
      is not in cannot disturb the run that is happening.
      ------------------------------------------------------------------- */
   API.rollSkyFor = function(name, n){
-    const keep = { biome:biome, target:cloudTarget, next:cloudNext };
+    const keep = { biome:biome, from:climFrom, to:climTo,
+                   target:cloudTarget, next:cloudNext };
     const out = [];
-    if(BIOMES[name]) biome = name;
+    /* the CLIMATE has to move with the name, because `rollSky` reads the
+       instance now and not the recipe. Setting only `biome` would sample the
+       cloud of whatever place the car happens to be in and label it with this
+       one - green, and wrong, on every build (RLG-109). */
+    if(BIOMES[name]){ biome = name; climFrom = climTo = climateAt(name, BIOMES[name].temp); }
     for(let i = 0; i < (n || 200); i++){ rollSky(); out.push(+cloudTarget.toFixed(4)); }
-    biome = keep.biome; cloudTarget = keep.target; cloudNext = keep.next;
+    biome = keep.biome; climFrom = keep.from; climTo = keep.to;
+    cloudTarget = keep.target; cloudNext = keep.next;
     return out;
   };
   /* snow and how much of it has settled, so the two-layer cover can be
@@ -18205,15 +18465,79 @@ requestAnimationFrame(frameLoop);
     };
     return { bend: mean(c), hill: mean(h), segs: c.length + h.length };
   };
-  API.weatherTaper = function(dest, isSnow){
+  /* ---- THE PROBES ANSWER FROM AN INSTANCE (RLG-109) --------------------
+     Every one of these used to read the RECIPE, and that is precisely the shape
+     of the failure this refactor can hide: a harness reading the recipe stays
+     green while the game reads something else, so the check would go on
+     reporting the odds the table states long after the odds the game rolls had
+     stopped matching them.
+
+     A NAMED PLACE IS ASKED AT ITS STATED TEMPERATURE, because a probe that
+     rolled would answer differently every call and nothing built on it could
+     assert anything. THE LIVE PLACE IS ASKED AS IT ACTUALLY IS - `biomeOdds()`
+     with no argument returns the running instance, and that is the form a check
+     should prefer.
+     ------------------------------------------------------------------ */
+  API.weatherTaper = function(dest, isSnow, temp){
     const B = BIOMES[dest] || BIOMES.FOREST;
-    const support = isSnow ? B.snow : B.rain;
-    return { dest:B.name, support:support,
+    const C = climateAt(BIOMES[dest] ? dest : 'FOREST',
+                        temp === undefined ? B.temp : temp);
+    const support = isSnow ? C.snow : C.rain;
+    return { dest:C.name, temp:+C.temp.toFixed(3), support:+support.toFixed(4),
              span: support >= WEATHER_KEEP ? 0 : support >= WEATHER_THIN ? 1 : 0.30 };
   };
   API.biomeOdds = function(k){
-    const B = BIOMES[k || biome] || BIOMES.FOREST;
-    return { name:B.name, rain:B.rain, snow:B.snow };
+    const C = k ? climateAt(BIOMES[k] ? k : 'FOREST',
+                            (BIOMES[k] || BIOMES.FOREST).temp)
+                : climate();
+    return { name:C.name, temp:+C.temp.toFixed(3), precip:C.precip,
+             rain:+C.rain.toFixed(4), snow:+C.snow.toFixed(4),
+             snowFloor:+C.snowFloor.toFixed(4),
+             /* the CAPABILITY, which is not "is the chance above zero" - see
+                `climateAt`. A coast's average never snows and a cold moment on
+                one does. */
+             canSnow:C.canSnow, canRain:C.canRain,
+             /* whether this is the running instance or a stated recipe, so a
+                check cannot quietly test the wrong one */
+             instance: !k };
+  };
+  /* the whole model for one place at one temperature, so a check can walk the
+     temperature and watch rain turn into snow without driving anywhere */
+  API.climateFor = function(k, temp){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    const C = climateAt(BIOMES[k] ? k : 'FOREST', temp === undefined ? B.temp : temp);
+    return { name:C.name, temp:+C.temp.toFixed(3), precip:C.precip, bias:C.bias,
+             rain:+C.rain.toFixed(4), snow:+C.snow.toFixed(4),
+             snowFloor:+C.snowFloor.toFixed(4),
+             canSnow:C.canSnow, canRain:C.canRain, swing:CLIMATE_SWING };
+  };
+  /* the instance roll itself, sampled. It proves the temperature is rolled per
+     visit rather than read from the table, which is the one claim the recipes
+     cannot support on their own. */
+  API.rollClimateFor = function(k, n){
+    const out = [];
+    const key = BIOMES[k] ? k : biome;
+    for(let i = 0; i < (n || 200); i++) out.push(+rollClimate(key).temp.toFixed(4));
+    return out;
+  };
+  /* what the MOMENT does to an instance: the share of a fall that is snow, over
+     many events, at a stated instance temperature. This is where a temperate
+     place gets its snowy days from, and it cannot be read off any recipe. */
+  API.rollMomentsFor = function(k, temp, n){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    const t = temp === undefined ? B.temp : temp;
+    const p = B.precip === undefined ? 0 : B.precip;
+    let snowN = 0, rainN = 0, dry = 0;
+    n = n || 400;
+    for(let i = 0; i < n; i++){
+      const mt = clamp(t + rnd(-CLIMATE_SWING, CLIMATE_SWING), 0, 1);
+      const share = clamp((0.50 - mt) / 0.50, 0, 1);
+      const r = Math.random();
+      if(r < p * share) snowN++; else if(r < p) rainN++; else dry++;
+    }
+    return { name:B.name, temp:+t.toFixed(3), n:n,
+             snow:+(snowN/n).toFixed(4), rain:+(rainN/n).toFixed(4),
+             dry:+(dry/n).toFixed(4) };
   };
   API.lightLevels = function(){
     return { lamps:+lampsOn().toFixed(3), clock:+clockLamps(phase()).toFixed(3),

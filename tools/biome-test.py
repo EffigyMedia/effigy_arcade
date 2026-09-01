@@ -232,20 +232,29 @@ def main():
         odds = page.evaluate('() => window.__probe.road.biomeOdds()')
         wx0 = page.evaluate("""() => { const R = window.__probe.road;
           return { wet: R.wet(), snowy: R.snowy() }; }""")
-        print('      started in %s (rain %.2f snow %.2f), wet %.2f snowy %d, from=%s to=%s'
-              % (odds['name'], odds['rain'], odds['snow'], wx0['wet'], wx0['snowy'],
-                 start['from'], start['to']))
+        print('      started in %s at temp %.2f (rain %.2f snow %.2f), wet %.2f snowy %d, from=%s to=%s'
+              % (odds['name'], odds['temp'], odds['rain'], odds['snow'],
+                 wx0['wet'], wx0['snowy'], start['from'], start['to']))
+        res.check(odds['instance'],
+                  'and the odds being read are THIS place, not the recipe it came from',
+                  'instance=%s temp %.3f' % (odds['instance'], odds['temp']))
         res.check(start['from'] == start['to'],
                   'a run does not begin part-way through a biome change',
                   'from %s, to %s' % (start['from'], start['to']))
         res.check(start['player'] == start['from'],
                   'and the place the car is in is the place it started in',
                   '%s vs %s' % (start['player'], start['from']))
-        possible = (odds['snow'] > 0) if wx0['snowy'] else (odds['rain'] > 0)
+        # ---- CAPABILITY, NOT A CHANCE ABOVE ZERO (RLG-109) -----------------------------
+        # This asked whether the odds were above zero, which is no longer the same
+        # question. A coast's instance rains and never snows ON AVERAGE, and a single
+        # cold moment within `swing` of that average snows perfectly well - so a chance of
+        # 0.000 is not a statement that it cannot happen here.
+        possible = odds['canSnow'] if wx0['snowy'] else odds['canRain']
         res.check(wx0['wet'] < 0.02 or possible,
                   'and whatever is falling is weather this place can produce',
-                  '%s: wet %.2f snowy %d against rain %.2f snow %.2f'
-                  % (odds['name'], wx0['wet'], wx0['snowy'], odds['rain'], odds['snow']))
+                  '%s at temp %.2f: wet %.2f snowy %d, canSnow %s canRain %s'
+                  % (odds['name'], odds['temp'], wx0['wet'], wx0['snowy'],
+                     odds['canSnow'], odds['canRain']))
 
         # ------------------------------------------------------ the ground is strict
         print()
@@ -398,8 +407,39 @@ def main():
         print('      floors: %s' % floors)
         res.check(floors.get('TUNDRA', 0) > 0.4,
                   'the tundra holds snow on its own', 'floor %.2f' % floors.get('TUNDRA', 0))
-        res.check(all(v == 0 for k, v in floors.items() if k != 'TUNDRA'),
-                  'and nowhere else does', str(floors))
+        # ---- THE FLOOR IS DERIVED FROM THE TEMPERATURE NOW (RLG-109) --------------------
+        # This used to read "and nowhere else does", against a `snowFloor` typed into the
+        # tundra's recipe alone. The floor derives from the instance's temperature, so
+        # COLD is what puts white on the ground and the tundra is simply the coldest
+        # place. The mountain at 0.15 gains 0.24 of it, which is the model working rather
+        # than a place being given a property.
+        #
+        # THE ASSERTION IS THE ORDERING, and it says the same thing the old one meant:
+        # the tundra is whiter than anywhere else, and a place that is not cold has
+        # nothing on the ground at all.
+        cold = {k: v for k, v in floors.items() if v > 0}
+        warm = {k: v for k, v in floors.items() if v == 0}
+        res.check(all(floors['TUNDRA'] > v for k, v in floors.items() if k != 'TUNDRA'),
+                  'and it is whiter than anywhere else, because it is the coldest place',
+                  str(floors))
+        res.check(set(cold) == {'TUNDRA', 'MOUNTAIN'} and len(warm) >= 4,
+                  'only the places below freezing hold any, and the temperate ones hold none',
+                  'under snow: %s   bare: %s' % (sorted(cold), sorted(warm)))
+        # AND IT IS THE TEMPERATURE, NOT THE NAME. The same city is bare when it rolls warm
+        # and lies under snow when it rolls cold, with nothing in the table saying so. This
+        # cannot pass against a build that reads the recipe: the recipe has one city in it.
+        swing = page.evaluate("""() => {
+          const R = window.__probe.road, keep = R.biomeSweep().player;
+          R.setBiomePair('CITY', 'CITY', 0.85, 0.85); const hot = R.snowFloor();
+          R.setBiomePair('CITY', 'CITY', 0.02, 0.02); const cold = R.snowFloor();
+          R.setBiomePair(keep, keep);
+          return { hot: hot, cold: cold };
+        }""")
+        print('      the same CITY: rolled warm floor %.2f, rolled cold floor %.2f'
+              % (swing['hot'], swing['cold']))
+        res.check(swing['hot'] == 0 and swing['cold'] > 0.4,
+                  'and ONE city recipe gives a bare city or a snowed-in one, by its rolled temperature',
+                  'warm %.3f, cold %.3f' % (swing['hot'], swing['cold']))
 
         # Bare ground, then a tundra arrives. It must CLIMB to the floor rather than
         # snapping to it - a Math.max would have yanked it up in one frame, which is
@@ -585,6 +625,151 @@ def main():
                   'tundra %.2f, city %.2f, desert %.2f'
                   % (taper['TUNDRA']['span'], taper['CITY']['span'], taper['DESERT']['span']))
 
+        # ---------------------------- a place has a climate, a day has weather
+        # ---- THE TWO-TEMPERATURE MODEL (RLG-109) ---------------------------------------
+        # The table states a temperature and a precipitation chance and NOTHING ELSE about
+        # weather. Rain, snow and the ground floor all derive, and they derive at two
+        # different moments - the instance when the place opens, the fall when the weather
+        # rolls. Everything below is about that split, because it is the whole design and
+        # none of it can be read off the recipes.
+        print()
+        print('  A PLACE HAS A CLIMATE, A DAY HAS WEATHER')
+        keys = page.evaluate('() => window.__probe.road.BIOME_KEYS()')
+        clim = {}
+        for k in keys:
+            clim[k] = page.evaluate('(k) => window.__probe.road.climateFor(k)', k)
+        for k in sorted(keys, key=lambda x: -clim[x]['temp']):
+            c = clim[k]
+            print('      %-9s temp %.2f  precip %.2f  ->  rain %.3f  snow %.3f  floor %.2f'
+                  % (k, c['temp'], c['precip'], c['rain'], c['snow'], c['snowFloor']))
+
+        # THE IMPOSSIBLE STATE IS GONE, and this is the check that says so. MOUNTAIN used to
+        # declare rain 0.30 AND snow 0.34 - two independent rolls summing to 0.64 - so the
+        # place was asked twice whether it had any weather at all. One chance, split by
+        # temperature, cannot express that. The split must be EXACT, not merely close.
+        worst = max(abs(clim[k]['rain'] + clim[k]['snow'] - clim[k]['precip']) for k in keys)
+        res.check(worst < 1e-3,
+                  'rain and snow are one precipitation chance split, never two chances summed',
+                  'the largest disagreement between rain+snow and precip is %.5f' % worst)
+
+        # THE INSTANCE IS ROLLED, AND `vary` IS HOW WIDELY. A city has no climate of its own
+        # and rolls the widest range on the board; a desert is defined by its extreme and
+        # barely moves. This is what replaced a `neutral` boolean - neutrality by degrees.
+        spread = {}
+        for k in ('CITY', 'DESERT', 'TUNDRA'):
+            t = page.evaluate('([k, n]) => window.__probe.road.rollClimateFor(k, n)', [k, 400])
+            spread[k] = {'lo': min(t), 'hi': max(t), 'n': len(set(t))}
+            print('      %-8s rolls temperatures from %.2f to %.2f over 400 visits'
+                  % (k, spread[k]['lo'], spread[k]['hi']))
+        # 200 distinct of 400, not 400 of 400. A tundra at 0.05 with a range of 0.10 rolls
+        # BELOW freezing about a quarter of the time and every one of those clamps to
+        # exactly 0, so a hundred rolls legitimately share one value. What this has to
+        # falsify is a build that reads the table, and that build returns 1.
+        res.check(all(spread[k]['n'] > 200 for k in spread),
+                  'the temperature is ROLLED each visit rather than read from the table',
+                  '%s distinct values of 400 rolls each' % {k: spread[k]['n'] for k in spread})
+        res.check(spread['CITY']['hi'] - spread['CITY']['lo']
+                  > (spread['DESERT']['hi'] - spread['DESERT']['lo']) * 3,
+                  'and a place with no climate of its own ranges far wider than one defined by its extreme',
+                  'city spans %.2f, desert spans %.2f'
+                  % (spread['CITY']['hi'] - spread['CITY']['lo'],
+                     spread['DESERT']['hi'] - spread['DESERT']['lo']))
+
+        # ---- SNOW IS AN EVENT, NOT A PROPERTY -----------------------------------------
+        # Owner, 2026-08-31: "I wonder if snow is too rare. Like for example, farmland can
+        # be snowy, but you have snow chance at zero."
+        #
+        # THE MOMENT IS WHAT ANSWERS THAT, and it is why there are two temperatures rather
+        # than one wider one. Computing the split from the PLACE's temperature dry-locks
+        # everything above 0.50 out of snow for ever. The moment rolls within `swing` of the
+        # instance, so a temperate place has snowy days without being a cold place - and the
+        # same one number leaves the desert dry and the tundra white.
+        print()
+        print('  THE MOMENT DECIDES WHAT FALLS, so a temperate place still has snowy days')
+        mom = {}
+        for k in ('FOREST', 'CITY', 'DESERT', 'TUNDRA', 'SWAMP'):
+            mom[k] = page.evaluate('([k, n]) => window.__probe.road.rollMomentsFor(k, undefined, n)',
+                                   [k, 1200])
+            print('      %-8s at its stated %.2f: snow on %.1f%% of events, rain on %.1f%%'
+                  % (k, mom[k]['temp'],
+                     100 * mom[k]['snow'] / max(1 - mom[k]['dry'], 1e-9),
+                     100 * mom[k]['rain'] / max(1 - mom[k]['dry'], 1e-9)))
+        forest_share = mom['FOREST']['snow'] / max(1 - mom['FOREST']['dry'], 1e-9)
+        res.check(0.05 < forest_share < 0.60,
+                  'a temperate place snows on some of its falls and rains on most of them',
+                  'the forest snows on %.1f%% of what falls on it' % (100 * forest_share))
+        res.check(mom['DESERT']['snow'] == 0 and mom['SWAMP']['snow'] == 0,
+                  'and the hot places never do, over 1,200 events each',
+                  'desert %.4f, swamp %.4f' % (mom['DESERT']['snow'], mom['SWAMP']['snow']))
+        # AND NOT "EFFECTIVELY EVERYTHING", which is what this asserted first and is wrong
+        # by the model rather than by the tuning. A tundra at 0.05 has moments up to 0.30,
+        # and 0.30 is above freezing - so about a fifth of what falls on it falls as cold
+        # rain. That is the swing doing its job at the cold end as well as the warm one,
+        # and a place where it can ONLY ever snow would be the property this model exists
+        # to delete. What matters is that it is far snowier than a temperate place.
+        tundra_share = mom['TUNDRA']['snow'] / max(1 - mom['TUNDRA']['dry'], 1e-9)
+        res.check(tundra_share > 0.70,
+                  'and the coldest one snows on most of what it gets, though not on all of it',
+                  'the tundra snows on %.1f%% of what falls on it' % (100 * tundra_share))
+        res.check(tundra_share > forest_share * 2,
+                  'so the cold place is markedly snowier than the temperate one, which is the ordering',
+                  'tundra %.1f%% against forest %.1f%%'
+                  % (100 * tundra_share, 100 * forest_share))
+        # ONE NUMBER FIXING ALL THREE is the test of a model rather than of a tuning, so the
+        # three above are asserted against ONE `swing`, read from the engine rather than
+        # assumed by the harness.
+        res.check(0 < clim['FOREST']['swing'] < 0.5,
+                  'and all three come off one global swing rather than three tuned numbers',
+                  'swing %.2f' % clim['FOREST']['swing'])
+
+        # ---- THE FALSIFICATION: A CHECK THAT READS THE RECIPE STAYS GREEN --------------
+        # This is the failure the whole refactor had to avoid, so it is asserted directly.
+        # A cold-rolled city snows and a warm-rolled one cannot, and the RECIPE cannot tell
+        # them apart - it has one city in it. If the engine ever goes back to answering
+        # from the table, these two reads become identical and this check fails.
+        cold_city = page.evaluate("() => window.__probe.road.climateFor('CITY', 0.05)")
+        hot_city = page.evaluate("() => window.__probe.road.climateFor('CITY', 0.85)")
+        recipe = page.evaluate("() => window.__probe.road.climateFor('CITY')")
+        print('      one CITY recipe: cold instance snows %.3f, warm instance snows %.3f, '
+              'the recipe says %.3f'
+              % (cold_city['snow'], hot_city['snow'], recipe['snow']))
+        res.check(cold_city['snow'] > 0.25 and hot_city['snow'] == 0,
+                  'ONE recipe gives a city that snows and a city that cannot, by its instance',
+                  'cold %.3f, warm %.3f' % (cold_city['snow'], hot_city['snow']))
+        res.check(cold_city['canSnow'] and not hot_city['canSnow'],
+                  'and the capability follows the instance too, which is what ends weather that cannot happen',
+                  'cold canSnow %s, warm canSnow %s' % (cold_city['canSnow'], hot_city['canSnow']))
+
+        # ---- AND THE GAME ITSELF ROLLS AGAINST IT, WHICH IS THE ONLY CLAIM THAT MATTERS -
+        # Everything above re-runs the model through a probe, and a probe would go on
+        # agreeing with itself on a build whose `rollWeather` had quietly gone back to the
+        # recipe. This calls the ENGINE's own roll, in the place the car is standing in,
+        # and counts what came out of it.
+        #
+        # THIS IS THE CHECK THAT CATCHES THE HALF-MIGRATION. Against a build that rolls the
+        # weather off the recipe, both cities below give the recipe's answer - about a
+        # tenth snow - and the cold one stops being a snowy city.
+        live = {}
+        for label, t in (('cold', 0.02), ('warm', 0.85)):
+            page.evaluate('(t) => window.__probe.road.setBiomePair("CITY","CITY",t,t)', t)
+            live[label] = page.evaluate('(n) => window.__probe.road.sampleWeatherRolls(n)', 600)
+            print('      the ENGINE rolling in a %s CITY (temp %.2f): snow %.3f  rain %.3f  dry %.3f'
+                  % (label, live[label]['temp'], live[label]['snow'],
+                     live[label]['rain'], live[label]['dry']))
+        res.check(live['cold']['snow'] > 0.25 and live['warm']['snow'] == 0,
+                  'the ENGINE rolls its weather against the instance, so a cold city snows and a warm one cannot',
+                  'cold %.3f, warm %.3f' % (live['cold']['snow'], live['warm']['snow']))
+        # AND THE PLACE'S TOTAL WEATHER IS UNCHANGED BY ITS TEMPERATURE, which is the
+        # property the two stored chances could violate: the temperature decides WHAT falls
+        # and the precipitation decides WHETHER, and the two are separate questions.
+        wet_cold = 1 - live['cold']['dry']
+        wet_warm = 1 - live['warm']['dry']
+        res.check(abs(wet_cold - wet_warm) < 0.08,
+                  'and it rolls weather as often either way - the temperature says what falls, not whether',
+                  'cold has weather on %.1f%% of rolls, warm on %.1f%%'
+                  % (100 * wet_cold, 100 * wet_warm))
+        page.evaluate("() => window.__probe.road.setBiomePair('FOREST','FOREST')")
+
         # ------------------------------ the biome shapes the road itself
         print()
         print('  THE BIOME SHAPES THE ROAD')
@@ -665,23 +850,40 @@ def main():
         res.check(cover['COASTAL']['worst'] > 0.30,
                   'and it still clouds over sometimes, because it still rains',
                   'the heaviest cover a coast ever rolls is %.3f' % cover['COASTAL']['worst'])
-        # AND NO OTHER PLACE MOVED. `sky` defaults to 1 where it is not stated, so a change here
-        # must be invisible everywhere else - which is what makes it a tendency rather than a
-        # branch naming one biome.
-        # AND NO OTHER PLACE MOVED. Stated as an ORDERING among places that declare no `cover`,
-        # and only between two that are far apart in weather. Swamp against city was tried and is
-        # not a usable pair: the tendency is clamped at 0.75 and both of them reach it, so they
-        # tie at 0.706 and 0.710 and the comparison reads as a coin toss on any build.
         res.check(cover['FOREST']['median'] > cover['DESERT']['median'] * 3,
-                  'and a place that states no cover still takes it from its own weather',
+                  'and a place that states no bias still takes its cloud from its own weather',
                   'forest %.3f against desert %.3f - they should be far apart'
                   % (cover['FOREST']['median'], cover['DESERT']['median']))
-        res.check(min(cover['FOREST']['median'], cover['SWAMP']['median'],
-                      cover['CITY']['median']) > cover['COASTAL']['median'] * 2,
-                  'and the coast is the only place carrying a number',
-                  'forest %.3f swamp %.3f city %.3f against the coast %.3f'
-                  % (cover['FOREST']['median'], cover['SWAMP']['median'],
-                     cover['CITY']['median'], cover['COASTAL']['median']))
+        # ---- AND THE BIAS IS WHAT DOES IT, WHICH THIS PAIR ISOLATES (RLG-109) ----------
+        # This used to read "the coast is the only place carrying a number", and under the
+        # derived table that is no longer true - the swamp carries 1.10 and the tundra
+        # 0.90. The claim that survives is the mechanism rather than the exclusivity.
+        #
+        # COAST AGAINST CITY IS THE CONTROLLED PAIR, and it is better than what was here:
+        # both precipitate on exactly 0.38 of rolls, so precipitation is held constant and
+        # the bias is the ONLY thing left that can separate them. The old comparison took
+        # the minimum of three places whose rain differed, which measured the rain as much
+        # as it measured the bias.
+        biasC = page.evaluate("() => window.__probe.road.climateFor('COASTAL')")
+        biasT = page.evaluate("() => window.__probe.road.climateFor('CITY')")
+        print('      coast precip %.2f bias %.2f   against city precip %.2f bias %.2f'
+              % (biasC['precip'], biasC['bias'], biasT['precip'], biasT['bias']))
+        res.check(abs(biasC['precip'] - biasT['precip']) < 1e-6,
+                  'the coast and the city rain equally often, so only the bias can separate them',
+                  'coast %.3f, city %.3f' % (biasC['precip'], biasT['precip']))
+        res.check(cover['CITY']['median'] > cover['COASTAL']['median'] * 1.6,
+                  'and the coast is markedly clearer for the same rainfall, which is the bias',
+                  'city %.3f against the coast %.3f, a ratio of %.2f against a stated %.2f'
+                  % (cover['CITY']['median'], cover['COASTAL']['median'],
+                     cover['CITY']['median'] / max(cover['COASTAL']['median'], 1e-6),
+                     biasT['bias'] / biasC['bias']))
+        # AND NO SKY IS EVER TOTAL. The owner's "always allow for some clear sky, no matter
+        # what", as one ceiling rather than as a habit of the roll. The wettest place on the
+        # board is the one that tests it.
+        res.check(max(cover[k]['worst'] for k in cover) <= 0.881,
+                  'and nowhere fills the whole sky, however wet it is',
+                  'the heaviest cover any place rolled is %.3f'
+                  % max(cover[k]['worst'] for k in cover))
 
         print('  THE COASTAL IS ON ONE SIDE, AND WHICH SIDE IS ROLLED')
         seaB = page.evaluate("() => window.__probe.road.roadShape('COASTAL')")
