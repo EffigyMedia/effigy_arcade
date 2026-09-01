@@ -272,14 +272,18 @@ def main():
             "(k) => window.__probe.road.isPassage(k)", k)]
         print('      passages:      %s' % passages)
         print('      a run may open in %d of the %d places' % (len(opens), len(allk)))
-        res.check(passages == ['TUNNEL'],
-                  'the tunnel is the one passage on the board today',
+        # THE BRIDGE JOINED THIS LIST BY STATING ONE FIELD (RLG-112). That is the whole
+        # claim RLG-140 made when the property was chosen over a name the picker knows -
+        # a second event place needed no second edit anywhere - so the check asserts BOTH
+        # rather than being loosened to let the new one through.
+        res.check(sorted(passages) == ['BRIDGE', 'TUNNEL'],
+                  'the tunnel and the bridge are the passages on the board',
                   'passages are %s' % passages)
-        res.check('TUNNEL' not in opens,
-                  'and a run cannot open in it',
+        res.check('TUNNEL' not in opens and 'BRIDGE' not in opens,
+                  'and a run cannot open in either of them',
                   'OPEN_KEYS is %s' % opens)
-        res.check(set(allk) - set(opens) == {'TUNNEL'},
-                  'and nothing else was excluded with it',
+        res.check(set(allk) - set(opens) == {'TUNNEL', 'BRIDGE'},
+                  'and nothing else was excluded with them',
                   'excluded: %s' % sorted(set(allk) - set(opens)))
         res.check('TUNNEL' in allk,
                   'and the tunnel is still a place the road can reach, which is the point',
@@ -291,9 +295,10 @@ def main():
         rolls = page.evaluate("() => window.__probe.road.rollOpening(400)")
         seen = sorted(set(rolls))
         print('      400 opening rolls landed on: %s' % seen)
-        res.check('TUNNEL' not in rolls,
-                  'and four hundred opening rolls never landed in one',
-                  '%d of them did' % rolls.count('TUNNEL'))
+        res.check('TUNNEL' not in rolls and 'BRIDGE' not in rolls,
+                  'and four hundred opening rolls never landed in either',
+                  '%d tunnels and %d bridges'
+                  % (rolls.count('TUNNEL'), rolls.count('BRIDGE')))
         res.check(len(seen) == len(opens),
                   'and they still reach every place a run may open in',
                   'reached %d of %d' % (len(seen), len(opens)))

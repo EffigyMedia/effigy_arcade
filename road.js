@@ -214,7 +214,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.6';
+window.ROAD_BUILD = '0.11.7';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1475,7 +1475,12 @@ function rebuildBend(){
     hillCache.push(y);  gradCache.push(dy);
     dx += curvatureAt(z) * 0.010;
     x  += dx;
-    dy += gradeAt(z) * 0.010;
+    /* an EVENT states its slope outright; ordinary terrain accumulates one from
+       its grade (RLG-112). `dy` is replaced rather than added to, because a flat
+       deck means the slope is zero and not that the grade is. */
+    const au = authoredSlope(z);
+    if(au === null) dy += gradeAt(z) * 0.010;
+    else            dy  = au;
     y  += dy;
   }
 }
@@ -8701,6 +8706,18 @@ const BIOMES = {
                  grown - and one number for both is simpler than two arguments
                  about which matters more. Not zero: nothing in this game is. */
               hill:0.10, bend:0.10, dark:1,
+              /* ---- AND IT LASTS A TUNNEL'S LENGTH (RLG-112) -----------
+                 It was the ordinary roll, six and a half to twelve miles - at
+                 the speed the interstate is actually driven, two and a half to
+                 four and a half MINUTES underground, against a run clock that
+                 starts at sixty seconds. A bore could outlast the run it
+                 appeared in.
+
+                 1.4 miles is a long road tunnel and about eleven seconds of
+                 driving at speed. IT TAKES THE LENGTH AND NOT A PROFILE: the
+                 owner has already ruled on a bore's shape and capped both axes
+                 at 0.10, and an authored profile would overrule that. */
+              span:1.4,
               /* ---- AND A RUN CANNOT OPEN IN ONE (RLG-140) --------------
                  Owner, 2026-09-01: "runs can never start in a tunnel or on a
                  bridge." A `passage` is a place you ENTER and LEAVE rather than
@@ -8801,7 +8818,45 @@ const BIOMES = {
               hill:0.40, bend:0.90,
               grassLo:'#6b4a30', grassHi:'#8c6242',
               skyBase:'#4a2318', skyRise:2.4,
-              sky:'#5e3524', city:0.00, trees:0.04, skyForm:'ridge' }
+              sky:'#5e3524', city:0.00, trees:0.04, skyForm:'ridge' },
+  /* ---- THE FIRST PLACE THAT IS AN EVENT (RLG-112) ---------------------
+     Owner, 2026-08-31: "if we're doing tunnel, we could also do a bridge biome
+     that would be a Golden Gate Bridge analog over water", and immediately
+     after: "The bridge would start with a vertical ramp up, be flat the entire
+     way and then ramp down at the end transitioning into the next biome."
+
+     THAT SENTENCE IS WHY THE EVENT MECHANISM EXISTS. It is not a tendency of
+     the land that a table of relief can express: it is a shape, the same shape
+     every time, over a stated distance. `span` and `profile` are the two fields
+     that carry it - see `authoredSlope`.
+
+     1.7 MILES IS THE GOLDEN GATE, and about thirteen seconds of driving at the
+     speed the interstate is actually driven.
+
+     `hill` IS INERT HERE AND IS STATED ANYWAY. The authored slope replaces the
+     integration's own for the whole span, so the rolled relief never reaches
+     the deck. It is written down because a place with no relief field reads as
+     an omission, and because the ramps at each end are the only part of a
+     crossing the number could ever describe.
+
+     `bend` IS NOT INERT. Nothing authors the curvature: a suspension bridge is
+     straight because it is built straight, so it says so with a number the
+     ordinary generator already reads. That is the whole difference between the
+     two axes here - the vertical shape needed a mechanism and the horizontal
+     one did not.
+
+     AND IT IS A PASSAGE, so RLG-140 keeps a run from opening on it - which is
+     the field paying for itself one version after it was added.
+     ------------------------------------------------------------------ */
+  BRIDGE:   { name:'BRIDGE',   temp:0.55, vary:0.25, precip:0.38, bias:0.45,
+              hill:0.10, bend:0.08, span:1.7, passage:1,
+              profile: { ramp:0.16, rise:0.50 },
+              /* what the road runs over. It is a fill under the deck until the
+                 water lands, and the shore colours are the coast's own. */
+              grassLo:'#1a3b4e', grassHi:'#24506a',
+              sea:'#1d4a63',
+              skyBase:'#1b2b3a',
+              sky:'#2f4a63', city:0.00, trees:0.00, skyForm:'open' }
 };
 const BIOME_KEYS = Object.keys(BIOMES);
 /* ---- WHERE A RUN MAY OPEN, WHICH IS NOT EVERYWHERE (RLG-140) ------------
@@ -9227,6 +9282,81 @@ let biomeNext = 0;
 /* whether this run has chosen its opening biome yet. A fact about the run, not
    something to infer from the length of a frame - see stepBiome. */
 let biomeStarted = 0;
+
+/* ---- SOME PLACES ARE EVENTS RATHER THAN PLACES (RLG-112) ----------------
+   Owner, 2026-08-31, describing a bridge: "The bridge would start with a
+   vertical ramp up, be flat the entire way and then ramp down at the end
+   transitioning into the next biome."
+
+   NOTHING IN THIS ENGINE COULD SAY THAT. Every place lasts six and a half to
+   twelve miles at random and its terrain is a stream of rolled segments scaled
+   by the place's own relief. That is right for a forest, which is a TENDENCY of
+   the land, and wrong for anything somebody built: a bridge has a ramp, a span
+   and a ramp, and a tunnel has a mouth, a length and an exit. RLG-112 says so
+   in as many words and adds that building the mechanism once for both is a far
+   better trade than two special cases - and that the checkpoint work in RLG-100
+   then has a known distance to hang on.
+
+   TWO FIELDS, AND THEY ARE INDEPENDENT.
+
+     span      how long the place lasts, in MILES. Absent means the ordinary
+               roll, and every place on the board is absent today except the
+               tunnel.
+     profile   the shape of it, stated rather than rolled. Absent means the
+               rolled terrain, which is what a tunnel keeps - the owner has
+               already ruled on a tunnel's form and capped both of its axes at
+               0.10, and an authored profile would overrule that.
+
+   A TUNNEL TAKES THE LENGTH AND NOT THE SHAPE, which is the test of whether
+   these are two things or one. It was six and a half to twelve miles of bore -
+   at the speed the interstate is actually driven that is two and a half to four
+   and a half MINUTES underground, and a run's clock starts at sixty seconds. So
+   a tunnel could outlast the whole run it appeared in.
+   ------------------------------------------------------------------------- */
+function placeSpan(key){
+  const B = BIOMES[key];
+  return (B && B.span) ? B.span * MILE : rnd(6.5, 12) * MILE;
+}
+/* where the place the road is heading into begins, and how long it runs, in
+   world units. Written when a place is placed at the horizon; read only by the
+   authored profile, which is the one thing that needs to know how far THROUGH a
+   place a given stretch of road is. */
+let eventZ0 = 0, eventLen = 0, eventProfile = null;
+/* ---- AN AUTHORED PROFILE STATES A SLOPE, NOT A GRADE (RLG-112) ----------
+   THE INTEGRATION IS `dy += grade; y += dy`, so a grade is the RATE OF CHANGE of
+   the slope and not the slope itself. That distinction is the whole of why an
+   authored shape could not be written as another entry in the biome table: a
+   span that is "flat the entire way" means the SLOPE is zero, and a stated
+   grade of zero holds whatever slope the rolled terrain arrived with. Ask for a
+   flat bridge that way and you get a straight ramp continuing to the horizon.
+
+   So the profile is read in the integration, where `dy` lives, and it REPLACES
+   `dy` rather than adding to it. Outside an event nothing changes at all.
+
+   THE LEVELS ARE JOINED BY A SMOOTHSTEP because the alternative is a kink. A
+   deck that meets its approach at a corner is a bump you feel through the wheel
+   at the one moment the picture says the road got smoother.
+   ------------------------------------------------------------------------- */
+const smoothAt = (t, c, b) => {
+  const a = clamp((t - c) / b + 0.5, 0, 1);
+  return a * a * (3 - 2 * a);
+};
+/* rise through the first ramp, dead flat across the deck, fall through the
+   last. `t` is the fraction through the event. */
+function profileSlope(t, P){
+  const r = P.ramp, b = r * 0.55;
+  return P.rise * (smoothAt(t, b*0.5, b) - smoothAt(t, r, b))
+       - P.rise * (smoothAt(t, 1 - r, b) - smoothAt(t, 1 - b*0.5, b));
+}
+/* the slope this stretch of road is told to have, or null if it is ordinary
+   terrain. One call per integration step, and it answers null everywhere on a
+   board with no event on it. */
+function authoredSlope(z){
+  if(!eventProfile || eventLen <= 0) return null;
+  const t = (z - eventZ0) / eventLen;
+  if(t < 0 || t > 1) return null;
+  return profileSlope(t, eventProfile);
+}
 /* ---- WHICH SIDE THE WATER IS ON (RLG-059) --------------------------------
    Rolled when a place is chosen, not when it is drawn: the coast has to be on
    the same side for the whole stretch, and a value rolled per frame would put
@@ -9470,7 +9600,10 @@ function openBiome(){
      A place you have just arrived in is not also a place you are leaving, so
      the distance is armed here with the same range every other change uses.
      ---------------------------------------------------------------- */
-  biomeNext = rnd(6.5, 12) * MILE;
+  biomeNext = placeSpan(biome);
+  /* a run cannot open in an event - RLG-140 sees to that - so there is never an
+     authored profile in force at the start of one */
+  eventProfile = null; eventLen = 0;
 }
 
 function stepBiome(dt){
@@ -9656,8 +9789,35 @@ function stepBiome(dt){
          -------------------------------------------------------------- */
       wxFrom = biome; wxTo = k;
       climTo = rollClimate(k);
+      armEvent(k, biomeEdge * SEG);
     }
-    biomeNext = rnd(6.5, 12) * MILE;
+    /* the place just PLACED is the one whose length this counts down, whichever
+       branch above ran - after `openBiome` the pair holds one place, and after a
+       change `biomeTo` is the new one */
+    biomeNext = placeSpan(biomeTo);
+  }
+}
+
+/* ---- WHERE AN EVENT BEGINS, WHICH IS THE HORIZON (RLG-112) --------------
+   The boundary is placed at the furthest slice being drawn, so that is where
+   the place starts in the world - and an authored profile has to know it,
+   because the shape is a function of how far THROUGH the place a stretch is.
+
+   IT IS ARMED WHEN THE PLACE IS PLACED, not when the car arrives. The road is
+   integrated far past the draw distance, so the ramp has to be in the geometry
+   before it is visible or the far end of the road would change shape as the car
+   approached it - which is the one fault this engine has been caught by three
+   times.
+
+   AND IT IS CLEARED BY THE NEXT PLACE, whatever that is. Only one change is ever
+   in flight, so one record is enough.
+   ------------------------------------------------------------------------- */
+function armEvent(key, z0){
+  const B = BIOMES[key];
+  if(B && B.profile && B.span){
+    eventProfile = B.profile; eventZ0 = z0; eventLen = B.span * MILE;
+  } else {
+    eventProfile = null; eventLen = 0;
   }
 }
 
@@ -19718,7 +19878,17 @@ requestAnimationFrame(frameLoop);
     if(BIOMES[a]){ biomeFrom = a; wxFrom = a; climFrom = climateAt(a, tA === undefined ? BIOMES[a].temp : tA); }
     if(BIOMES[b]){ biomeTo   = b; wxTo   = b; climTo   = climateAt(b, tB === undefined ? BIOMES[b].temp : tB); }
     if(biomeFrom === biomeTo){ biome = biomeFrom; biomeEdge = -1e9; }
-    return { from:biomeFrom, to:biomeTo,
+    /* ---- AND THE EVENT IS ARMED WITH IT (RLG-112) --------------------
+       A debug setter that pinned the pair to a BRIDGE and left the road rolled
+       would show a place the game never produces - the deck is the authored
+       profile, so a capture taken without it is a picture of nothing. It is
+       laid so that the car is a fifth of the way across, which is on the deck
+       rather than on a ramp.
+       ------------------------------------------------------------- */
+    armEvent(biomeTo, pos - (BIOMES[biomeTo] && BIOMES[biomeTo].span
+                             ? BIOMES[biomeTo].span * MILE * 0.20 : 0));
+    rebuildBend();
+    return { from:biomeFrom, to:biomeTo, event:!!eventProfile,
              tempFrom:+climFrom.temp.toFixed(3), tempTo:+climTo.temp.toFixed(3) };
   };
   API.groundBase = function(){ return groundBase(0.30); };
@@ -20002,6 +20172,55 @@ requestAnimationFrame(frameLoop);
   /* the opening draw itself, sampled. It is the same function `openBiome` calls,
      so this reads the engine rather than a harness's idea of it - and it does
      not touch the running game, so a check can take four hundred of them. */
+  /* ---- WHAT AN EVENT IS, SO A CHECK CAN SEE IT (RLG-112) ---------------
+     `span` is what the place STATES and `placeSpan` is what the engine ARMS, and
+     they are read separately on purpose: a check that only read the table could
+     not tell a stated length from a length the countdown ignores.
+     ------------------------------------------------------------------ */
+  API.placeSpan = function(k){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    return { name:B.name, stated: B.span === undefined ? null : B.span,
+             armed: +(placeSpan(k) / MILE).toFixed(3),
+             profile: !!B.profile };
+  };
+  /* the authored shape, sampled across a crossing. It is the slope the road is
+     TOLD to have, so a check can assert the deck is flat rather than inferring
+     it from a picture. */
+  API.profileOf = function(k, n){
+    const B = BIOMES[k] || BIOMES.FOREST;
+    if(!B.profile) return null;
+    const out = [];
+    n = n || 40;
+    for(let i = 0; i <= n; i++) out.push(+profileSlope(i / n, B.profile).toFixed(5));
+    return out;
+  };
+  /* whether an authored profile is in force right now, and where. Nothing but a
+     harness has any business asking. */
+  API.eventNow = function(){
+    return { on: !!eventProfile, z0: eventZ0, len: eventLen,
+             through: eventLen > 0 ? +clamp((pos - eventZ0)/eventLen, 0, 1).toFixed(3) : null };
+  };
+  /* ---- WHAT THE ROAD ACTUALLY CAME OUT AS (RLG-112) --------------------
+     `roadRoughness` reads the SEGMENT LIST, which an authored profile never
+     touches - the segments are still generated and still rolled, and the
+     integration overrules them. So a check that read only that would be green
+     on a build where the profile does nothing at all.
+
+     This reads the INTEGRATED cache, which is the road the picture draws and
+     the car drives on: the slope at a distance, sampled ahead of the camera.
+     ------------------------------------------------------------------ */
+  API.roadSlopeAt = function(z){
+    return +(lookup(gradCache, z === undefined ? pos : z)).toFixed(5);
+  };
+  /* the slope over a stretch ahead, so a check can say "flat for a quarter of a
+     mile" rather than "flat at one point" */
+  API.roadSlopes = function(z0, z1, n){
+    const out = [];
+    n = n || 20;
+    for(let i = 0; i <= n; i++)
+      out.push(+(lookup(gradCache, z0 + (z1 - z0) * i / n)).toFixed(5));
+    return out;
+  };
   API.rollOpening = function(n){
     const out = [];
     for(let i = 0; i < (n || 400); i++) out.push(pickOpening());

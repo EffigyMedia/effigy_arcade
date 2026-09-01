@@ -14,6 +14,42 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-7"></a>
+## [0.11.7] - 2026-09-01
+- Added: **a place can be an EVENT rather than a place - a stated length and an authored
+  shape.** Owner, 2026-08-31, describing a bridge: "start with a vertical ramp up, be flat
+  the entire way and then ramp down at the end." Nothing in the engine could say that. Every
+  place lasts six and a half to twelve miles at random and its terrain is rolled segments
+  scaled by the place's own relief - right for a forest, which is a tendency of the land, and
+  wrong for anything somebody built ([RLG-112](../fragments/RLG-112.md)).
+- Note: **two fields, and that they are separate is the test of a mechanism.** A tunnel takes
+  the length and NOT the shape, because the owner has already ruled on a bore's form and
+  capped both of its axes at 0.10. One field would have overruled that ruling to get a
+  bridge.
+- Fixed: **a tunnel is a tunnel's length again.** It was the ordinary roll - at the speed the
+  interstate is actually driven, two and a half to four and a half MINUTES underground
+  against a run clock that starts at sixty seconds, so a bore could outlast the run it
+  appeared in. 1.4 miles now, which is about eleven seconds.
+- Added: **BRIDGE, the first place that is an event** - 1.7 miles, the Golden Gate's own
+  length, with a ramp at each end and a dead flat deck between them. The water under it is
+  the next piece of work; today the road runs over a fill.
+- Note: **an authored profile states a SLOPE, not a grade, and that is the whole design.**
+  The integration is `dy += grade; y += dy`, so a grade is the rate of change of the slope.
+  Ask for a flat deck by stating a grade of zero and you get a straight ramp continuing to
+  the horizon - measured, at a constant +0.017 forever. The profile replaces the slope.
+- Note: **the check reads the road, not the table.** The rolled segments are still generated
+  inside an event and the integration overrules them, so anything reading the segment list
+  is unchanged and would be green on a build where the profile does nothing at all.
+  `tools/event-test.py` reads the integrated cache - the road the picture draws and the car
+  drives on - and both ways of getting it wrong were put back and watched going red.
+- Note: **the bridge became a passage by stating one field**, so a run cannot open on it
+  and nothing else had to change. That is [RLG-140](../fragments/RLG-140.md)'s own claim
+  paying for itself one version after it was made: `tools/tunnel-test.py` asserts both
+  places rather than being loosened to let the new one through.
+- Note: **the vertical shape needed a mechanism and the horizontal one did not.** Nothing
+  authors curvature: a suspension bridge is straight because it is built straight, so it
+  says so with a low sinuosity the ordinary generator already reads.
+
 <a id="v0-11-6"></a>
 ## [0.11.6] - 2026-09-01
 - Fixed: **a run can never open in a tunnel.** Owner, 2026-09-01: "runs can never start in
