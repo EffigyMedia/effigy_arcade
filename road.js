@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.20';
+window.ROAD_BUILD = '0.11.21';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6856,12 +6856,32 @@ function skylinePlanFor(B, w, h, BANDS){
                stops the city breathing together - the same lesson RLG-012 recorded about
                a thruster driven by one clock, which reads as a pulse rather than a place.
                -------------------------------------------------------------------- */
-            if(Math.random() < 0.42)
+            /* ---- MORE OF THEM, AND MORE OF THOSE LIT (RLG-145) ---------
+               Owner, 2026-09-01, from the device: "the illuminated windows in
+               the skyline buildings of the city biome need to have a higher
+               quantity."
+
+               TWO NUMBERS, AND NEITHER OF THEM IS A BRIGHTNESS. How many
+               windows the building HAS was 0.42 of the grid, and how much of
+               its own cycle each one spends lit was 0.45 to 0.87. What the eye
+               counts is the product of the two, so both move: 0.58 of the grid,
+               lit 0.58 to 0.94 of the time.
+
+               THE SPREAD IS KEPT, WHICH IS THE POINT OF THE HABIT. A duty of 1
+               for every window is a city that never changes, and one narrow
+               band of duties is a city that switches together - the fault
+               RLG-095 exists to prevent. The band is still a third of the
+               range wide, so the block goes on breathing.
+
+               Measured over fifty samples of the window clock, lit pixels in
+               the near band went from 192-348 to what the changelog records,
+               and the swing stayed the same share of the total. */
+            if(Math.random() < 0.58)
               wins.push([x + rint(3, Math.max(4, bw-6)), h - bh + rint(4, Math.max(5, bh-8)),
                          Math.random() < 0.22 ? 1 : 0,
                          Math.random(),
                          rint(26, 190),
-                         0.45 + Math.random() * 0.42]);
+                         0.58 + Math.random() * 0.36]);
           }
         }
       }

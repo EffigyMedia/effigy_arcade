@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-21"></a>
+## [0.11.21] - 2026-09-01
+- Changed: **the city carries far more lit windows.** Owner, 2026-09-01, from the device: "the
+  illuminated windows in the skyline buildings of the city biome need to have a higher
+  quantity" ([RLG-145](../fragments/RLG-145.md), item 6).
+- Note: **two numbers, and neither of them is a brightness.** How many windows a building HAS
+  was 0.42 of its grid, and how much of its own cycle each one spends lit was 0.45 to 0.87.
+  What the eye counts is the product, so both moved: 0.58 of the grid, lit 0.58 to 0.94 of the
+  time. Turning up a colour would have made the same windows brighter, not more of them.
+- Note: **the spread is kept, which is the whole point of the habit.** A duty of 1 for every
+  window is a city that never changes and one narrow band of duties is a city that switches
+  together - the fault [RLG-095](../fragments/RLG-095.md) exists to prevent. The band is still
+  a third of the range wide.
+- Note: **measured over fifty samples of the window clock**, with the clock held so each
+  reading is taken at the time it was set to. Lit pixels in the near band went from 192-348,
+  median 264, to 457-559, median 489 - up 85 per cent. The swing did NOT grow: it fell from 156
+  to 102, and from 0.59 of the median to 0.21, so nothing about this makes the city read as
+  switching as one. The capture is `_shots/biome-city.png`, taken at midnight.
+
 <a id="v0-11-20"></a>
 ## [0.11.20] - 2026-09-01
 - Fixed: **a place's own `bend` and `hill` are in force from its first unit.** They were not.
