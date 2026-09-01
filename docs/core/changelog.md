@@ -14,6 +14,33 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-9"></a>
+## [0.11.9] - 2026-09-01
+- Fixed: **the canyon skyline stands no higher than the canyon walls.** Owner, from the
+  device: "The skyline should only be as high as the canyon walls (scenery)." It was six
+  times higher - a stated 281 pixels of band against a tallest wall of 47 - so the horizon
+  read as a mountain range standing behind a canyon rather than as the canyon closing
+  ([RLG-104](../fragments/RLG-104.md)).
+- Note: **the cap is not a matter of taste.** The skyline is painted AT the horizon, which is
+  further away than any scenery in the game, so nothing there may be taller on screen than
+  the last thing the road pass draws. A place asks for the cap now instead of stating a
+  height, and it is derived from that place's own roadside scenery through the same
+  expression the scenery is sized with. Measured after: 47.3 pixels against 47.3.
+- Fixed: **the canyon floor is the same stone as its walls.** Owner: "Same colour AS the
+  canyon walls themselves." The walls were painted from the rock table and the ground from
+  the biome's own grass pair, which was a brown chosen to sit beside the rock rather than to
+  be it. The sandstone is stated once now and read by three - the ground, the wall art and
+  the silhouette - so a canyon is one stone at every distance.
+- Note: **both faults had one shape, and it is worth naming.** A constant chosen to match
+  something derived is a constant that drifts, and both of these had drifted before they ever
+  shipped. It is the same shape as the three name branches this place has already had
+  removed.
+- Note: **the first version of the check passed on the build the owner rejected.** It
+  asserted the canyon's band was TALLER than an ordinary horizon - which was true, and was
+  the fault. A ratio cannot answer a question about two things on screen, so the two heights
+  are compared in pixels now, with a second assertion in the other direction so that a cap
+  satisfied by drawing no horizon at all fails too.
+
 <a id="v0-11-8"></a>
 ## [0.11.8] - 2026-09-01
 - Added: **the bridge is over water, on both sides, all the way to the skyline.** Owner,

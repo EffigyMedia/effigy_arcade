@@ -110,6 +110,11 @@ let ROAD = 2300;             // half-width of road
    verify.
    ------------------------------------------------------------------------- */
 const SCENE_UNIT = 1900;
+/* how much a scenery object may vary from its stated size, so a stand of rock is
+   not one stamp repeated. NAMED because the skyline reads the same range: a
+   canyon's horizon is capped to the height of the tallest wall the road pass can
+   draw, and a second copy of these numbers would drift (RLG-104). */
+const SCENE_GROW_LO = 0.72, SCENE_GROW_SPAN = 0.56;
 /* ---- WHAT A VEHICLE IS MEASURED IN (RLG-024) ----------------------------
    Owner, 2026-08-30, after the road was widened: "the road was supposed to get
    wider while everything else stayed the same size. It feels like all you did
@@ -214,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.8';
+window.ROAD_BUILD = '0.11.9';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5433,12 +5438,30 @@ function CITY_WINDOWS(bw, bh, x0, y0, put){
    been the start of a list. `tone` NAMES the palette instead, which is the same
    move the biome table just made for its skyline base.
    ------------------------------------------------------------------------- */
+/* ---- THE SANDSTONE, STATED ONCE (RLG-104) ------------------------------
+   Owner, 2026-09-01, having driven the canyon: the far ground should be the same
+   colour as the canyon walls themselves.
+
+   IT WAS NOT, AND THE REASON WAS TWO SEPARATE PALETTES. The walls were painted
+   from the rock table below and the ground from the biome's own `grassLo` and
+   `grassHi`, which were a brown chosen to sit beside the rock rather than to BE
+   it. Two colours picked to look alike are two colours that drift, and this one
+   had drifted before it ever shipped.
+
+   So the stone has one definition and three readers: the wall art, the ground
+   the walls stand in, and the silhouette on the horizon.
+   ------------------------------------------------------------------------- */
+const SANDSTONE = {
+  /* the face in shadow is nearly maroon; the sunward slab is the orange a canyon
+     wall goes at any hour with sun on it */
+  dark:'#5e3324', mid:'#75422c', far:'#8e5738',
+  litDark:'#7d4630', litMid:'#96593a', litFar:'#b0714a'
+};
 const ROCK_TONE = {
   rock:  [['#3a3a40','#4a4a52','#5d6068'], ['#4c4c54','#5c5f68','#70747e']],
   snow:  [['#e8eef6','#cfdae8','#aebfd4'], ['#ffffff','#e3ebf4','#c3d1e2']],
-  /* sandstone: the face in shadow is nearly maroon and the sunward slab is the
-     orange a canyon wall goes at any hour with sun on it */
-  sand:  [['#5e3324','#75422c','#8e5738'], ['#7d4630','#96593a','#b0714a']]
+  sand:  [[SANDSTONE.dark, SANDSTONE.mid, SANDSTONE.far],
+          [SANDSTONE.litDark, SANDSTONE.litMid, SANDSTONE.litFar]]
 };
 function ROCKFACE(g, W2, H2, i, tone){
   /* ---- THE LAYER HAS TO RISE WITH THE DISTANCE OUT ---------------------
@@ -6204,7 +6227,7 @@ function drawScenery(idx, p1, y1, z1, fade){
       if(!art) continue;
       /* size varies with the object, not with the frame. A crop is uniform,
          because a field of unequal corn is a field nobody planted. */
-      const grow = spec2.lattice ? 1 : 0.72 + r2 * 0.56;
+      const grow = spec2.lattice ? 1 : SCENE_GROW_LO + r2 * SCENE_GROW_SPAN;
       const w2 = sc * spec2.w * grow;
       const h2 = w2 * (art.height / art.width);
       if(w2 < 0.8) continue;
@@ -6366,11 +6389,38 @@ function skylineFor(key){
    without being rebuilt every frame */
 function skyBucket(){ return Math.round(phase() * 40); }
 
-/* how tall a place stands its skyline, as a multiple of the ordinary band. 1 is
-   a horizon miles off, which is every place but the canyon (RLG-104). */
+/* ---- A WALL CANNOT STAND BEHIND ITSELF (RLG-104) ------------------------
+   Owner, 2026-09-01, having driven the canyon: the skyline should only be as
+   high as the canyon walls.
+
+   IT WAS SIX TIMES HIGHER, and the reason is that the number was typed in. The
+   place stated 2.4 of the ordinary band, which is 281 pixels on this screen,
+   while the tallest wall the road pass can draw at the far end of its own draw
+   is 47. So the horizon read as a mountain range standing BEHIND a canyon,
+   which is a different place entirely.
+
+   THE SKYLINE IS DRAWN AT THE HORIZON, which is further away than any scenery
+   in the game. So its ceiling is not a matter of taste: nothing at the horizon
+   may be taller on screen than the last thing the road pass draws, or the eye
+   is told that the furthest object is the nearest one.
+
+   SO A PLACE ASKS FOR THE CAP RATHER THAN STATING A HEIGHT. `skyWall` derives
+   it from the place's OWN roadside scenery, through the same expression
+   `drawScenery` sizes a wall with and the same growth range - so a change to
+   the rock spec moves the horizon with it and the two cannot drift. A stated
+   `skyRise` still works and nothing uses one.
+   ------------------------------------------------------------------------- */
 function skyRiseOf(key){
   const B = BIOMES[key];
-  return (B && B.skyRise) || 1;
+  if(!B) return 1;
+  if(!B.skyWall) return B.skyRise || 1;
+  const spec = SCENERY[B.name];
+  if(!spec || !spec.h) return 1;
+  /* the far end of the draw: `proj` at that distance is a constant, so this
+     does not breathe frame to frame */
+  const scale = CAM_D / (DRAW * SEG);
+  const wall = scale * SCENE_UNIT * W/2 * spec.h * (SCENE_GROW_LO + SCENE_GROW_SPAN);
+  return clamp(wall / (H * 0.13), 0.15, 2.5);
 }
 
 /* ---- THE CITY IS THE PLACE'S, NOT THE HOUR'S (RLG-094) ------------------
@@ -8816,8 +8866,18 @@ const BIOMES = {
      ------------------------------------------------------------------ */
   CANYON:   { name:'CANYON',   temp:0.85, vary:0.15, precip:0.10, bias:0.55,
               hill:0.40, bend:0.90,
-              grassLo:'#6b4a30', grassHi:'#8c6242',
-              skyBase:'#4a2318', skyRise:2.4,
+              /* ---- THE FLOOR IS THE SAME STONE AS THE WALLS (RLG-104) --
+                 Owner, 2026-09-01: the far ground should be the same colour as
+                 the canyon walls themselves. It was a brown picked to sit
+                 BESIDE the rock rather than to be it, and the two had already
+                 drifted. All three read `SANDSTONE` now - the ground the walls
+                 stand in, the wall art, and the silhouette on the horizon - so
+                 a canyon is one stone at every distance.
+
+                 `skyWall` REPLACES A TYPED HEIGHT. The skyline is capped to the
+                 tallest wall the road pass can draw; see `skyRiseOf`. */
+              grassLo:SANDSTONE.dark, grassHi:SANDSTONE.mid,
+              skyBase:SANDSTONE.mid, skyWall:1,
               sky:'#5e3524', city:0.00, trees:0.04, skyForm:'ridge' },
   /* ---- THE FIRST PLACE THAT IS AN EVENT (RLG-112) ---------------------
      Owner, 2026-08-31: "if we're doing tunnel, we could also do a bridge biome
@@ -20225,7 +20285,28 @@ requestAnimationFrame(frameLoop);
   };
   /* how tall a place stands its skyline, as a multiple of the ordinary band.
      A check reads it to prove a wall is not drawn at horizon scale (RLG-104). */
-  API.skyRise = function(k){ return skyRiseOf(k || biome); };
+  API.skyRise = function(k){ return +skyRiseOf(k || biome).toFixed(4); };
+  /* ---- THE SKYLINE AGAINST THE WALLS, IN PIXELS (RLG-104) --------------
+     The owner's report was that the skyline stands higher than the canyon
+     walls, and a ratio cannot answer that: it says how tall the band is
+     against the ordinary band, not against the scenery beside it. These are
+     the two heights on screen, computed the way each is actually drawn - the
+     skyline from its band, and the wall from the same expression
+     `drawScenery` sizes one with at the far end of the draw.
+     ------------------------------------------------------------------ */
+  API.skylineVsWall = function(k){
+    const key = k || biome;
+    const B = BIOMES[key] || BIOMES.FOREST;
+    const spec = SCENERY[B.name];
+    const scale = CAM_D / (DRAW * SEG);
+    return {
+      name: B.name,
+      sky: +(H * 0.13 * skyRiseOf(key)).toFixed(1),
+      wall: spec && spec.h
+        ? +(scale * SCENE_UNIT * W/2 * spec.h * (SCENE_GROW_LO + SCENE_GROW_SPAN)).toFixed(1)
+        : null
+    };
+  };
   /* what kind of water a place has, if any. Two different things and a check
      has to tell them apart: `sea` is a coast, which has a SHORELINE on one
      rolled side, and `overWater` is a bridge, which has none at all (RLG-112). */

@@ -7,10 +7,12 @@ RLG-104. Owner, 2026-08-31: of the four gaps offered, canyon and tunnel are the 
 build. THE TUNNEL AND THIS ARE OPPOSITE PROBLEMS - a tunnel has no distance in it, and a
 canyon's distance IS a wall.
 
-WHAT IS BEING TESTED IS THE CAPABILITY, NOT THE PLACE. Three places asked the skyline
-generator for the same missing thing before any of them was built: this canyon wall, the
-bridge towers of RLG-112, and the jungle canopy of RLG-113. So the checks below are about
-what a CONTINUOUS form must be, and the canyon is the first place to state one.
+WHAT IS BEING TESTED IS THE CAPABILITY, NOT THE PLACE. Two places asked the skyline
+generator for the same missing thing: this canyon wall and the jungle canopy of RLG-113. So
+the checks below are about what a CONTINUOUS form must be, and the canyon is the first place
+to state one. (RLG-113 counts the bridge towers as a third request. It is wrong about that,
+and RLG-112 says so in as many words: a suspension tower stands ON the road and passes OVER
+the camera, which is gantry work rather than a horizon.)
 
     IT HAS NO GAPS. Every other form walks the horizon placing a free-standing shape and
     then a space. A wall has no space in it, and no column of the sprite may reach the
@@ -235,19 +237,46 @@ def main():
 
         # ------------------------------------------------ the band stands taller
         print()
-        print('  THE WALL IS NOT DRAWN AT HORIZON SCALE')
+        print('  AND A WALL CANNOT STAND BEHIND ITSELF')
+        # Owner, 2026-09-01, having driven it: the skyline should only be as high as the
+        # canyon walls. IT WAS SIX TIMES HIGHER, because the height was a number typed
+        # into the table - 2.4 of the ordinary band, 281 pixels, against a tallest wall of
+        # 47. The horizon read as a mountain range standing behind a canyon.
+        #
+        # A RATIO CANNOT ANSWER THAT QUESTION, which is why the first version of this
+        # check passed on the build the owner rejected: it asserted the band was TALLER
+        # than an ordinary horizon, which was true and was the fault. The two heights are
+        # compared in pixels now, each computed the way it is actually drawn.
+        vs = page.evaluate("""() => {
+          const R = window.__probe.road, out = {};
+          for(const k of R.BIOME_KEYS()) out[k] = R.skylineVsWall(k);
+          return out;
+        }""")
+        can_vs = vs['CANYON']
+        print('      canyon: skyline %.1f px against a tallest wall of %.1f px'
+              % (can_vs['sky'], can_vs['wall']))
+        res.check(can_vs['wall'] is not None,
+                  'the canyon has roadside walls to measure against')
+        if can_vs['wall']:
+            res.check(can_vs['sky'] <= can_vs['wall'] * 1.05,
+                      'the skyline stands no higher than the walls in front of it',
+                      'skyline %.1f px against wall %.1f' % (can_vs['sky'], can_vs['wall']))
+            # AND NOT NOTHING EITHER. A cap satisfied by drawing no horizon at all would
+            # pass the line above and lose the thing that makes the place a canyon.
+            res.check(can_vs['sky'] > can_vs['wall'] * 0.5,
+                      'and it is still there, rather than capped away to nothing',
+                      'skyline %.1f px against wall %.1f' % (can_vs['sky'], can_vs['wall']))
         rises = page.evaluate("""() => {
           const R = window.__probe.road, out = {};
           for(const k of R.BIOME_KEYS()) out[k] = R.skyRise(k);
           return out;
         }""")
-        print('      %s' % rises)
-        res.check(rises.get('CANYON', 1) > 1,
-                  'the canyon states a taller band than an ordinary horizon',
-                  'it states %r' % rises.get('CANYON'))
         res.check(all(v == 1 for k, v in rises.items() if k != 'CANYON'),
-                  'and nothing else does, so the ordinary horizon is unchanged',
+                  'and nothing else changed its band at all',
                   str(rises))
+        res.check(rises['CANYON'] != 1,
+                  'while the canyon derives its own rather than taking the default',
+                  'it derived %r' % rises['CANYON'])
 
         # ------------------------------------------------ terrain
         print()
