@@ -678,7 +678,7 @@ var snd = {
     for(i2=0;i2<near.length;i2++){
       cc = near[i2];
       dd = Math.abs(cc.z - pos);
-      want += Math.pow(Math.max(0, 1 - dd/ENG_FALLOFF), 1.4);
+      want += Math.pow(Math.max(0, 1 - dd/(cc.earshot || ENG_FALLOFF)), 1.4);
     }
     /* the ceiling rises with the level, or normalising would just undo it */
     var TRAFFIC_CEIL = 5.0;          /* in units of one voice at full level */
@@ -700,7 +700,7 @@ var snd = {
 
          36,000 is roughly the visible road, so a car appearing at the horizon
          fades in and is loudest as it draws alongside. */
-      var fall = Math.max(0, 1 - dist / ENG_FALLOFF);
+      var fall = Math.max(0, 1 - dist / (c.earshot || ENG_FALLOFF));
       if(fall <= 0.01){ vo.a.set(90, 0, 400, 0.12); continue; }
       /* its own revs: speed against ITS top, through the same gearing */
       /* the same BODY the driveable version uses */
@@ -8640,9 +8640,30 @@ function bio(){ return BIOMES[biome] || BIOMES.FOREST; }
    ------------------------------------------------------------------------- */
 /* how wet the car's own voices get at full enclosure (RLG-105) */
 const TUNNEL_VERB = 0.75;
-/* how far away another car's engine can still be heard, in world units. 6,000
-   is about sixteen car lengths; it was 36,000, over a quarter of a mile. */
-const ENG_FALLOFF = 6000;
+/* ---- HOW FAR ANOTHER CAR'S ENGINE CARRIES (RLG-105) --------------------
+   Owner, 2026-09-01: "Let's make it about six car length."
+
+   A CAR IS 380 UNITS, so six of them is 2,280 and this is 2,300. It was 36,000
+   - over a quarter of a mile, and further than the drawn world - so every
+   vehicle on the road was contributing to the mix and none of it had anything
+   to do with what was beside you. The first cut to 6,000 was still sixteen
+   lengths; the owner drove it and asked for six.
+
+   IN LENGTHS RATHER THAN IN UNITS, because that is how the owner said it and
+   because it is the only reading that stays true if the road ever gets wider.
+   ------------------------------------------------------------------------- */
+const ENG_FALLOFF = 380 * 6;
+/* ---- AND A RIVAL CARRIES TWICE AS FAR (owner, 2026-09-01) ---------------
+   "Make opponent racers 12 car length." A rival is the thing you are actually
+   contesting the road with, so hearing one come up on you is information the
+   player can use; ordinary traffic at the same range was only ever noise.
+
+   IT IS A ROLE, NOT A BODY. The standing rulings forbid a branch that names a
+   vehicle CLASS to get a behaviour, and this does not - a supercar in traffic
+   is heard at six lengths and a roadster in the race is heard at twelve,
+   because what differs is whether it is racing you. `earshot` rides on the
+   vehicle so the mix reads a property rather than asking what something is. */
+const ENG_FALLOFF_RIVAL = 380 * 12;
 const CLIMATE_SWING = 0.25;
 /* how often it precipitates anywhere, against the table's own figures. Live
    through `API.precipScale`, because how much weather a session should carry is
@@ -13270,7 +13291,8 @@ function step(dt){
   audioTick = (audioTick + 1) % 5;
   if(audioTick === 0)
     snd.traffic(traffic.concat(cops.filter(function(k){ return k.wreck<=0; }))
-                       .concat(racers));
+                       .concat(racers.map(function(r){
+                         r.earshot = ENG_FALLOFF_RIVAL; return r; })));
   /* dirty air is quieter and rougher than clean air — the wind drops as the
      car ahead takes the blast off you */
   /* once the run is over the car makes no noise — see `coasting` */

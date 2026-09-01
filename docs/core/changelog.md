@@ -14,6 +14,19 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-4"></a>
+## [0.11.4] - 2026-09-01
+- Changed: **traffic engines carry six car lengths, rivals twelve.** Owner, having driven the first
+  cut: "Let's make it about six car length", and "Make opponent racers 12 car length." It was 36,000
+  units before this work - over a quarter of a mile, further than the drawn world - and 6,000 after
+  the first pass, which was still sixteen lengths.
+- Note: **it is a ROLE, not a body.** Three standing rulings forbid a branch naming a vehicle class to
+  get a behaviour, and this does not: a supercar in traffic is heard at six lengths and a roadster in
+  the race at twelve, because what differs is whether it is racing you. The distance rides on the
+  vehicle as `earshot`, so the mix reads a property rather than asking what something is. And the
+  numbers are written in car lengths rather than units, which stays true if the road ever gets wider
+  ([RLG-105](../fragments/RLG-105.md)).
+
 <a id="v0-11-3"></a>
 ## [0.11.3] - 2026-09-01
 - Fixed: **the tunnel walls are tight to the roadway, and the fault was draw order.** Owner: "the
