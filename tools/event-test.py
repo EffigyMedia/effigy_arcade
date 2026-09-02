@@ -106,6 +106,60 @@ class Results:
             self.fails.append(label)
 
 
+
+def drive_out(page, place, tries=80):
+    """Drive a passage the TIMER placed, and sample its slope through the last third.
+
+    It must be the timer: `startBiomeChange` and `setBiomePair` place at the horizon and
+    cancel the plan, so neither reproduces a real run's ordering - and neither arms a place
+    BEYOND the passage, which is the thing that used to clear the exit ramp.
+    """
+    page.evaluate("() => window.__probe.road.restart()")
+    page.wait_for_timeout(300)
+    for _ in range(40):
+        st = page.evaluate("() => window.__probe.road.startLine()")
+        if st['left'] <= 0 and st['go'] <= 0:
+            break
+        page.wait_for_timeout(90)
+    page.evaluate("""() => { const R = window.__probe.road;
+        R.setPhase(0.75); R.setWet(0); R.setSnow(0); R.setPool(0); }""")
+    got = False
+    for _ in range(tries):
+        page.evaluate("() => window.__probe.road.biomeCountdown(0)")
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.clearTraffic(); R.setSpd(R.MAX_SPD); }")
+        page.wait_for_timeout(40)
+        if page.evaluate("() => window.__probe.road.roadPlan()")['key'] == place:
+            got = True
+            break
+    if not got:
+        return None
+    ev = None
+    for _ in range(1400):
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.clearTraffic(); R.setSpd(R.MAX_SPD); }")
+        page.wait_for_timeout(40)
+        e = page.evaluate("() => window.__probe.road.eventNow()")
+        if e['on'] and e['len'] > 0:
+            ev = e
+            break
+    if not ev:
+        return None
+    z0, ln = ev['z0'], ev['len']
+    late, want = [], [0.70, 0.78, 0.86, 0.92, 0.97, 1.00]
+    for _ in range(5000):
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.clearTraffic(); R.setSpd(R.MAX_SPD); }")
+        page.wait_for_timeout(40)
+        t = (page.evaluate("() => window.__probe.road.pos") - z0) / ln
+        while want and t >= want[0]:
+            want.pop(0)
+            late.append(page.evaluate("() => window.__probe.road.roadSlopeAt()"))
+        if not want:
+            break
+    return {'z0': z0, 'len': ln, 'late': late} if len(late) >= 4 else None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--headed', action='store_true')
@@ -274,6 +328,38 @@ def main():
                   'the mountain was flat everywhere too: %s' % mtn)
         res.check(not page.evaluate("() => window.__probe.road.eventNow().on"),
                   'and an ordinary place arms no profile at all')
+
+        # ------------------------------------------------ driven, not pinned
+        print()
+        print('  AND THE RAMP IS STILL THERE WHEN YOU DRIVE OUT OF ONE')
+        # THIS IS THE CHECK EVERYTHING ABOVE COULD NOT MAKE. `setBiomePair` arms the event
+        # itself, so every claim above is about a profile that was installed by the harness
+        # and never disturbed. In a real run the NEXT place arms its own event, and a place
+        # boundary lands exactly where the current event ends - but the boundary is PLACED
+        # at the horizon, a draw distance before the car gets there. So `armEvent` fired
+        # with the car still 30,000 units short of the end of the bore, an ordinary place
+        # has no profile, and it cleared the one still in force.
+        #
+        # MEASURED THAT WAY: the road's slope 86 per cent through a real tunnel read -0.09
+        # where the profile asks for +0.34. The climb out was simply gone, and every check
+        # above stayed green because none of them drove.
+        for place, want in (('TUNNEL', +1), ('BRIDGE', -1)):
+            r = drive_out(page, place)
+            if r is None:
+                res.check(False, 'a %s was reached and driven out of' % place,
+                          'the timer never planned one in the tries allowed')
+                continue
+            print('      %s, slope through the last third: %s'
+                  % (place, ' '.join('%+.2f' % v for v in r['late'])))
+            best = max(r['late']) if want > 0 else min(r['late'])
+            res.check(best * want > 0.12,
+                      'a %s still %s on its way out, after a real place was placed beyond it'
+                      % (place, 'climbs' if want > 0 else 'falls'),
+                      'the most it managed was %+.3f' % best)
+            res.check(abs(r['late'][-1]) < 0.12,
+                      'and it is level again by the far mouth, so the next place inherits '
+                      'no slope',
+                      'it left the %s at %+.3f' % (place, r['late'][-1]))
 
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))

@@ -14,6 +14,39 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-25"></a>
+## [0.11.25] - 2026-09-01
+- Fixed: **a tunnel climbs back out of itself, and a bridge comes down off its deck.** Neither
+  did. Owner, 2026-09-01: "the shapes of the entrances and exits as far as their relief are
+  wrong for both the tunnel and the bridge" ([RLG-153](../fragments/RLG-153.md) item 2,
+  [RLG-148](../fragments/RLG-148.md)).
+- Note: **measured before anything was touched, which is what RLG-148 asked for.** Driving a
+  real bore and sampling the road's own integrated slope, 86 per cent of the way through read
+  `-0.09` where the profile asks for `+0.34`. The climb out was not there. A bridge lost the
+  same ramp and showed it less, because its span is longer.
+- Note: **the next place was arming its event over the top of the one still in force.** A
+  place's boundary lands exactly where the current event ends, which is right - but a boundary
+  is PLACED at the horizon, a draw distance before the car reaches it. So `armEvent` fired with
+  the car still 30,000 units short of the end of the bore, and an ordinary place has no
+  profile, so it cleared the bore's. Every event lost its last 30,000 units.
+- Changed: **a new event waits until the car has driven out of the old one.** They are adjacent
+  rather than overlapping - the new one begins exactly where the old ends - so nothing is lost
+  by waiting and no stretch of road is ever owned by two profiles.
+- Fixed: **and the shape is handed over rather than switched on.** The profile REPLACES the
+  terrain's slope, which is right and is why it could not be another entry in the relief table.
+  But a replacement is a switch, and it was thrown 30,000 units before the mouth - a whole
+  drawn road's worth, every visible slice changing its slope in one frame. Over the first and
+  last 4 per cent of an event the two are now MIXED. The profile is already flat at both ends
+  by construction, so the shape is unchanged; only the handover is.
+- Changed: **`setBiomePair` and `startBiomeChange` arm outright.** They stand in for a placement
+  AND for the miles of driving after it, so a place they pin has to take effect at once. Left
+  to wait, pinning a MOUNTAIN after a BRIDGE held the bridge's deck in force.
+- Added: **`event-test` drives a passage the TIMER placed and samples its exit.** Every claim
+  that file made before this was about a profile the harness installed and nothing ever
+  disturbed, which is exactly why a green run said nothing about the defect. A tunnel now reads
+  `+0.28 +0.33` through its last third and `+0.01` at the mouth; a bridge `-0.40 -0.49` and
+  `-0.02`.
+
 <a id="v0-11-24"></a>
 ## [0.11.24] - 2026-09-01
 - Fixed: **the inside of a tunnel goes past you now.** Owner, 2026-09-01, from the device: "the

@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.24';
+window.ROAD_BUILD = '0.11.25';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -1546,8 +1546,13 @@ function rebuildBend(){
        its grade (RLG-112). `dy` is replaced rather than added to, because a flat
        deck means the slope is zero and not that the grade is. */
     const au = authoredSlope(z);
-    if(au === null) dy += gradeAt(z) * 0.010;
-    else            dy  = au;
+    if(au === null){ dy += gradeAt(z) * 0.010; }
+    else {
+      /* what the terrain would have done here, so the two are MIXED at a mouth
+         rather than switched - see `authoredSlope` (RLG-153) */
+      const nat = dy + gradeAt(z) * 0.010;
+      dy = nat + (au.k - nat) * au.w;
+    }
     y  += dy;
     /* the land, which never hears the profile (RLG-143) */
     dyL += gradeAt(z) * 0.010;
@@ -9965,11 +9970,28 @@ function profileSlope(t, P){
 /* the slope this stretch of road is told to have, or null if it is ordinary
    terrain. One call per integration step, and it answers null everywhere on a
    board with no event on it. */
+/* ---- HOW FAR INTO AN EVENT THE AUTHORED SHAPE TAKES OVER (RLG-153) -----
+   The profile REPLACES the terrain's slope, which is right and is why an
+   authored shape could not be another entry in the relief table. But a
+   replacement is a SWITCH, and it was thrown at whatever moment the event
+   happened to be armed - which is 30,000 units before the mouth, a whole drawn
+   road's worth. Every visible slice changed its slope in one frame, and that is
+   the owner's "very jarring" seen from the inside.
+
+   SO THE HANDOVER IS A RUN RATHER THAN AN INSTANT. Over the first and last 4
+   per cent of an event the authored slope is mixed with the terrain's own
+   instead of replacing it. The profile is already flat at both ends - it is
+   zero at t=0 and t=1 by construction - so this changes nothing about the
+   SHAPE. It only stops the road being handed over in a single frame.
+   ------------------------------------------------------------------------ */
+const EVENT_BLEND = 0.04;
 function authoredSlope(z){
   if(!eventProfile || eventLen <= 0) return null;
   const t = (z - eventZ0) / eventLen;
   if(t < 0 || t > 1) return null;
-  return profileSlope(t, eventProfile);
+  /* 0 at each mouth, 1 once the event owns the road */
+  const w = Math.min(1, Math.min(t, 1 - t) / EVENT_BLEND);
+  return { k: profileSlope(t, eventProfile), w: w };
 }
 /* ---- WHICH SIDE THE WATER IS ON (RLG-059) --------------------------------
    Rolled when a place is chosen, not when it is drawn: the coast has to be on
@@ -10219,8 +10241,9 @@ function openBiome(){
      ---------------------------------------------------------------- */
   biomeNext = placeSpan(biome);
   /* a run cannot open in an event - RLG-140 sees to that - so there is never an
-     authored profile in force at the start of one */
+     authored profile in force at the start of one, and nothing is waiting */
   eventProfile = null; eventLen = 0;
+  pendProfile = null; pendLen = 0;
 }
 
 function stepBiome(dt){
@@ -10457,13 +10480,50 @@ function stepBiome(dt){
    AND IT IS CLEARED BY THE NEXT PLACE, whatever that is. Only one change is ever
    in flight, so one record is enough.
    ------------------------------------------------------------------------- */
-function armEvent(key, z0){
+/* ---- AN EVENT IS NOT OVER UNTIL YOU HAVE DRIVEN OUT OF IT (RLG-153) -----
+   MEASURED, AND IT IS WHY A TUNNEL HAD NO EXIT RAMP. Sampled through a real
+   bore, the road's slope at 86 per cent of the way in read -0.09 where the
+   profile asks for +0.34 - the climb back to the surface simply was not there.
+
+   THE NEXT PLACE WAS ARMING ITS EVENT OVER THE TOP OF THIS ONE. A place's
+   boundary lands exactly where the current event ends, which is right - but the
+   boundary is PLACED at the horizon, a draw distance before the car reaches it.
+   So `armEvent` fired with the car still 30,000 units short of the end of the
+   tunnel, and an ordinary place has no profile, so it cleared the tunnel's.
+   Every event lost its last 30,000 units, which for a bore is most of the climb
+   out. A bridge lost the same and it is a longer span, so it showed less.
+
+   SO A NEW EVENT WAITS. It is held until the car has driven out of the one it
+   is replacing, and since the new one begins exactly where the old one ends,
+   nothing is lost by waiting and no road is ever owned by two profiles. The
+   blend in `authoredSlope` is what makes the handover itself invisible.
+   ------------------------------------------------------------------------ */
+let pendProfile = null, pendZ0 = 0, pendLen = 0;
+function armEvent(key, z0, now){
   const B = BIOMES[key];
-  if(B && B.profile && B.span){
-    eventProfile = B.profile; eventZ0 = z0; eventLen = B.span * MILE;
-  } else {
-    eventProfile = null; eventLen = 0;
+  const prof = (B && B.profile && B.span) ? B.profile : null;
+  const len = prof ? B.span * MILE : 0;
+  /* ---- `now` IS FOR THE DEBUG SETTERS AND NOTHING ELSE (RLG-153) ------
+     `setBiomePair` and `startBiomeChange` stand in for a placement AND for the
+     miles of driving that follow it, so a place they pin has to take effect at
+     once. Left to wait, pinning a pair to a MOUNTAIN after a BRIDGE held the
+     bridge's deck in force and `event-test` said so immediately. The real
+     placement never passes this. */
+  /* is the event now in force still ahead of the car anywhere? */
+  if(!now && eventProfile && eventLen > 0 && pos < eventZ0 + eventLen){
+    pendProfile = prof; pendZ0 = z0; pendLen = len;
+    return;
   }
+  pendProfile = null; pendLen = 0;
+  eventProfile = prof; eventZ0 = z0; eventLen = len;
+}
+/* called every step: the moment the road runs out from under the old event, the
+   one waiting behind it takes over */
+function stepEvent(){
+  if(pendLen === 0 && !pendProfile) return;
+  if(eventProfile && eventLen > 0 && pos < eventZ0 + eventLen) return;
+  eventProfile = pendProfile; eventZ0 = pendZ0; eventLen = pendLen;
+  pendProfile = null; pendLen = 0;
 }
 
 /* ---- THE SKY HAS COVER, AND IT IS A RANGE (RLG-057) ---------------------
@@ -13402,6 +13462,9 @@ function step(dt){
 
   /* `runSeconds` was removed with the TEST DRIVE unlock triggers (RLG-049): the 180mph average was its only reader. */
   stepBiome(dt);
+  /* the waiting event takes over the moment the old one is behind you, and it
+     has to run AFTER stepBiome, which is what arms one (RLG-153) */
+  stepEvent();
   stepWeather(dt);
   stepLens(dt);
   if(CFG.onStep) CFG.onStep(dt);
@@ -21572,7 +21635,7 @@ requestAnimationFrame(frameLoop);
        measured a bore that began at the camera - which is exactly the state the
        real game never produces, and it read as a fault in the engine rather
        than a gap in the setter (RLG-144). */
-    armEvent(want, biomeEdge * SEG);
+    armEvent(want, biomeEdge * SEG, true);
     return API.biomeSweep();
   };
   /* the hour is an argument so a harness can ask what a biome looks like at
@@ -21610,7 +21673,7 @@ requestAnimationFrame(frameLoop);
        rather than on a ramp.
        ------------------------------------------------------------- */
     armEvent(biomeTo, pos - (BIOMES[biomeTo] && BIOMES[biomeTo].span
-                             ? BIOMES[biomeTo].span * MILE * 0.20 : 0));
+                             ? BIOMES[biomeTo].span * MILE * 0.20 : 0), true);
     rebuildBend();
     return { from:biomeFrom, to:biomeTo, event:!!eventProfile,
              tempFrom:+climFrom.temp.toFixed(3), tempTo:+climTo.temp.toFixed(3) };
