@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.27';
+window.ROAD_BUILD = '0.11.28';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -15818,6 +15818,19 @@ const TRUSS = {
   h:      260,  /* the top rail, in world units above the deck                  */
   post:     3,  /* a stanchion every N segments                                 */
   rope:     6,  /* a suspender rope every N segments                            */
+  /* ---- AND AN EXPANSION JOINT EVERY N SEGMENTS (RLG-112) -------------
+     RLG-112 says a span reads as a bridge because of its DECK, its JOINTS and
+     the rail down each side. The rail was built and the other two were not, so
+     a crossing was ironwork standing over ordinary tarmac.
+
+     A JOINT IS THE THING YOU HEAR. Every driver knows the double thump of a
+     deck joint, and it is the one detail of a bridge that is felt from inside
+     the car rather than seen beside it. 9 segments is 1,800 units, about
+     twenty-one metres on the anchor the fleet uses, which is a real span
+     between joints - and at the speed the interstate is driven it is about
+     three a second, so they read as a rhythm rather than as a texture.
+     -------------------------------------------------------------- */
+  joint:    9,
   /* ---- THE IRONWORK IS SIZED FROM THE REAL THING (RLG-112) -----------
      A car is 380 units and about four and a half metres, so a metre is close
      to 84 units. The Golden Gate's towers stand about 155 metres over its
@@ -16886,11 +16899,26 @@ function drawDeckFar(B){
   }
 }
 
-function tarmacTone(dark, fade){
+/* ---- A DECK IS NOT ASPHALT (RLG-112) -----------------------------------
+   A bridge deck is a structure carrying a running surface, and it reads paler
+   and greyer than a road laid on the ground - steel and concrete rather than
+   bitumen. `onDeck` lifts the base colour toward that BEFORE the weather and
+   the hour are applied, so a wet deck at night is still a deck and the snow,
+   the rain and the sheen all go on reading through one expression.
+
+   IT IS NOT A SECOND PAINTER, which is the point. A deck that had its own tone
+   function would be a second answer to what colour a road is, and it would stop
+   agreeing with the first the day anyone tuned the wet wash - which this file
+   has been caught by four times.
+   ------------------------------------------------------------------------ */
+const DECK_FACE = '#4a4a52';
+function tarmacTone(dark, fade, onDeck){
   const nAmt = nightFall(), gAmt = goldenHour();
   const snowLight = nAmt > 0.5 ? SNOW_NIGHT : gAmt > 0.25 ? SNOW_GOLD : SNOW_DAY;
   const rainDark = snowy > 0.5 ? 0 : Math.min(1, wet * 0.40 + pool * 0.60);
-  const wetRoad = mixRGB(mixRGB(dark ? '#232231' : '#1e1d2a', settle * 0.55, snowLight),
+  const base = onDeck ? mixRGB(dark ? '#232231' : '#1e1d2a', 0.62, DECK_FACE)
+                      : (dark ? '#232231' : '#1e1d2a');
+  const wetRoad = mixRGB(mixRGB(base, settle * 0.55, snowLight),
                          rainDark * 0.55, WET_DARK);
   return rainDark > 0 ? mixRGB(wetRoad, rainDark * 0.30 * (1 - fade), WET_SHEEN) : wetRoad;
 }
@@ -17356,8 +17384,33 @@ function drawRoad(){
        ordering matters: the reflection sits ON the wet surface, so soaking the
        road after reflecting it would wash the reflection away.
        -------------------------------------------------------------------- */
-    ctx.fillStyle = tarmacTone(dark, fade);
+    /* a span carries its running surface on a deck, and a deck is not asphalt */
+    const onDeck = !!bioAt(idx).overWater;
+    ctx.fillStyle = tarmacTone(dark, fade, onDeck);
     quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p2.x+p2.w, y2, p2.x-p2.w, y2);
+
+    /* ---- AND AN EXPANSION JOINT ACROSS IT (RLG-112) ------------------
+       The third of the three things RLG-112 says make a span read as a bridge.
+       It is drawn on the SAME world cycle the stanchions use - `postIn` asks
+       the world rather than a segment index, so the joints keep their spacing
+       whichever view walks over them and however big its steps are.
+
+       A JOINT IS A GAP WITH A PLATE EITHER SIDE OF IT. The dark band is the
+       gap and the pale line on its near lip is the steel catching the light,
+       which is what stops it reading as a painted stripe. It runs the full
+       width of the carriageway because a joint is structural: it crosses
+       everything the deck carries, kerb to kerb.
+       -------------------------------------------------------------- */
+    if(onDeck && postIn(z1, z2, TRUSS.joint) && p1.w > 2){
+      const jh = Math.max(0.8, (y1 - y2) * 0.34);
+      ctx.fillStyle = 'rgba(22,22,28,0.85)';
+      quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p1.x+p1.w, y1-jh, p1.x-p1.w, y1-jh);
+      if(jh > 1.6){
+        ctx.fillStyle = 'rgba(178,182,192,' + (0.34 + 0.30 * fade) + ')';
+        const lip = Math.max(0.6, jh * 0.30);
+        quad(p1.x-p1.w, y1, p1.x+p1.w, y1, p1.x+p1.w, y1-lip, p1.x-p1.w, y1-lip);
+      }
+    }
 
     /* the paint goes under the snow before the tarmac does - a marking is the
        first thing a cover takes, and it is what tells you the road is covered
@@ -19564,7 +19617,17 @@ function drawMirrorFull(mx, my, mw, mh){
       if(sideRoll < 0){ if(msh > mx) ctx.fillRect(mx, a.y, msh - mx, my + mh - a.y); }
       else { if(msh < mx + mw) ctx.fillRect(msh, a.y, mx + mw - msh, my + mh - a.y); }
     }
-    ctx.fillStyle = mixRGB(mixRGB(dark ? '#1e232c' : '#191d25', mSnowRoad, mLight),
+    /* ---- AND THE GLASS SHOWS THE SAME DECK (RLG-112) ----------------
+       The mirror keeps its own tone expression - it is a 44-pixel pane and its
+       base greys are lifted for legibility, which the note above records - so
+       this cannot simply call `tarmacTone`. What it MUST NOT do is disagree
+       about what surface is under the car: a bridge seen out of the windscreen
+       and asphalt seen in the glass is two roads. The same lift toward
+       `DECK_FACE`, applied at the same point in the expression. */
+    const mDeck = !!mB.overWater;
+    ctx.fillStyle = mixRGB(mixRGB(mDeck
+                             ? mixRGB(dark ? '#1e232c' : '#191d25', 0.62, DECK_FACE)
+                             : (dark ? '#1e232c' : '#191d25'), mSnowRoad, mLight),
                            mRain * 0.55, WET_DARK);
     ctx.beginPath();
     ctx.moveTo(a.x - a.w, a.y); ctx.lineTo(a.x + a.w, a.y);

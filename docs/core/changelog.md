@@ -14,6 +14,32 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-28"></a>
+## [0.11.28] - 2026-09-02
+- Added: **a bridge has a deck under the car, and expansion joints across it.**
+  [RLG-112](../fragments/RLG-112.md) says a span reads as a bridge because of its deck, its
+  joints and the rail down each side. The rail was built and the other two were not, so a
+  crossing was ironwork standing over ordinary tarmac.
+- Added: **the deck.** A bridge carries its running surface on a structure, and that reads paler
+  and greyer than a road laid on the ground - steel and concrete rather than bitumen. The lift
+  is applied to the BASE colour before the weather and the hour, so a wet deck at night is still
+  a deck and the snow, the rain and the sheen all go on reading through one expression.
+- Note: **it is not a second painter, which is the point.** A deck with its own tone function
+  would be a second answer to what colour a road is, and it would stop agreeing with the first
+  the day anyone tuned the wet wash - the fault this file has been caught by four times.
+- Added: **the joints, on the world cycle the stanchions already use.** `postIn` asks the WORLD
+  rather than a segment index, so they keep their spacing whichever view walks over them and
+  however big its steps are. Nine segments is 1,800 units, about twenty-one metres on the anchor
+  the fleet uses, and about three a second at the speed the interstate is driven - a rhythm
+  rather than a texture.
+- Note: **a joint is a gap with a plate either side of it.** The dark band is the gap and the
+  pale line on its near lip is the steel catching the light, which is what stops it reading as a
+  painted stripe. It runs kerb to kerb because a joint is structural.
+- Changed: **and the mirror shows the same deck.** The glass keeps its own tone expression - it
+  is a 44-pixel pane and its base greys are lifted for legibility - so it cannot simply call
+  `tarmacTone`. What it must not do is disagree about what surface is under the car, so it takes
+  the same lift at the same point in its own expression.
+
 <a id="v0-11-27"></a>
 ## [0.11.27] - 2026-09-01
 - Fixed: **the drops on the glass stop when the fall does**, which they did not. Owner,
