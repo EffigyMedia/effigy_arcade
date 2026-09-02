@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.25';
+window.ROAD_BUILD = '0.11.26';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -10242,8 +10242,8 @@ function openBiome(){
   biomeNext = placeSpan(biome);
   /* a run cannot open in an event - RLG-140 sees to that - so there is never an
      authored profile in force at the start of one, and nothing is waiting */
-  eventProfile = null; eventLen = 0;
-  pendProfile = null; pendLen = 0;
+  eventProfile = null; eventLen = 0; eventKey = null;
+  pendArmed = 0; pendKey = null; pendProfile = null; pendLen = 0;
 }
 
 function stepBiome(dt){
@@ -10498,7 +10498,18 @@ function stepBiome(dt){
    nothing is lost by waiting and no road is ever owned by two profiles. The
    blend in `authoredSlope` is what makes the handover itself invisible.
    ------------------------------------------------------------------------ */
-let pendProfile = null, pendZ0 = 0, pendLen = 0;
+/* ---- A PENDING NOTHING IS STILL PENDING (RLG-153) ----------------------
+   `pendArmed` exists because the first build of this could not tell "a place
+   with no profile is waiting" from "nothing is waiting" - both left `pendLen`
+   at 0 and `pendProfile` at null, so the handover never ran and a tunnel's
+   event stayed armed for the rest of the run. Measured: eight thousand units
+   past the exit, `eventNow().on` was still true and the bore's reach was still
+   pinned to its 600-unit floor. A flag, not an inference.
+   ------------------------------------------------------------------------ */
+let pendArmed = 0, pendKey = null, pendProfile = null, pendZ0 = 0, pendLen = 0;
+/* which place armed the event now in force, so the bore can ask whether the
+   thing it is inside is a tunnel rather than inferring it from the light */
+let eventKey = null;
 function armEvent(key, z0, now){
   const B = BIOMES[key];
   const prof = (B && B.profile && B.span) ? B.profile : null;
@@ -10511,19 +10522,22 @@ function armEvent(key, z0, now){
      placement never passes this. */
   /* is the event now in force still ahead of the car anywhere? */
   if(!now && eventProfile && eventLen > 0 && pos < eventZ0 + eventLen){
-    pendProfile = prof; pendZ0 = z0; pendLen = len;
+    pendArmed = 1; pendKey = key; pendProfile = prof; pendZ0 = z0; pendLen = len;
     return;
   }
-  pendProfile = null; pendLen = 0;
+  pendArmed = 0; pendKey = null; pendProfile = null; pendLen = 0;
+  eventKey = prof ? key : null;
   eventProfile = prof; eventZ0 = z0; eventLen = len;
 }
 /* called every step: the moment the road runs out from under the old event, the
-   one waiting behind it takes over */
+   one waiting behind it takes over - and a place with no profile at all is a
+   perfectly good thing to be waiting, which is what `pendArmed` is for */
 function stepEvent(){
-  if(pendLen === 0 && !pendProfile) return;
+  if(!pendArmed) return;
   if(eventProfile && eventLen > 0 && pos < eventZ0 + eventLen) return;
+  eventKey = pendProfile ? pendKey : null;
   eventProfile = pendProfile; eventZ0 = pendZ0; eventLen = pendLen;
-  pendProfile = null; pendLen = 0;
+  pendArmed = 0; pendKey = null; pendProfile = null; pendLen = 0;
 }
 
 /* ---- THE SKY HAS COVER, AND IT IS A RANGE (RLG-057) ---------------------
@@ -15834,12 +15848,59 @@ let BORE = {
    ahead of you that grows as you close on it; inside, it starts at the camera.
    The darkness goes on ramping and gets its real job back.
    ------------------------------------------------------------------------- */
+/* ---- A BORE IS A STRETCH OF ROAD, NOT A LEVEL OF LIGHT (RLG-153) --------
+   Owner, 2026-09-01: "the way biomes transition into the tunnel and out of the
+   tunnel is also very jarring."
+
+   MEASURED THROUGH BOTH MOUTHS, AND THE FAULT IS THAT THE WALLS ASKED THE WRONG
+   QUESTION. `drawBore` began with `if(placeDark() <= 0.01) return`, so whether
+   a tunnel EXISTED was decided by how dark it was - and the darkness ramps.
+
+     GOING IN, the darkness was still 0.000 a hundred units past the mouth and
+     0.056 three hundred after that. So the bore was drawn by nothing at all
+     while you approached a hole in a cliff, and then the whole tube arrived
+     SOLID in one frame - the walls are painted at full opacity by RLG-144, and
+     rightly, because a tunnel is there or it is not. You were already inside it
+     when it appeared.
+
+     COMING OUT, the darkness eases over the full crossing for the
+     photosensitivity reason RLG-060 gives - so the walls went on being drawn
+     for thousands of units after the exit, over the next place, with their far
+     end springing back to the full 33,000 the moment the event cleared.
+
+   SO EXISTENCE IS GEOMETRY NOW AND THE LIGHT IS ONLY LIGHT. The tube is drawn
+   exactly where the tunnel is: from its own mouth, or from the camera once that
+   is behind, to its own far end, and not at all once you are past it. Nothing
+   about it fades in or springs out. `placeDark` goes on doing the one job
+   RLG-144 gave it back - how dark it is in there - and the exit ramp it runs
+   for comfort now dims the WORLD rather than sustaining a tunnel that has ended.
+   ------------------------------------------------------------------------ */
+function boreSpan(){
+  if(!eventProfile || eventLen <= 0 || !eventKey) return null;
+  const B = BIOMES[eventKey];
+  if(!B || !B.dark) return null;                 /* a bridge is not a bore */
+  let z1 = eventZ0 + eventLen;
+  /* ---- AND IT RUNS TO THE PORTAL, NOT TO THE PROFILE (RLG-153) --------
+     The profile's span and the place's boundary are meant to be the same point
+     and they are only nearly it: the boundary is placed at the generator's
+     frontier, which overshoots by whatever the last segment's length happened
+     to be. Measured at an exit, the walls stopped about three thousand units
+     before the rock face - so you drove out of a tunnel into open tunnel-
+     coloured ground and then through a cliff. The bore ends where the PLACE
+     does, which is the portal, and the last few thousand units of wall are
+     over road the profile has already levelled. */
+  const be = biomeEdge > -1e8 ? biomeEdge * SEG : 0;
+  if(be > z1 && be - z1 < BORE.far) z1 = be;
+  if(pos >= z1) return null;                     /* driven out the far end */
+  return { z0: eventZ0, z1: z1 };
+}
 function boreMouth(){
   /* the near end of what exists: the tunnel's own start, or the camera once it
      is behind you. `eventZ0` is armed when the place is placed (RLG-112). */
   const own = pos + PLAYER_Z + 40;
-  if(!eventLen || !eventProfile) return own;
-  return Math.max(own, eventZ0);
+  const sp = boreSpan();
+  if(!sp) return own;
+  return Math.max(own, sp.z0);
 }
 /* ---- ONE CROSS-SECTION, ASKED FOR AT A DISTANCE (RLG-153) ---------------
    The tube's shape at a given z. It was inline in `borePoints` and there is a
@@ -15903,8 +15964,9 @@ function borePoints(far){
   const pts = [];
   const z0 = boreMouth();
   /* and it stops at the far portal rather than running on past it */
+  const sp = boreSpan();
   const reach = Math.min(far === undefined ? BORE.far : far,
-                         eventLen ? Math.max(600, eventZ0 + eventLen - z0) : BORE.far);
+                         sp ? Math.max(600, sp.z1 - z0) : BORE.far);
   for(let i = 0; i <= BORE.segs; i++){
     const t = i / BORE.segs;
     /* SQUARED, so the near mouth gets most of the samples. Evenly in distance
@@ -15935,16 +15997,16 @@ const crownOf = (q) => q.top - (q.xr - q.xl) * BORE.arch;
 let borePts = null, boreRing = null;
 function drawBore(){
   borePts = null; boreRing = null;
-  const d = placeDark();
-  if(d <= 0.01) return;
+  /* the tube exists where the TUNNEL is, not where the light is (RLG-153) */
+  if(!boreSpan()) return;
   const pts = borePoints();
   if(pts.length < 3) return;
   borePts = pts;
   /* the rings, at world positions, which are what actually go past (RLG-153) */
   const z0 = boreMouth();
-  const reach = Math.min(BORE.far,
-                         eventLen ? Math.max(600, eventZ0 + eventLen - z0) : BORE.far);
-  boreRing = boreRings(z0, reach);
+  const sp0 = boreSpan();
+  boreRing = boreRings(z0, Math.min(BORE.far,
+                                    sp0 ? Math.max(600, sp0.z1 - z0) : BORE.far));
   ctx.save();
   /* SOLID. The walls are not a matter of degree - see `borePoints` (RLG-144). */
 
@@ -16061,8 +16123,17 @@ function drawBore(){
 function drawBoreDepth(){
   const pts = borePts;
   if(!pts) return;
-  const d = placeDark();
-  const lit = lampsOn();
+  /* ---- THE FAR END IS DARK BECAUSE IT IS FAR (RLG-153) ---------------
+     Both of these used to be scaled by `placeDark`, which was the same mistake
+     the walls made: the tube's own depth is not a property of how far through
+     the crossing you are. Approaching a mouth the darkness is still zero, so a
+     bore drawn there had no black far end and no lamps in it - a pale, endless
+     corridor seen through a hole in a cliff. A tunnel's far end is black at
+     every moment, and its lights are on because it is a lit tunnel.
+
+     `placeDark` is not consulted here at all any more. It dims the WORLD on the
+     way out, which is the comfort ramp RLG-060 asked for and the only job
+     RLG-144 left it. */
   ctx.save();
   /* ---- AND THE LIGHTING, WHICH IS A STRIP AND NOT A ROW OF BLOBS -----
      Both photographs show a continuous run down the crown and a second along
@@ -16096,7 +16167,7 @@ function drawBoreDepth(){
   for(let i2 = fadeFrom; i2 < pts.length; i2++){
     const a = pts[i2 - 1], q = pts[i2];
     const t = (i2 - fadeFrom + 1) / (pts.length - fadeFrom);
-    ctx.globalAlpha = Math.min(1, d) * Math.min(1, t * t * 1.35);
+    ctx.globalAlpha = Math.min(1, t * t * 1.35);
     ctx.fillStyle = '#04060a';
     ctx.beginPath();
     ctx.moveTo(a.xl, a.y);
@@ -16110,9 +16181,9 @@ function drawBoreDepth(){
     ctx.closePath();
     ctx.fill();
   }
-  ctx.globalAlpha = Math.min(1, d);
+  ctx.globalAlpha = 1;
 
-  if(lit > 0.02){
+  {
     /* ---- TWO ROWS OF INTERMITTENT LUMINAIRES (RLG-105) ---------------
        Owner, 2026-09-01: "let's put back the two rows of intermittent overhead
        light lamps." They were replaced by continuous runs after the reference
@@ -16123,7 +16194,7 @@ function drawBoreDepth(){
 
        They hang from the CEILING either side of the crown, so they follow the
        bore's own curve and bend with the road. */
-    ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40);
+    ctx.globalAlpha = 1;
     /* ---- AND THEY HANG ON THE RINGS, SO THEY FLICK PAST (RLG-153) ---
        The note above says a row of lamps flicking past is the oldest speed cue
        there is. It was not one: the lamps were placed at fixed distances ahead
@@ -16145,11 +16216,11 @@ function drawBoreDepth(){
       ctx.fillRect(mid + wide * 0.26 - lw / 2, y, lw, lh);
       /* the pool each one throws onto the vault, which is what stops them
          reading as stickers on a flat ceiling */
-      ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40) * 0.22;
+      ctx.globalAlpha = 0.22;
       ctx.fillStyle = '#ffe9bd';
       ctx.fillRect(mid - wide * 0.26 - lw, y - lh * 0.6, lw * 2, lh * 2.4);
       ctx.fillRect(mid + wide * 0.26 - lw, y - lh * 0.6, lw * 2, lh * 2.4);
-      ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40);
+      ctx.globalAlpha = 1;
     }
   }
   ctx.restore();

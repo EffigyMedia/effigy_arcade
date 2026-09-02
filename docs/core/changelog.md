@@ -14,6 +14,42 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-26"></a>
+## [0.11.26] - 2026-09-01
+- Fixed: **a bore exists where the tunnel is, not where the light is.** Owner, 2026-09-01: "the
+  way biomes transition into the tunnel and out of the tunnel is also very jarring"
+  ([RLG-153](../fragments/RLG-153.md) item 3).
+- Note: **measured through both mouths before anything was changed.** `drawBore` began with
+  `if(placeDark() <= 0.01) return`, so whether a tunnel EXISTED was decided by how dark it was -
+  and the darkness ramps. GOING IN, the darkness was still 0.000 a hundred units past the mouth
+  and 0.056 three hundred after that: nothing was drawn while you approached a hole in a cliff,
+  and then the whole tube arrived SOLID in one frame, because the walls are painted at full
+  opacity by [RLG-144](../fragments/RLG-144.md) and rightly so. You were already inside it when
+  it appeared. COMING OUT, the darkness eases over the full crossing for the photosensitivity
+  reason [RLG-060](../fragments/RLG-060.md) gives, so the walls went on being drawn for
+  thousands of units over the next place.
+- Changed: **existence is geometry now.** `boreSpan` gives the stretch of road the tunnel
+  occupies, and the tube is drawn from its own mouth - or from the camera once that is behind -
+  to its own far end, and not at all past it. Nothing fades in and nothing springs out.
+  `placeDark` keeps the one job RLG-144 gave it back: how dark it is in there.
+- Changed: **the far end is dark because it is far.** The depth fade and the ceiling lamps were
+  both scaled by `placeDark`, which is the same mistake the walls made. Approaching a mouth the
+  darkness is zero, so the bore had no black far end and no lamps in it - a pale, endless
+  corridor seen through a hole in a cliff. Neither consults `placeDark` any more.
+- Changed: **and the bore runs to the portal.** The profile's span and the place's boundary are
+  meant to be the same point and are only nearly it, because the boundary is placed at the
+  generator's frontier which overshoots by a segment. Measured at an exit, the walls stopped
+  about three thousand units before the rock face - so you drove out of a tunnel into open
+  tunnel-coloured ground and then through a cliff.
+- Fixed: **a pending nothing is still pending**, which was a defect introduced at
+  [0.11.25](#v0-11-25) and caught by this measurement. A place with no profile waiting to take
+  over left `pendLen` at 0 and `pendProfile` at null, which the handover read as "nothing is
+  waiting" - so a tunnel's event stayed armed for the rest of the run. Eight thousand units past
+  the exit, `eventNow().on` was still true. It is a flag now, not an inference.
+- Note: **what is still open is the owner's call and cannot be measured here.** The portal fills
+  the frame from five thousand units out, and near the exit the tube is short enough that the
+  next place floods in around it. Both are geometrically honest and neither is obviously right.
+
 <a id="v0-11-25"></a>
 ## [0.11.25] - 2026-09-01
 - Fixed: **a tunnel climbs back out of itself, and a bridge comes down off its deck.** Neither
