@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.22';
+window.ROAD_BUILD = '0.11.23';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -5611,6 +5611,34 @@ function ROCKFACE(g, W2, H2, i, tone){
 
 /* a stable pseudo-random in 0..1 from a segment index and a salt. Two calls with
    the same pair always agree, which is what stops the roadside boiling. */
+/* ---- A FIELD IS A RUN OF SEGMENTS (RLG-145) -----------------------------
+   Owner, 2026-09-01: "can we also alternate the cornfields with pastures? In
+   these pastures should either be horses or cows never at the same time."
+
+   NEVER AT THE SAME TIME IS THE PART THAT NEEDS A MECHANISM. Everything the
+   scenery places is rolled per SEGMENT, which is right for a scatter and wrong
+   for a field: rolled that way a pasture holds a horse, then a cow, then a
+   horse, every two hundred units. So anything true of a whole FIELD is decided
+   once, here, and every segment inside it reads the same answer - the same
+   one-roll-read-by-many rule the sea's side and the crop's side already follow.
+
+   90 SEGMENTS IS ABOUT 18,000 UNITS, or a bit over two hundred metres on the
+   anchor the fleet uses. The road is drawn 150 segments ahead, so a field and
+   its neighbour are both in the picture and the boundary between them is
+   visible - which is the whole of what "alternate" has to look like.
+   ------------------------------------------------------------------------ */
+const FIELD_SEGS = 90;
+function fieldOf(idx){ return Math.floor(idx / FIELD_SEGS); }
+/* corn, then pasture, then corn. STRICT, not rolled: a coin gives two pastures
+   in a row about a quarter of the time and two adjacent pastures are one big
+   pasture, which is the thing that stops reading as alternation. Fields really
+   are laid out in a grid, so the regularity is the subject rather than a
+   shortcut. Which one a given farmland opens on is arbitrary, because `idx` is
+   an absolute segment index and a place begins wherever it begins. */
+function fieldSpecFor(B, idx){
+  if(!B.pasture) return B.crop;
+  return (fieldOf(idx) & 1) ? B.pasture : B.crop;
+}
 function sceneRand(idx, salt){
   let h = (idx * 374761393 + salt * 668265263) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
@@ -5901,6 +5929,70 @@ const SCENERY = {
                 g.beginPath();
                 g.ellipse(x + lean, top + H2*0.10, W2*0.055, H2*0.075, 0, 0, Math.PI*2);
                 g.fill();
+              }
+            } },
+  /* ---- AND THE OTHER HALF OF THE CROP SIDE IS PASTURE (RLG-145) -------
+     Owner, 2026-09-01: "can we also alternate the cornfields with pastures? In
+     these pastures should either be horses or cows never at the same time."
+
+     IT IS THE CROP MECHANISM AGAIN AND NOTHING NEW. A place names the spec its
+     rolled side draws; farmland now names two and `fieldSpecFor` alternates
+     them field by field. Nothing in the painter learned what a pasture is.
+
+     `herd` IS THE WHOLE OF "NEVER AT THE SAME TIME". Every other spec picks its
+     kind from a per-segment roll, which for two animals means a horse beside a
+     cow beside a horse. With `herd` set the kind comes from the FIELD's roll
+     instead, so a pasture holds one animal and the next one holds whichever it
+     rolled. Two kinds, one per field.
+
+     SPARSE, AND NOT A LATTICE. A cornfield is planted and its regularity is the
+     point; livestock stand about a field in no order at all, so this keeps the
+     density roll and the jitter that the crop spec deliberately drops. Three
+     ranks reaching 11 units out, at a tenth density, is a handful of animals
+     across a field rather than a herd packed against the fence.
+     ------------------------------------------------------------------ */
+  FARMLAND_PASTURE: { density:0.11, rowDensity:0.11, rows:3, out:0.55, outFar:11.0,
+            w:0.34, h:0.26, spread:2.6, kinds:2, herd:true,
+            build:(g,W2,H2,i)=>{
+              /* 0 is horses, 1 is cows, and a field never holds both */
+              const horse = i === 0;
+              const ground = H2 * 0.94;
+              const bodyH = H2 * 0.30, bodyW = W2 * 0.56, bx = W2 * 0.16;
+              const legH = H2 * 0.30;
+              const by = ground - legH - bodyH;
+              const hide = horse ? '#6b4326' : '#2f2a26';
+              /* the legs first, so the barrel sits over them */
+              g.fillStyle = hide;
+              const lw = Math.max(1, W2 * 0.045);
+              for(const f of [0.10, 0.28, 0.66, 0.86])
+                g.fillRect(bx + bodyW * f, ground - legH, lw, legH);
+              /* the barrel */
+              g.fillRect(bx, by, bodyW, bodyH);
+              /* the neck and head, up and forward on a horse, low and blunt on
+                 a cow - which is most of what tells them apart at this size */
+              if(horse){
+                g.fillRect(bx + bodyW * 0.80, by - bodyH * 0.85,
+                           Math.max(1, W2 * 0.075), bodyH * 0.95);
+                g.fillRect(bx + bodyW * 0.78, by - bodyH * 1.05,
+                           Math.max(1, W2 * 0.14), Math.max(1, bodyH * 0.34));
+                /* mane and tail */
+                g.fillStyle = '#2b1c12';
+                g.fillRect(bx + bodyW * 0.76, by - bodyH * 0.80,
+                           Math.max(1, W2 * 0.035), bodyH * 0.70);
+                g.fillRect(bx - Math.max(1, W2 * 0.03), by,
+                           Math.max(1, W2 * 0.035), bodyH * 0.95);
+              } else {
+                g.fillRect(bx + bodyW * 0.86, by - bodyH * 0.34,
+                           Math.max(1, W2 * 0.16), Math.max(1, bodyH * 0.52));
+                /* the patches, which is what says cow rather than dark horse */
+                g.fillStyle = '#efe9e0';
+                g.fillRect(bx + bodyW * 0.12, by + bodyH * 0.18,
+                           bodyW * 0.26, bodyH * 0.55);
+                g.fillRect(bx + bodyW * 0.52, by + bodyH * 0.05,
+                           bodyW * 0.20, bodyH * 0.40);
+                g.fillStyle = hide;
+                g.fillRect(bx - Math.max(1, W2 * 0.03), by,
+                           Math.max(1, W2 * 0.03), bodyH * 0.80);
               }
             } },
   /* ---- AND THE YARD SIDE, WHICH IS THE BEACH HOUSES AGAIN (RLG-102) ----
@@ -6484,8 +6576,10 @@ function drawScenery(idx, p1, y1, z1, fade){
        so a given stretch of water always holds the same vessels. */
     const boatKey = seaSideNow
       ? (sceneRand(idx, 577) < 0.34 ? B.ships : B.boats) : null;
-    const spec2 = boatKey ? SCENERY[boatKey] : (cropSide ? SCENERY[B.crop] : spec);
-    const artKey = boatKey || (cropSide ? B.crop : B.name);
+    /* which of the crop side's two specs this FIELD is - see `fieldSpecFor` */
+    const cropKey = cropSide ? fieldSpecFor(B, idx) : null;
+    const spec2 = boatKey ? SCENERY[boatKey] : (cropKey ? SCENERY[cropKey] : spec);
+    const artKey = boatKey || (cropKey ? cropKey : B.name);
     if(!spec2) continue;
     const rows2 = (boatKey || cropSide) ? (spec2.rows || 1) : rows;
     for(let row = rows2 - 1; row >= 0; row--){
@@ -6499,7 +6593,13 @@ function drawScenery(idx, p1, y1, z1, fade){
       if(!spec2.lattice && r0 > (spec2.rowDensity || spec2.density)) continue;
       const r1 = sceneRand(idx, (side < 0 ? 37 : 41) + salt);
       const r2 = sceneRand(idx, (side < 0 ? 53 : 59) + salt);
-      const kind = Math.floor(r1 * spec2.kinds) % spec2.kinds;
+      /* ---- A HERD IS ONE ANIMAL, DECIDED PER FIELD (RLG-145) --------
+         `r1` is a per-segment roll, so with two kinds it puts a horse beside a
+         cow. A `herd` spec reads the FIELD's own roll instead and every animal
+         in it comes out the same. */
+      const kind = spec2.herd
+        ? Math.floor(sceneRand(fieldOf(idx), 823) * spec2.kinds) % spec2.kinds
+        : Math.floor(r1 * spec2.kinds) % spec2.kinds;
       const art = sceneryArt(artKey, kind);
       if(!art) continue;
       /* size varies with the object, not with the frame. A crop is uniform,
@@ -9081,7 +9181,9 @@ const BIOMES = {
      nothing else is open in this way. The coast comes closest and is defined by
      having a hard edge down one side. */
   FARMLAND: { name:'FARMLAND', temp:0.60, vary:0.25, precip:0.34, bias:0.45,
-              hill:0.10, bend:0.35, crop:'FARMLAND_CROP',
+              /* two specs on the rolled side, alternating field by field -
+                 see `fieldSpecFor` and FARMLAND_PASTURE (RLG-145) */
+              hill:0.10, bend:0.35, crop:'FARMLAND_CROP', pasture:'FARMLAND_PASTURE',
               grassLo:'#5c6b35', grassHi:'#7d8f47',
               sky:'#43506b', city:0.03, trees:0.30, skyForm:'open' },
   /* ---- THE ONE PLACE THAT IS DARK BY DAY (RLG-105) --------------------
@@ -19201,8 +19303,12 @@ function drawMirrorFull(mx, my, mw, mh){
              cornfield is not on the left out of the front and on the right in
              the mirror (RLG-102) */
           const mCrop = mB.crop && mside === sideRoll;
-          const mS = mBoatKey ? SCENERY[mBoatKey] : (mCrop ? SCENERY[mB.crop] : mSpec);
-          const mKey = mBoatKey || (mCrop ? mB.crop : mB.name);
+          /* the same field and the same herd the windscreen reads, for the same
+             reason the SIDE is shared: the glass must not show a pasture where
+             the road ahead has corn, or a cow where it has a horse (RLG-145) */
+          const mCropKey = mCrop ? fieldSpecFor(mB, widx) : null;
+          const mS = mBoatKey ? SCENERY[mBoatKey] : (mCropKey ? SCENERY[mCropKey] : mSpec);
+          const mKey = mBoatKey || (mCropKey ? mCropKey : mB.name);
           if(!mS) continue;
           const mrows = mCrop ? Math.max(1, Math.min(mS.rows || 1, MIRROR_ROWS)) : mrowsBase;
           for(let mrow = mrows - 1; mrow >= 0; mrow--){
@@ -19210,7 +19316,9 @@ function drawMirrorFull(mx, my, mw, mh){
             if(!mS.lattice && sceneRand(widx, (mside < 0 ? 11 : 23) + ms) > (mS.rowDensity || mS.density)) continue;
             const q1 = sceneRand(widx, (mside < 0 ? 37 : 41) + ms);
             const q2 = sceneRand(widx, (mside < 0 ? 53 : 59) + ms);
-            const mart = sceneryArt(mKey, Math.floor(q1 * mS.kinds) % mS.kinds);
+            const mart = sceneryArt(mKey, mS.herd
+              ? Math.floor(sceneRand(fieldOf(widx), 823) * mS.kinds) % mS.kinds
+              : Math.floor(q1 * mS.kinds) % mS.kinds);
             if(!mart) continue;
             const mw2 = msc * mS.w * (mS.lattice ? 1 : 0.72 + q2 * 0.56);
             /* 1.5 pixels, not 0.7. A sub-pixel tree costs a full drawImage and

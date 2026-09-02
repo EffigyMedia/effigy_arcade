@@ -14,6 +14,39 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-23"></a>
+## [0.11.23] - 2026-09-01
+- Added: **the crop side alternates corn with pasture, and a pasture holds horses OR cows.**
+  Owner, 2026-09-01: "can we also alternate the cornfields with pastures? In these pastures
+  should either be horses or cows never at the same time" ([RLG-145](../fragments/RLG-145.md),
+  item 8). This closes the eighth and last item of that report.
+- Note: **it is the `crop` mechanism again and nothing new.** A place names the spec its rolled
+  side draws; farmland names two now, and `fieldSpecFor` alternates them field by field.
+  Nothing in the painter learned what a pasture is.
+- Added: **a FIELD, which is 90 segments** - about 18,000 units, a bit over two hundred metres
+  on the anchor the fleet uses. The road is drawn 150 segments ahead, so a field and its
+  neighbour are both in the picture and the boundary between them is visible, which is what
+  "alternate" has to look like.
+- Note: **the alternation is strict rather than rolled.** A coin gives two pastures in a row
+  about a quarter of the time, and two adjacent pastures are one big pasture - which is exactly
+  what stops reading as alternation. Fields really are laid out in a grid.
+- Added: **`herd`, which is the whole of "never at the same time".** Every other spec picks its
+  kind from a per-segment roll, so two kinds means a horse beside a cow beside a horse. A
+  `herd` spec reads the FIELD's roll instead. That is the same one-roll-read-by-many rule the
+  sea's side and the crop's side already follow.
+- Changed: **the mirror reads both answers too**, for the same reason it already shares the
+  side: the glass must not show a pasture where the road ahead has corn.
+- Note: **sparse, and not a lattice.** A cornfield is planted and its regularity is the point;
+  livestock stand about a field in no order, so the pasture keeps the density roll and the
+  jitter the crop spec deliberately drops.
+- Changed: **`farmland-test` reads the CORN rather than the crop side** for its planted-not-
+  scattered claim. Without that it counted a pasture's jitter as a cornfield's and reported
+  eleven distances in a rank that should hold one.
+- Added: **and it drives to check the alternation**, because a field is 90 segments and one
+  frame holds two at best. Over 33 pastures: both kinds appear across fields, no field holds
+  both specs, and no pasture holds two kinds. With the per-field roll reverted to a per-segment
+  one, that last check fails on fields 1, 3, 5 and 7.
+
 <a id="v0-11-22"></a>
 ## [0.11.22] - 2026-09-01
 - Changed: **a tundra's ground is white before anything falls, and only the tarmac

@@ -196,7 +196,17 @@ def main():
         print('  A CORNFIELD ONE SIDE AND YARDS THE OTHER')
         page.evaluate("() => window.__probe.road.setBiomePair('FARMLAND','FARMLAND')")
         page.wait_for_timeout(500)
-        rows = trace(page)
+        # ---- DRIVEN, NOT A SINGLE FRAME (RLG-145) ---------------------------------------
+        # The crop side alternates corn with pasture field by field, and a field is 90
+        # segments. So one traced frame can land wholly inside a PASTURE and hold no corn at
+        # all - which is what happened, and it failed the ranks check below with an empty
+        # set rather than with a wrong number. Collecting over a drive sees both.
+        rows = []
+        for _ in range(16):
+            page.evaluate("() => { const R = window.__probe.road;"
+                          " R.setBiomePair('FARMLAND','FARMLAND');"
+                          " R.clearTraffic(); R.setSpd(R.MAX_SPD * 0.8); }")
+            rows += trace(page, 90)
         ahead = [r for r in rows if r['view'] == 'ahead']
         res.check(len(ahead) > 40, 'the roadside was traced', '%d placements' % len(ahead))
         side = page.evaluate("() => window.__probe.road.sideRoll()")
@@ -220,8 +230,14 @@ def main():
         # per segment, so the same rank lands at a different distance from the road each time;
         # a planted field does not. Counting DISTINCT offsets per rank is the difference, and
         # it is the property no screenshot of a three-pixel sprite could settle.
+        # THE CROP SIDE HOLDS TWO SPECS NOW (RLG-145) - corn in one field and pasture in
+        # the next. Only the corn is planted; livestock stand about a field in no order at
+        # all and are placed with the roll and the jitter left in, exactly like the yards.
+        # So this reads the CORN, not the side. Without the filter it counted a pasture's
+        # jitter as a cornfield's and reported eleven distances in a rank.
+        corn = [r for r in crop if r['spec'] == 'FARMLAND_CROP']
         offs = {}
-        for r in crop:
+        for r in corn:
             offs.setdefault(r.get('row', 0), set()).add(round(r['off'], 4))
         yoffs = {}
         for r in yard:
@@ -239,6 +255,58 @@ def main():
         res.check(len(offs) >= 4,
                   'and the field has several ranks running away from the road',
                   '%d rank(s)' % len(offs))
+
+        # ------------------------------------------------ corn, then pasture
+        print()
+        print('  AND THE CROP SIDE ALTERNATES CORN WITH PASTURE, ONE BEAST TO A FIELD')
+        # Owner, 2026-09-01: "can we also alternate the cornfields with pastures? In these
+        # pastures should either be horses or cows never at the same time."
+        #
+        # ONE FRAME CANNOT SEE ENOUGH FIELDS. A field is 90 segments and the road is drawn
+        # 150 ahead, so a single trace holds two of them at best. This drives and collects,
+        # which is the only way to see the alternation rather than one side of it.
+        seen = {}
+        for _ in range(70):
+            page.evaluate("() => { const R = window.__probe.road;"
+                          " R.setBiomePair('FARMLAND','FARMLAND');"
+                          " R.clearTraffic(); R.setSpd(R.MAX_SPD); }")
+            page.wait_for_timeout(60)
+            for r in trace(page):
+                if r['view'] != 'ahead' or r['side'] != side:
+                    continue
+                if r['spec'] not in ('FARMLAND_CROP', 'FARMLAND_PASTURE'):
+                    continue
+                f = r['idx'] // 90
+                seen.setdefault(f, {'specs': set(), 'kinds': set()})
+                seen[f]['specs'].add(r['spec'])
+                if r['spec'] == 'FARMLAND_PASTURE':
+                    seen[f]['kinds'].add(r['kind'])
+        fields = sorted(seen)
+        pasture = [f for f in fields if 'FARMLAND_PASTURE' in seen[f]['specs']]
+        cornf = [f for f in fields if 'FARMLAND_CROP' in seen[f]['specs']]
+        print('      %d field(s) seen: %d with corn, %d with pasture'
+              % (len(fields), len(cornf), len(pasture)))
+        res.check(len(fields) >= 4, 'enough fields were driven through to see an alternation',
+                  'only %d' % len(fields))
+        res.check(len(pasture) > 0 and len(cornf) > 0,
+                  'the crop side carries BOTH corn and pasture',
+                  '%d corn, %d pasture' % (len(cornf), len(pasture)))
+        # AND NO FIELD HOLDS BOTH. That is what makes it an alternation rather than a mix,
+        # and it is the property a screenshot of one frame cannot settle.
+        mixed = [f for f in fields if len(seen[f]['specs']) > 1]
+        res.check(not mixed, 'and no single field holds both, so they alternate',
+                  'field(s) %s hold corn and pasture at once' % mixed[:4])
+        # THE OWNER'S RULE, AND THE ONE WORTH GETTING RIGHT. The beast is chosen once for a
+        # field; rolled per segment it would put a horse beside a cow.
+        both = [f for f in pasture if len(seen[f]['kinds']) > 1]
+        kinds_seen = set()
+        for f in pasture:
+            kinds_seen |= seen[f]['kinds']
+        print('      pastures held kind(s) %s across %d field(s)'
+              % (sorted(kinds_seen), len(pasture)))
+        res.check(not both,
+                  'and a pasture holds horses OR cows, never both in one field',
+                  'field(s) %s hold two kinds' % both[:4])
 
         # ------------------------------------------------ both views agree
         print()
