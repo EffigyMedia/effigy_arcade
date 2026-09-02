@@ -14,6 +14,25 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-30"></a>
+## [0.11.30] - 2026-09-02
+- Changed: **the pickup is a production vehicle.** Owner, 2026-08-31: "we move pickup to
+  production" ([RLG-114](../fragments/RLG-114.md), the first half of queue item 7).
+- Note: **it is one line and it is also a balance change**, which is the part worth a moment.
+  Production unlocks at 50 miles and utility at 25, so this makes the pickup unlock LATER rather
+  than sooner - and it leaves utility with two entries where it had three, so both classes
+  change size at once. A player who has just earned utility now finds two vehicles in it.
+- Note: **and it is the classification catching up with the drawing.** The wheel work already
+  splits the fleet into a sporty group and the ones the owner named production and utility, and
+  the pickup already sits with a four-speed gearbox and a production-shaped wheel. Nothing about
+  the vehicle itself changes.
+- Note: **the class map exists twice and both copies moved.** The garage's unlock map and the
+  fleet sheet's own map are separate tables, and a sheet printing a class the garage disagreed
+  with would be the value-typed-beside-a-value fault again. The TRAFFIC pickup stays utility: it
+  is a working vehicle in someone else's hands, and only the DRIVEABLE one was reclassified.
+- Note: **the sheets in `docs/fleet/` are regenerated**, so production and utility both show
+  their new membership.
+
 <a id="v0-11-29"></a>
 ## [0.11.29] - 2026-09-02
 - Added: **the jungle.** Owner, 2026-08-31: "let's add a jungle biome"

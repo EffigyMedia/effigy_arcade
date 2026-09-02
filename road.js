@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.29';
+window.ROAD_BUILD = '0.11.30';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -20993,8 +20993,25 @@ function cycleBody(d){
   const LOCK = { 'STALLION':'super', 'MATADOR':'super', 'CREST':'super',
                  'VECTOR':'formula', 'APEX':'formula', 'COMET':'formula',
                  'CRUISER':'cruiser',
+                 /* ---- THE PICKUP IS PRODUCTION (RLG-114) ------------------
+                    Owner, 2026-08-31: "we move pickup to production."
+
+                    IT IS ONE LINE AND IT IS ALSO A BALANCE CHANGE, which is
+                    the part worth a moment. Production unlocks at 50 miles and
+                    utility at 25, so this makes the pickup unlock LATER rather
+                    than sooner - and it leaves utility with two entries where
+                    it had three, so both classes change size at once. A player
+                    who has just earned utility now finds two vehicles in it.
+
+                    AND IT IS THE CLASSIFICATION CATCHING UP WITH THE DRAWING.
+                    The wheel work already splits the fleet into a sporty group
+                    and the ones the owner named production and utility, and the
+                    pickup already sits with a four-speed gearbox and a
+                    production-shaped wheel. Nothing about the vehicle changes.
+                    -------------------------------------------------------- */
                  'COUPE':'production','SALOON':'production','CAB':'production',
-                 'PICKUP':'utility','VAN':'utility','LORRY':'utility' };
+                 'PICKUP':'production',
+                 'VAN':'utility','LORRY':'utility' };
   /* ---- DEBUG OVERRIDES ---------------------------------------------------
      These open a car in the garage WITHOUT writing the unlock flag, so the
      reward screens can still be earned properly afterwards. That is the whole
@@ -23337,7 +23354,14 @@ requestAnimationFrame(frameLoop);
                   SALOON:'production', COUPE:'production', CAB:'production',
                   sedan:'production', sedan2:'production', coupe:'production',
                   taxi:'production', tuner:'sport', muscle:'sport',
-                  PICKUP:'utility', VAN:'utility', LORRY:'utility',
+                  /* the fleet sheet's own copy of the class map, and it has
+                     to move with the unlock map above or the sheet prints a
+                     class the garage does not agree with (RLG-114). The
+                     TRAFFIC pickup stays utility: it is a working vehicle in
+                     someone else's hands, and only the DRIVEABLE one was
+                     reclassified. */
+                  PICKUP:'production',
+                  VAN:'utility', LORRY:'utility',
                   pickup:'utility', van:'utility', truck:'utility' };
     /* `key` is the body this row was built from, and `name` is what a reader
        prints. They part company where one body has two liveries: the name says
