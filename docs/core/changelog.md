@@ -14,6 +14,43 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-29"></a>
+## [0.11.29] - 2026-09-02
+- Added: **the jungle.** Owner, 2026-08-31: "let's add a jungle biome"
+  ([RLG-113](../fragments/RLG-113.md)). Twelfth place on the board.
+- Note: **its climate is already taken and that is not a problem.** On the two axes the model
+  runs on, a jungle is hot and very wet, and so is the swamp. Climate is not what separates two
+  places: four things make one - climate, TERRAIN, scenery and light - and this differs from the
+  swamp on three of the four. A swamp is flat and half water at 0.15 of relief; a jungle is
+  hilly and closed at 0.55. That gap is larger than the difference between most pairs on the
+  board and it is felt through the wheel rather than seen.
+- Note: **and it is the wettest place there is**, 0.78 against the swamp's 0.64. That is the one
+  climate claim worth making about it.
+- Added: **a `canopy` form for the skyline**, the third caller of the continuous mechanism after
+  the canyon's ridge. `buildSkyline` draws SWAMP and FOREST with narrow trunks and holes punched
+  through the line; a jungle horizon has no gaps and no individual tree readable in it, which is
+  nearer the canyon's wall than the forest's comb. Lower and gentler than a ridge, because rock
+  is cut and vegetation is not.
+- Note: **the gloom cost nothing, because the tunnel went first.** RLG-113 said to build them in
+  that order for exactly this reason: `lampsOn` already reads the PLACE as well as the hour, so
+  a canopy asks the same function for a smaller number. 0.35 is a road under closed vegetation.
+  Built the other way round the jungle would have grown its own darkening and the tunnel would
+  have arrived to find two answers to one question.
+- Changed: **`bore` is the structure and `dark` is the light**, which were one field until now.
+  A canopy is darker by day than anywhere else and is emphatically not a tunnel - reading `dark`
+  as "there is a tube here" would have cut a rock face across a jungle road and drawn walls down
+  it. `boreSpan` and `drawPortal` ask `bore`; `dark` goes on saying only how dark it is.
+- Added: **`setInstanceTemp`, because the temperature step broke two harnesses and they were
+  right to break.** [0.11.27](#v0-11-27) means a place may only be followed by one within ten
+  degrees, and forcing the countdown re-plans from the CURRENT instance every time - so a
+  harness rolling over and over from wherever the run opened can never reach a passage that is
+  out of range. It stands the run at a chosen climate first.
+- Note: **`place-shape-test` is marginal and the number was NOT moved.** One drive is one roll of
+  the generator, which its own notes say. Three runs: two comfortably inside the ceiling, one at
+  0.87 against 0.86. [RLG-056](../fragments/RLG-056.md) is the standing rule that a threshold is
+  not fixed by moving it - the measurement would have to average a longer baseline, and that is
+  work rather than a number.
+
 <a id="v0-11-28"></a>
 ## [0.11.28] - 2026-09-02
 - Added: **a bridge has a deck under the car, and expansion joints across it.**

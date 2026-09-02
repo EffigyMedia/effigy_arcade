@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.28';
+window.ROAD_BUILD = '0.11.29';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -6348,6 +6348,40 @@ const SCENERY = {
                 g.fillRect(wx, wy, ww, wh);
               });
             } },
+  /* ---- AND IT CLOSES OVER THE ROAD (RLG-113) --------------------------
+     A jungle road is a cut through vegetation, so its scenery stands closer,
+     taller and thicker than a forest's and leaves no gap for the eye. Denser
+     than the canyon at 0.98, which is the densest thing on the board, and
+     starting hard against the kerb at 0.06 where the forest starts at 0.10.
+     Broad leaves rather than conifers: a trunk with a crown of fronds, which is
+     the shape that reads as tropical at three pixels wide. */
+  JUNGLE: { density:0.99, rowDensity:0.78, rows:5, out:0.06, outFar:6.0,
+            w:0.72, h:2.10, spread:1.00, kinds:3,
+            build:(g,W2,H2,i)=>{
+              const lean = (i-1)*0.05;
+              /* the trunk, slim and slightly bent */
+              g.fillStyle = '#2a2114';
+              g.fillRect(W2*(0.46 + lean*0.4), H2*0.30, W2*0.09, H2*0.70);
+              /* the crown: fronds thrown out from one point, longest first */
+              const cx = W2*(0.50 + lean), cy = H2*0.30;
+              const fronds = 7;
+              for(let f = 0; f < fronds; f++){
+                const a = -Math.PI + (f + 0.5) * (Math.PI / fronds);
+                const len = W2 * (0.40 + (f % 2 ? 0.10 : 0.20));
+                g.fillStyle = f % 2 ? '#1e4423' : '#17381c';
+                g.beginPath();
+                g.moveTo(cx, cy);
+                g.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len * 0.62);
+                g.lineTo(cx + Math.cos(a + 0.30) * len * 0.86,
+                         cy + Math.sin(a + 0.30) * len * 0.54 + H2*0.05);
+                g.closePath(); g.fill();
+              }
+              /* undergrowth, so the foot of it is not bare road edge */
+              g.fillStyle = '#1a3a1c';
+              for(let k = 0; k < 4; k++)
+                g.fillRect(W2*(0.10 + k*0.22), H2*(0.80 + (k%2)*0.06),
+                           W2*0.20, H2*0.20);
+            } },
   FOREST: { density:0.92, rowDensity:0.66, rows:5, out:0.10, outFar:7.0,
             w:0.60, h:1.90, spread:1.10, kinds:3,
             build:(g,W2,H2,i)=>{
@@ -6906,7 +6940,19 @@ const SKY_CONTINUOUS = {
      lo/hi the crest's range, as a fraction of the band's own height
      rough  how far one sample may move from the last, as a fraction of that
             range. Low is a plateau, high is a saw. */
-  ridge: { kind:'ridge', step:44, lo:0.30, hi:1.00, rough:0.30 }
+  ridge: { kind:'ridge', step:44, lo:0.30, hi:1.00, rough:0.30 },
+  /* ---- A CANOPY IS A MASS, NOT A TREELINE (RLG-113) ------------------
+     `buildSkyline` draws SWAMP and FOREST with the same `tree` kind - narrow
+     trunks with holes punched through the line. A jungle horizon has no gaps in
+     it and no individual tree readable in it, which is nearer the canyon's wall
+     than the forest's comb. So it is the third caller of the continuous
+     mechanism rather than a fourth shape of its own.
+
+     LOWER AND GENTLER THAN A RIDGE. Rock is cut and stone is jagged; vegetation
+     is not. A shorter step samples it more often, the range sits well above the
+     floor so the line never breaks, and a low roughness keeps it rolling rather
+     than sawing. */
+  canopy: { kind:'ridge', step:26, lo:0.46, hi:0.86, rough:0.16 }
 };
 function contPlan(C, band, w, h){
   const segs = Math.max(6, Math.round(w / (C.step * band.gap)));
@@ -9255,7 +9301,15 @@ const BIOMES = {
                  A bore that climbs and swings reads wrong - it is cut, not
                  grown - and one number for both is simpler than two arguments
                  about which matters more. Not zero: nothing in this game is. */
-              hill:0.10, bend:0.10, dark:1,
+              /* ---- `bore` IS THE STRUCTURE, `dark` IS THE LIGHT (RLG-113) ----
+                 They were one field and the jungle is what separates them. A
+                 canopy is darker by day than anywhere else on the board and it
+                 is emphatically not a tunnel: reading `dark` as "there is a
+                 tube here" would have cut a rock face across a jungle road and
+                 drawn walls down a forest. `bore` says a bore exists; `dark`
+                 goes on saying only how dark it is, which is what RLG-105
+                 intended and what lets a second place borrow it for nothing. */
+              hill:0.10, bend:0.10, dark:1, bore:1,
               /* ---- AND IT DOES THE OPPOSITE OF THE BRIDGE (RLG-143) -----
                  Owner, 2026-09-01: "the tunnel does the opposite - when you
                  enter it goes down and then its verticality is capped to 0, and
@@ -9313,6 +9367,35 @@ const BIOMES = {
               hill:0.15, bend:0.70,
               grassLo:'#22301f', grassHi:'#33422a',
               sky:'#2c3a2e', city:0.06, trees:0.70, skyForm:'wetTree' },
+  /* ---- THE JUNGLE, WHICH SHARES A CLIMATE AND NOTHING ELSE (RLG-113) --
+     Owner, 2026-08-31: "let's add a jungle biome."
+
+     ITS CLIMATE IS ALREADY TAKEN AND THAT IS NOT A PROBLEM. On the two axes the
+     model runs on, a jungle is hot and very wet, and so is the swamp. The
+     fragment answers it: climate is not what separates two places. Four things
+     make a place - its climate, its TERRAIN, its scenery and its light - and
+     this differs from the swamp on three of the four. A swamp is flat and half
+     water at 0.15 of relief; a jungle is hilly and closed at 0.55. That gap is
+     larger than the difference between most pairs on the board and it is felt
+     through the wheel rather than seen, which makes it a better distinction
+     than a palette would be.
+
+     AND IT IS THE WETTEST PLACE THERE IS, at 0.78 against the swamp's 0.64.
+     That is the one climate claim worth making about it.
+
+     THE GLOOM COSTS NOTHING BECAUSE THE TUNNEL WENT FIRST. RLG-113 said to
+     build them in that order for exactly this reason: `lampsOn` already reads
+     the PLACE as well as the hour, so a canopy asks the same function for a
+     smaller number. 0.35 is a road under closed vegetation - not night, and
+     darker by day than anywhere else on the board. Built the other way round
+     the jungle would have grown its own darkening and the tunnel would have
+     arrived to find two answers to one question.
+     ---------------------------------------------------------------- */
+  JUNGLE:   { name:'JUNGLE',   temp:0.88, vary:0.06, precip:0.78, bias:1.10,
+              hill:0.55, bend:0.80, dark:0.35,
+              grassLo:'#1c3218', grassHi:'#2c4a22',
+              skyBase:'#16301b',
+              sky:'#24361f', city:0.00, trees:0.95, skyForm:'canopy' },
   FOREST:   { name:'FOREST',   temp:0.45, vary:0.20, precip:0.52, bias:1.00,
               hill:0.70, bend:0.85,
               grassLo:'#1d3a24', grassHi:'#2a4f31',
@@ -16018,7 +16101,9 @@ let BORE = {
 function boreSpan(){
   if(!eventProfile || eventLen <= 0 || !eventKey) return null;
   const B = BIOMES[eventKey];
-  if(!B || !B.dark) return null;                 /* a bridge is not a bore */
+  if(!B || !B.bore) return null;                 /* a bridge is not a bore, and
+                                                    neither is a jungle - see
+                                                    the TUNNEL row (RLG-113) */
   let z1 = eventZ0 + eventLen;
   /* ---- AND IT RUNS TO THE PORTAL, NOT TO THE PROFILE (RLG-153) --------
      The profile's span and the place's boundary are meant to be the same point
@@ -16382,8 +16467,10 @@ function drawBoreDepth(){
    tunnel, and it is the same arch drawn with the two fills swapped.
    ------------------------------------------------------------------------- */
 function drawPortal(){
-  const inTun  = (BIOMES[wxTo]   || {}).dark || 0;
-  const outTun = (BIOMES[wxFrom] || {}).dark || 0;
+  /* a MOUTH belongs to a bore. Asking `dark` here would stand a rock face
+     across the road at the edge of any gloomy place (RLG-113). */
+  const inTun  = (BIOMES[wxTo]   || {}).bore || 0;
+  const outTun = (BIOMES[wxFrom] || {}).bore || 0;
   if(inTun === outTun) return;                 /* no mouth in view */
   if(biomeEdge < -1e8) return;
   const z = biomeEdge * SEG;
@@ -21875,6 +21962,23 @@ requestAnimationFrame(frameLoop);
      in distance, parking holds it there for ever; with the old one in seconds,
      it fires in under a second. Two seconds of harness either way.
      ------------------------------------------------------------------ */
+  /* ---- WHERE THE CLIMATE IS STANDING, SO A HARNESS CAN REACH (RLG-142) --
+     The temperature step means a place can only be followed by one within ten
+     degrees, and `biomeCountdown(0)` re-plans from the CURRENT instance every
+     time - so a harness forcing the roll over and over rolls from the same
+     temperature and can never reach a place that is out of range. Two of them
+     broke on that the day the rule landed, and both were right to: the engine
+     had stopped being able to go anywhere from anywhere and the harnesses were
+     the first to notice.
+
+     THIS MOVES THE CAR'S OWN CLIMATE, which is what a harness actually needs -
+     stand the run where a place is reachable, then force the roll. It sets
+     both ends of the blend, because a half-set pair is the half-migrated state
+     RLG-109 exists to prevent. */
+  API.setInstanceTemp = function(t){
+    climFrom = climTo = climateAt(biome, clamp(t, 0, 1));
+    return climTo.temp;
+  };
   API.biomeCountdown = function(v){
     if(v !== undefined) biomeNext = v;
     return biomeNext;

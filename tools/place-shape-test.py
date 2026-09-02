@@ -248,6 +248,12 @@ def drive_one(page, place, tries=60):
                                   "window.__probe.road.pos + d))", [LOOK]))
     # ROLL THE TIMER, NOT THE SETTER. Driving the countdown to zero runs the real
     # placement path; the debug setters cancel the plan and would measure the old order.
+    # ---- STAND THE RUN WHERE THE PLACE IS REACHABLE (RLG-142) -----------------------
+    # The temperature step means a place may only be followed by one within ten degrees, and
+    # forcing the countdown re-plans from the CURRENT instance every time - so rolling over
+    # and over from wherever the run opened can never reach a passage that is out of range.
+    # A TUNNEL sits at 0.35 to 0.55 and a BRIDGE at 0.30 to 0.80, so 0.45 reaches both.
+    page.evaluate("() => window.__probe.road.setInstanceTemp(0.45)")
     got = False
     for _ in range(tries):
         page.evaluate("() => window.__probe.road.biomeCountdown(0)")

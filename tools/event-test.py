@@ -123,6 +123,12 @@ def drive_out(page, place, tries=80):
         page.wait_for_timeout(90)
     page.evaluate("""() => { const R = window.__probe.road;
         R.setPhase(0.75); R.setWet(0); R.setSnow(0); R.setPool(0); }""")
+    # ---- STAND THE RUN WHERE THE PLACE IS REACHABLE (RLG-142) -----------------------
+    # The temperature step means a place may only be followed by one within ten degrees, and
+    # forcing the countdown re-plans from the CURRENT instance every time - so rolling over
+    # and over from wherever the run opened can never reach a passage that is out of range.
+    # A TUNNEL sits at 0.35 to 0.55 and a BRIDGE at 0.30 to 0.80, so 0.45 reaches both.
+    page.evaluate("() => window.__probe.road.setInstanceTemp(0.45)")
     got = False
     for _ in range(tries):
         page.evaluate("() => window.__probe.road.biomeCountdown(0)")
