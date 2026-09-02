@@ -1870,6 +1870,50 @@ function landPx(z){
   return lookup(landCache, z) - lookup(landCache, pos)
        - lookup(lgradCache, pos) * ((z - pos)/BEND_STEP);
 }
+/* ---- AND THE LAND SEEN FROM THE ROAD, WHICH IS WHERE THE CAMERA IS ------
+   [[RLG-143]] recorded this trap exactly and it is worth reading before
+   changing anything here. `landPx` subtracts THE LAND'S OWN value at the
+   player's position, which is what `hillPx` does for the road and is right for
+   the road, because the camera sits on it. On a bridge the camera does not sit
+   on the land, so that subtraction forced the land's line through the camera -
+   and the sea rose to meet the deck exactly where it should have been furthest
+   below it. The capture showed a causeway.
+
+   The reference is the ROAD's value at the player, and the distance term is the
+   ROAD's slope, because both describe where the camera is and how it is
+   pitched. Only the accumulated height along the road comes from the land.
+   ------------------------------------------------------------------------ */
+function landFromRoadPx(z){
+  return lookup(landCache, z) - lookup(hillCache, pos)
+       - lookup(gradCache, pos) * ((z - pos)/BEND_STEP);
+}
+/* ---- AN ELEVATION CANNOT BE DERIVED FROM THESE CACHES (RLG-154) --------
+   THIS WAS TRIED HERE AND THE ATTEMPT IS RECORDED RATHER THAN LEFT IN. The plan
+   was one calibration constant turning the existing screen-space accumulator
+   into world units, so the altitude could never drift from the picture. It
+   cannot work, and the reason is two lines up in `rebuildBend`:
+
+     `let dx = 0, x = 0, dy = 0, y = 0, dyL = 0, yL = 0;`  - every cache is
+     rebuilt FROM ZERO each frame, starting at `bendZ0`, which is trimmed to
+     about 40,000 units behind the camera.
+
+   So neither accumulator holds an altitude. Each holds the road's displacement
+   over the last 40,000 units and nothing before it, and the difference between
+   them at the player carries only that window. A bridge's entry ramp alone is
+   about 35,000 units, so by mid-deck most of the climb has already fallen out
+   of the integration.
+
+   MEASURED, which is how this was found rather than reasoned: driving a real
+   bridge, the camera-referenced land line read -27 at a fourteenth of the way
+   across, +6 at the middle of the deck and +59 near the far end. A bridge's
+   height is a steady quantity across its deck. That is a window sliding over a
+   random walk.
+
+   SO IT HAS TO BE RECORDED, WHICH IS WHAT THE OWNER SAID. A persistent altitude
+   integrated as the car travels, surviving the cache rebuild, is the only thing
+   that can answer. `landFromRoadPx` below is kept because it is correct as far
+   as it goes and it is the instrument that found this.
+   ------------------------------------------------------------------------ */
 /* how high the road stands over the land at this distance, in screen pixels.
    Zero everywhere except inside an event, and zero at an event's two mouths. */
 function riseOverLand(z){ return landPx(z) - hillPx(z); }
@@ -22273,6 +22317,22 @@ requestAnimationFrame(frameLoop);
       out.push(+h.toFixed(3));
     }
     return out;
+  };
+  /* ---- WHAT THE LAND IS DOING UNDER THE ROAD (RLG-154) ---------------
+     `riseOverLand` is the screen-space difference and reads the land through
+     its OWN camera term, which RLG-143 records as the trap. This reports the
+     camera-referenced one beside it, and the world-unit drop derived from it,
+     so the calibration constant can be chosen against the constant it replaces
+     rather than guessed. */
+  API.landDrop = function(z){
+    const at = z === undefined ? pos + PLAYER_Z : z;
+    return { px: +landFromRoadPx(at).toFixed(3),
+             risePx: +riseOverLand(at).toFixed(3),
+             /* how far back the integration actually reaches, which is the
+                whole of why neither number is an altitude (RLG-154) */
+             fromZ0: Math.round(at - bendZ0),
+             camH: CAM_H,
+             waterDropUnits: Math.round(CAM_H * WATER_DROP) };
   };
   API.waterPlane = function(){
     const dy = H - horizon;
