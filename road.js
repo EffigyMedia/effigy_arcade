@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.30';
+window.ROAD_BUILD = '0.11.31';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -23354,15 +23354,24 @@ requestAnimationFrame(frameLoop);
                   SALOON:'production', COUPE:'production', CAB:'production',
                   sedan:'production', sedan2:'production', coupe:'production',
                   taxi:'production', tuner:'sport', muscle:'sport',
-                  /* the fleet sheet's own copy of the class map, and it has
-                     to move with the unlock map above or the sheet prints a
-                     class the garage does not agree with (RLG-114). The
-                     TRAFFIC pickup stays utility: it is a working vehicle in
-                     someone else's hands, and only the DRIVEABLE one was
-                     reclassified. */
-                  PICKUP:'production',
+                  /* ---- A PICKUP IS A PICKUP (RLG-114) ---------------------
+                     The fleet sheet's own copy of the class map, and it has to
+                     move with the unlock map above or the sheet prints a class
+                     the garage does not agree with.
+
+                     THE FIRST BUILD LEFT THE TRAFFIC `pickup` IN UTILITY on the
+                     reasoning that only the DRIVEABLE one had been reclassified.
+                     Owner, 2026-09-02: "no the traffic version is also
+                     production - why would we create inconsistencies?" They are
+                     right and the reasoning was wrong. A CLASS DESCRIBES THE
+                     VEHICLE, NOT WHO IS HOLDING THE WHEEL. The same body in
+                     someone else's hands is the same body, and two answers to
+                     what a pickup is is exactly the fault the note above claims
+                     to be preventing - written while introducing it.
+                     -------------------------------------------------------- */
+                  PICKUP:'production', pickup:'production',
                   VAN:'utility', LORRY:'utility',
-                  pickup:'utility', van:'utility', truck:'utility' };
+                  van:'utility', truck:'utility' };
     /* `key` is the body this row was built from, and `name` is what a reader
        prints. They part company where one body has two liveries: the name says
        CRUISER . BLACK and the key is still CRUISER, which is what the class

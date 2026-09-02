@@ -14,6 +14,24 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-31"></a>
+## [0.11.31] - 2026-09-02
+- Fixed: **the traffic pickup is production too.** [0.11.30](#v0-11-30) moved the driveable
+  PICKUP and deliberately left the traffic `pickup` in utility. Owner, 2026-09-02: "no the
+  traffic version is also production - why would we create inconsistencies?"
+- Note: **they are right and the reasoning was wrong.** A CLASS DESCRIBES THE VEHICLE, NOT WHO
+  IS HOLDING THE WHEEL. The same body in someone else's hands is the same body, so splitting it
+  gave the game two answers to what a pickup is - which is precisely the fault the note written
+  beside it claimed to be preventing. It was introduced in the same commit that congratulated
+  itself for avoiding it.
+- Note: **measured rather than assumed this time.** Reading the fleet back from the engine:
+  production holds 9 - COUPE, SALOON, CAB, PICKUP, sedan, sedan2, coupe, pickup, taxi - and
+  utility holds 4: VAN, LORRY, van, truck. The sheets in `docs/fleet/` are regenerated with it.
+- Note: **the file size was a red herring and nearly went unchecked.** `utility.png` shrank and
+  `production.png` came back byte-identical, which read as the pickup leaving one class without
+  arriving in the other. A PNG's size is not a measurement of what is in it; the fleet had to be
+  asked.
+
 <a id="v0-11-30"></a>
 ## [0.11.30] - 2026-09-02
 - Changed: **the pickup is a production vehicle.** Owner, 2026-08-31: "we move pickup to
