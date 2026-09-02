@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.26';
+window.ROAD_BUILD = '0.11.27';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -9607,6 +9607,80 @@ function rollClimate(key){
   const base = B.temp === undefined ? 0.45 : B.temp;
   return climateAt(key, base + rnd(-vary, vary));
 }
+/* ---- THE SCALE, STATED ONCE (RLG-142) ----------------------------------
+   Owner, 2026-09-01, on how far apart two neighbouring places may be: "I'd say
+   10 to 20 degrees, leaning more towards 10."
+
+   THE MODEL HAD NO DEGREES IN IT. [[RLG-109]] states `temp` as 0 coldest to 1
+   hottest and never says what the ends are, so the owner's number could not be
+   used until the scale was. It is written here once rather than implied by a
+   conversion buried in a comparison. Fahrenheit, because everything else the
+   player sees in this game is imperial - miles, miles per hour, and the feet a
+   bridge stands above the water.
+
+   Against it the board reads TUNDRA -3F, MOUNTAIN 10F, FOREST and CITY and
+   TUNNEL 49F, COASTAL 62F, FARMLAND 68F, SWAMP 94F, CANYON 101F, DESERT 114F.
+   Those are plausible for the places they name, which is the only evidence
+   available that the span is right.
+   ------------------------------------------------------------------------ */
+const TEMP_F_LO = -10, TEMP_F_HI = 120;
+const TEMP_STEP_F = 10;
+const TEMP_STEP = TEMP_STEP_F / (TEMP_F_HI - TEMP_F_LO);
+/* ---- AND IT IS A CONSTRAINT ON THE ROLL, NOT A FILTER ON THE PICK -------
+   Rejecting candidate places until one is close enough would bias the board
+   toward whatever happens to be near, and would deadlock at the ends of the
+   scale where nothing is. The instance is rolled AFTER the place is chosen, so
+   the constraint belongs there: the place's own range is intersected with the
+   window the previous instance allows, and the roll happens inside what is
+   left. A place whose range cannot reach at all returns null and is picked
+   again - which never deadlocks while any place can be reached, and keeps
+   every place on the board reachable eventually.
+
+   THE BOARD BECOMES A WALK, which the owner should see on the device before
+   anything else changes. Almost no two places are within 0.077 of each other,
+   so you travel from cold to hot through the places between, and a run of sixty
+   seconds sees one to three places - so a run stays inside a narrow band and
+   the variety comes from returning rather than from one drive.
+   ------------------------------------------------------------------------ */
+function rollClimateNear(key, fromT){
+  const B = BIOMES[key] || BIOMES.FOREST;
+  const vary = B.vary === undefined ? 0.15 : B.vary;
+  const base = B.temp === undefined ? 0.45 : B.temp;
+  const lo = Math.max(base - vary, fromT - TEMP_STEP);
+  const hi = Math.min(base + vary, fromT + TEMP_STEP);
+  if(lo > hi) return null;                 /* this place cannot follow that one */
+  return climateAt(key, rnd(lo, hi));
+}
+/* the place the road goes to next, and the instance it will hold - decided
+   together, because the second is what says whether the first is allowed */
+function pickNext(fromKey, fromT){
+  const tries = BIOME_KEYS.length * 4;
+  for(let i = 0; i < tries; i++){
+    const k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+    if(k === fromKey) continue;
+    const c = rollClimateNear(k, fromT);
+    if(c) return { key: k, clim: c };
+  }
+  /* ---- AND A LAST RESORT THAT STILL MOVES (RLG-142) -----------------
+     Nothing on the board is stranded today - a CITY ranges 0.00 to 0.90 and
+     can follow anything - but a table is a thing people edit, and a generator
+     that can return nothing is a generator that will one day stop the game.
+     This takes the place whose range comes CLOSEST and rolls at the nearest
+     end of it, which is the largest step toward it the rule allows. The step
+     is then bigger than the cap, and that is the honest outcome: the board
+     said this place cannot be reached in one, so it is reached in the fewest.
+     -------------------------------------------------------------- */
+  let best = null, bestGap = 1e9;
+  for(const k of BIOME_KEYS){
+    if(k === fromKey) continue;
+    const B = BIOMES[k];
+    const vary = B.vary === undefined ? 0.15 : B.vary;
+    const base = B.temp === undefined ? 0.45 : B.temp;
+    const gap = Math.max(0, Math.max((base - vary) - fromT, fromT - (base + vary)));
+    if(gap < bestGap){ bestGap = gap; best = { key: k, t: clamp(fromT, base - vary, base + vary) }; }
+  }
+  return best ? { key: best.key, clim: climateAt(best.key, best.t) } : null;
+}
 
 /* ---- HOW MUCH A PLACE CLIMBS AND HOW MUCH IT TURNS (RLG-059) ------------
    Owner, 2026-08-29: "the biome should probably also drive the magnitude of the
@@ -9682,7 +9756,7 @@ let biomeFrom = 'FOREST', biomeTo = 'FOREST', biomeEdge = -1e9;
 
    `planEdge` is in SEGMENTS, like `biomeEdge`, so the two are comparable.
    ------------------------------------------------------------------------ */
-let planKey = null, planEdge = -1e9;
+let planKey = null, planEdge = -1e9, planClim = null;
 /* ---- THE INSTANCE LIVES BESIDE THE PAIR IT BELONGS TO (RLG-109) ---------
    One per end of the blend, because both ends are asked questions: the place
    being left holds the snow already on its ground, and the place being entered
@@ -10268,7 +10342,7 @@ function openBiome(){
   biomeEdge = -1e9;
   /* and no place is planned yet - a fresh run is not carrying the last run's
      next place, and the road ahead of it is generated into THIS one (RLG-150) */
-  planKey = null; planEdge = -1e9;
+  planKey = null; planEdge = -1e9; planClim = null;
   buildSkyline();
   /* ---- AND THE NEXT PLACE IS A FULL RUN AWAY (RLG-088) --------------
      Owner, 2026-08-30, on the build that stopped the whole world changing at
@@ -10466,8 +10540,14 @@ function stepBiome(dt){
          boundary past everything that exists, which is exact rather than
          approximately right.
          ---------------------------------------------------------------- */
-      let k = biome;
-      while(k === biome) k = BIOME_KEYS[(Math.random()*BIOME_KEYS.length)|0];
+      /* ---- THE PLACE AND ITS TEMPERATURE ARE CHOSEN TOGETHER (RLG-142) ---
+         The instance used to be rolled at the PLACEMENT, seconds later, and
+         the pick knew nothing about it. It is the instance that says whether a
+         place may follow this one, so the two are one decision now and the
+         answer rides with the plan. */
+      const nxt = pickNext(biome, climTo.temp);
+      const k = nxt ? nxt.key : biome;
+      planClim = nxt ? nxt.clim : null;
       const made = Math.max(bendZ0 + totalLen(curveSegs),
                             bendZ0 + totalLen(hillSegs),
                             pos + GEN_AHEAD);
@@ -10505,7 +10585,10 @@ function stepBiome(dt){
        back to the one behind you and nothing says so.
        -------------------------------------------------------------- */
     wxFrom = biome; wxTo = k;
-    climTo = rollClimate(k);
+    /* the instance the PLAN rolled, under the step rule - re-rolling it here
+       would throw away the constraint that chose this place (RLG-142) */
+    climTo = planClim || rollClimate(k);
+    planClim = null;
     armEvent(k, biomeEdge * SEG);
   }
 }
@@ -18174,8 +18257,33 @@ function wipeAt(){
    asked for by name.
    ------------------------------------------------------------------------- */
 let lensDrops = [];
+/* ---- HOW MUCH IS FALLING, NOT WHICH KIND IT IS (RLG-142) ----------------
+   Owner, 2026-09-01, from the device: "I had snowy mountains transition into
+   swamp, but the snow eventually subsided and the wet drops on the screen kept
+   going."
+
+   THIS WAS `Math.max(wet, snowy)` AND IT IS A TYPE ERROR, not a lifetime one.
+   The fragment guessed at a scheduled effect outliving the state that armed it,
+   in the family of RLG-111's thunder, and said not to diagnose it from that
+   guess. It is simpler and it is visible in one line: `snowy` is a KIND. It is
+   set to 1 or 0 when the weather is rolled and it is cleared by nothing but the
+   NEXT roll, while `wet` is the amount and eases to zero when the fall ends. So
+   `max(wet, snowy)` is pinned at 1 from the first flake until the next roll,
+   whatever the sky is doing.
+
+   BOTH HALVES OF THE REPORT FALL OUT OF IT. The drops went on after the snow
+   subsided because `snowy` was still 1. And the owner's other question - what
+   were the drops drops OF - is answered too: they were rain drops at the
+   maximum rate for the whole of the mountain as well, because the amount never
+   read the amount. The owner noticed at the transition because that is where it
+   became obvious, which is exactly what the fragment predicted.
+
+   THE GLASS CARRIES WHAT IS FALLING, IN THE AMOUNT THAT IS FALLING. `snowy` goes
+   on choosing what it LOOKS like - see `paintPrecip` - and says nothing about
+   how much of it there is.
+   ------------------------------------------------------------------------ */
 function stepLens(dt){
-  const bad = Math.max(wet, snowy);
+  const bad = wet;
   const before = wipePhase;
   if(wipeRate() > 0) wipePhase += dt * wipeRate();
   /* the blade passes the top of its stroke once per revolution: everything on
@@ -21675,6 +21783,9 @@ requestAnimationFrame(frameLoop);
   };
   API.wet = function(){ return +wet.toFixed(3); };
   API.snowy = function(){ return snowy; };
+  /* how much is on the glass, so a check can watch it clear when the fall ends
+     rather than taking a screenshot of a droplet (RLG-142) */
+  API.lensDrops = function(){ return lensDrops.length; };
   API.settle = function(){ return +settle.toFixed(3); };
   API.wetGrip = function(){ return +wetGrip().toFixed(3); };
   API.biome = function(){ return biome; };
@@ -21738,7 +21849,7 @@ requestAnimationFrame(frameLoop);
        generation order, and a check that measures the shape of a place must
        let the timer place it. `tools/event-test.py` and the RLG-150 measurement
        both drive into a real one for that reason. */
-    planKey = null; planEdge = -1e9;
+    planKey = null; planEdge = -1e9; planClim = null;
     rollSide();          /* the same roll the real placement makes */
     wxFrom = biome; wxTo = want;
     climTo = rollClimate(want);   /* and the same instance, for the same reason:
@@ -21779,7 +21890,7 @@ requestAnimationFrame(frameLoop);
     /* a plan waiting at the generator's frontier would arrive on top of the
        pair this just pinned, seconds later. Pinning a pair means pinning it
        (RLG-150) - and see `startBiomeChange` on what that costs a check. */
-    planKey = null; planEdge = -1e9;
+    planKey = null; planEdge = -1e9; planClim = null;
     /* ---- AND THE EVENT IS ARMED WITH IT (RLG-112) --------------------
        A debug setter that pinned the pair to a BRIDGE and left the road rolled
        would show a place the game never produces - the deck is the authored
@@ -22420,6 +22531,30 @@ requestAnimationFrame(frameLoop);
   /* the instance roll itself, sampled. It proves the temperature is rolled per
      visit rather than read from the table, which is the one claim the recipes
      cannot support on their own. */
+  /* ---- THE SCALE AND THE STEP, AND A WALK OVER THE BOARD (RLG-142) ---
+     The rule is that no place may be more than `TEMP_STEP_F` from the one
+     before it, and the interesting question is not whether one step obeys it -
+     that is arithmetic - but whether the board still TRAVELS under it. A rule
+     that never jumps and never gets anywhere is a board stuck in one climate,
+     and only a long walk shows the difference. This runs the real `pickNext`,
+     so it measures the generator rather than a copy of it. */
+  API.tempScale = function(){
+    return { loF: TEMP_F_LO, hiF: TEMP_F_HI, stepF: TEMP_STEP_F, step: +TEMP_STEP.toFixed(4),
+             toF: function(t){ return TEMP_F_LO + t * (TEMP_F_HI - TEMP_F_LO); } };
+  };
+  API.walkPlaces = function(n, fromKey, fromT){
+    let k = fromKey || biome;
+    let t = fromT === undefined ? climTo.temp : fromT;
+    const out = [];
+    for(let i = 0; i < (n || 200); i++){
+      const nx = pickNext(k, t);
+      if(!nx){ out.push({ key: null, temp: null, stepF: null }); break; }
+      const stepF = Math.abs(nx.clim.temp - t) * (TEMP_F_HI - TEMP_F_LO);
+      k = nx.key; t = nx.clim.temp;
+      out.push({ key: k, temp: +t.toFixed(4), stepF: +stepF.toFixed(2) });
+    }
+    return out;
+  };
   API.rollClimateFor = function(k, n){
     const out = [];
     const key = BIOMES[k] ? k : biome;

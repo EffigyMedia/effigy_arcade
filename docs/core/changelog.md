@@ -14,6 +14,46 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-27"></a>
+## [0.11.27] - 2026-09-01
+- Fixed: **the drops on the glass stop when the fall does**, which they did not. Owner,
+  2026-09-01, from the device: "the snow eventually subsided and the wet drops on the screen
+  kept going" ([RLG-142](../fragments/RLG-142.md)).
+- Note: **it is a type error, not a lifetime one.** The fragment guessed at a scheduled effect
+  outliving the state that armed it, in the family of
+  [RLG-111](../fragments/RLG-111.md)'s thunder, and said explicitly not to diagnose it from
+  that guess. It is simpler and it is one line: `stepLens` took `Math.max(wet, snowy)` as the
+  amount on the glass, and `snowy` is a KIND - set to 1 or 0 when the weather is rolled and
+  cleared by nothing but the NEXT roll - while `wet` is the amount and eases to zero when the
+  fall ends. So it was pinned at 1 from the first flake until the next roll, whatever the sky
+  was doing.
+- Note: **and it answers the owner's other question at the same time.** They asked what the
+  drops were drops OF. They were rain drops at the maximum rate for the whole of the mountain
+  as well, because the amount never read the amount - so they were wrong before the transition
+  too, and the transition is only where it became obvious. That is exactly what the fragment
+  predicted would turn out to be the case.
+- Added: **the temperature step - a place may not be more than ten degrees from the one before
+  it.** Owner: "I'd say 10 to 20 degrees, leaning more towards 10."
+- Added: **and the scale, stated once**, because the model had no degrees in it. 0 is -10F and
+  1 is 120F, in Fahrenheit because everything else the player sees here is imperial. Against it
+  the board reads TUNDRA -3F, MOUNTAIN 10F, FOREST 49F, COASTAL 62F, FARMLAND 68F, SWAMP 94F,
+  CANYON 101F, DESERT 114F.
+- Note: **it is a constraint on the ROLL, not a filter on the pick.** Rejecting candidates until
+  one is close enough biases the board toward whatever is near and deadlocks at the ends of the
+  scale. The place's own range is intersected with the window the previous instance allows and
+  the roll happens inside what is left; a place that cannot reach is picked again.
+- Changed: **the place and its temperature are chosen together.** The instance used to be rolled
+  at the placement, seconds after the pick, and the pick knew nothing about it - but it is the
+  instance that says whether a place may follow this one.
+- Note: **measured over 400 places from three starts**, running the real `pickNext` rather than a
+  copy: the worst step is 10.0F in every walk, and the board still travels - from TUNDRA it
+  reaches all eleven places and spans -9.5F to 105.3F. So it is a walk rather than a cage, which
+  is the thing worth knowing before the owner sees it.
+- Note: **what a run will feel like, said plainly.** A run is sixty seconds plus checkpoints and
+  a place lasts six and a half to twelve miles, so a run sees one to three places. Under this
+  rule a run stays inside a narrow climate band and the variety comes from returning rather than
+  from one drive.
+
 <a id="v0-11-26"></a>
 ## [0.11.26] - 2026-09-01
 - Fixed: **a bore exists where the tunnel is, not where the light is.** Owner, 2026-09-01: "the

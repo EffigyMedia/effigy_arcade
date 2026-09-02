@@ -479,6 +479,47 @@ def main():
                   'car %.1f -> %.1f' % (dry['car']['lum'], washed['car']['lum']))
         page.evaluate("() => { window.__probe.cfg.afterDraw = window.__probe.priorAfter; }")
 
+        # ------------------------------------------------ the glass clears
+        print()
+        print('  AND THE GLASS CARRIES WHAT IS FALLING, IN THE AMOUNT THAT IS FALLING')
+        # Owner, 2026-09-01, from the device: "the snow eventually subsided and the wet drops
+        # on the screen kept going." RLG-142.
+        #
+        # `stepLens` took `Math.max(wet, snowy)` as the amount on the glass, and `snowy` is a
+        # KIND - set to 1 or 0 when the weather is rolled and cleared by nothing but the next
+        # roll. So it was pinned at 1 from the first flake until the next roll, whatever the
+        # sky was doing. This drives both halves of that: it snows, then the snow ends, and
+        # the glass has to follow the amount down.
+        def lens_after(kind, amount, settle_ms=900):
+            page.evaluate("""([k, a]) => { const R = window.__probe.road;
+                R.setSnow(k); R.setWet(a); R.setPool(0); R.setSpd(R.MAX_SPD*0.6); }""",
+                          [kind, amount])
+            page.wait_for_timeout(settle_ms)
+            return page.evaluate('() => window.__probe.road.lensDrops()')
+
+        snowing = lens_after(1, 0.9)
+        print('      snowing hard:            %d drop(s) on the glass' % snowing)
+        res.check(snowing > 0,
+                  'weather puts something on the glass in the first place',
+                  'nothing arrived in heavy snow')
+        stopped = lens_after(1, 0.0, 2400)
+        print('      the snow has subsided:   %d drop(s), with snowy still %s'
+              % (stopped, page.evaluate('() => window.__probe.road.snowy()')))
+        # THE KIND IS DELIBERATELY LEFT SET. That is the state the owner was in - the fall
+        # ended and the weather had not been re-rolled - and it is the state the old
+        # expression could not tell from heavy snow.
+        res.check(stopped == 0,
+                  'the glass clears when the fall ends, even though the KIND is still snow',
+                  '%d drop(s) survived a fall that had stopped' % stopped)
+        # AND IT FOLLOWS THE AMOUNT RATHER THAN JUMPING TO FULL. Without this the check above
+        # passes on a build where the glass is simply on or off.
+        light = lens_after(0, 0.25)
+        heavy = lens_after(0, 1.0)
+        print('      light rain %d against heavy rain %d' % (light, heavy))
+        res.check(0 < light < heavy,
+                  'and it carries more in heavy rain than in light, so it reads the amount',
+                  'light %d, heavy %d' % (light, heavy))
+
         errs = page.evaluate('() => window.__probe.errors')
         res.check(not errs, 'no page errors during the run', '; '.join(errs[:3]))
         browser.close()
