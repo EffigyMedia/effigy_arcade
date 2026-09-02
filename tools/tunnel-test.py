@@ -64,6 +64,41 @@ window.__probe = { errors: [], road: null };
   });
 })();
 window.addEventListener('error', function(e){ window.__probe.errors.push(String(e.message)); });
+
+/* ---- THE CANVAS AFTER A FRAME, AND ONLY THE CEILING BAND ----------------
+   Read after a finished paint, or the answer is half a picture. The band is
+   from a fifth of the way down - below the rear-view mirror, which shows the
+   road BEHIND and moves whatever the bore does - to just above the horizon,
+   where the road itself starts. Inside a tunnel that band holds the vault, the
+   tops of the walls and the lamps, and nothing else. */
+window.__ceil = function(){
+  return new Promise(function(res){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        var c = document.getElementById('cv'), g = c.getContext('2d');
+        var dpr = c.width / c.getBoundingClientRect().width;
+        var hz = window.__probe.road.horizon();
+        var y0 = Math.round(c.height * 0.20);
+        var y1 = Math.round((hz - 12) * dpr);
+        window.__band = { y0: y0, y1: y1,
+          d: g.getImageData(0, y0, c.width, Math.max(1, y1 - y0)).data };
+        res({ y0: y0, y1: y1, w: c.width });
+      });
+    });
+  });
+};
+window.__hold = function(){ window.__heldBand = window.__band; return true; };
+window.__moved = function(tol){
+  var a = window.__heldBand, b = window.__band;
+  if(!a || !b || a.d.length !== b.d.length) return null;
+  var n = 0, lit = 0;
+  for(var i = 0; i < a.d.length; i += 4){
+    if(a.d[i+3] > 8 && (a.d[i] > 8 || a.d[i+1] > 8 || a.d[i+2] > 8)) lit++;
+    if(Math.abs(a.d[i]-b.d[i]) > tol || Math.abs(a.d[i+1]-b.d[i+1]) > tol ||
+       Math.abs(a.d[i+2]-b.d[i+2]) > tol) n++;
+  }
+  return { moved: n, lit: lit, total: a.d.length/4 };
+};
 """
 
 
@@ -351,6 +386,78 @@ def main():
         res.check(len(set(darks)) > 2,
                   'while the darkness goes on ramping through the crossing',
                   'it took only these values: %s' % sorted(set(darks)))
+
+        # --------------------------------------------- the inside of it MOVES
+        print()
+        print('  AND THE INSIDE OF IT GOES PAST YOU, WHICH IS WHAT SAYS SPEED')
+        # Owner, 2026-09-01, from the device: "the main offender is that the walls and
+        # ceiling of the tunnel are static. They don't move. They should obviously be
+        # moving based on your speed."
+        #
+        # THIS CANNOT BE ASKED OF THE GEOMETRY, ONLY OF THE PIXELS. `borePoints` samples
+        # the tube at `z0 + t*t*reach` where `z0` is the camera once you are inside, so
+        # every rib, joint and lamp sits at a FIXED offset ahead of you. The shape is
+        # right and the picture never changes: a painted backdrop. Reading the sample
+        # list would not show that, because the list is correct.
+        #
+        # THE BAND IS THE CEILING, so the road's own stripes cannot answer for it. It runs
+        # from below the mirror to just above the horizon, and inside a bore it holds the
+        # vault, the wall tops and the lamps.
+        page.evaluate("""() => { const R = window.__probe.road;
+            R.setBiomePair('TUNNEL','TUNNEL'); R.setPhase(0.75);
+            R.setWet(0); R.setSnow(0); R.setPool(0); R.clearTraffic(); }""")
+        for _ in range(40):
+            st = page.evaluate("() => window.__probe.road.startLine()")
+            if st['left'] <= 0 and st['go'] <= 0:
+                break
+            page.wait_for_timeout(90)
+        for _ in range(12):
+            page.evaluate("() => { const R = window.__probe.road;"
+                          " R.clearTraffic(); R.setSpd(R.MAX_SPD*0.7); }")
+            page.wait_for_timeout(50)
+
+        # THE CONTROL FIRST, AND IT IS PARKED. A difference count means nothing without
+        # one: if a parked bore also differs then something is animating on its own and
+        # the driving figure below is not motion.
+        page.evaluate("() => { const R = window.__probe.road; R.setSpd(0); }")
+        page.wait_for_timeout(200)
+        page.evaluate("() => window.__ceil()")
+        page.evaluate("() => window.__hold()")
+        page.wait_for_timeout(200)
+        page.evaluate("() => window.__ceil()")
+        still = page.evaluate("(t) => window.__moved(t)", 10)
+        print('      parked, two frames 200ms apart: %d of %d pixels differ (%d are lit)'
+              % (still['moved'], still['total'], still['lit']))
+        res.check(still['lit'] > still['total'] * 0.5,
+                  'the band really is full of bore rather than of sky',
+                  'only %d of %d pixels carry anything' % (still['lit'], still['total']))
+        res.check(still['moved'] < still['total'] * 0.02,
+                  'and a parked bore holds still, so a difference below means MOTION',
+                  '%d pixels moved with the car stopped' % still['moved'])
+
+        # AND NOW DRIVING.
+        page.evaluate("() => { const R = window.__probe.road;"
+                      " R.clearTraffic(); R.setSpd(R.MAX_SPD*0.7); }")
+        page.wait_for_timeout(120)
+        page.evaluate("() => window.__ceil()")
+        page.evaluate("() => window.__hold()")
+        for _ in range(4):
+            page.evaluate("() => { const R = window.__probe.road;"
+                          " R.clearTraffic(); R.setSpd(R.MAX_SPD*0.7); }")
+            page.wait_for_timeout(45)
+        page.evaluate("() => window.__ceil()")
+        drove = page.evaluate("(t) => window.__moved(t)", 10)
+        share = drove['moved'] / max(1, drove['total'])
+        print('      driving, two frames ~180ms apart: %d of %d pixels differ (%.1f%%)'
+              % (drove['moved'], drove['total'], share * 100))
+        # 6 PER CENT IS NOT A TASTE NUMBER. A static bore measures a fraction of one per
+        # cent - it is the same picture twice - and ribs and lamps sweeping past at speed
+        # move a large part of the band. The threshold sits well above the first and well
+        # below what a working tunnel returns.
+        res.check(share > 0.06,
+                  'the ceiling and the walls go past you when you drive',
+                  'only %.2f%% of the band changed over 180ms at seven tenths of top speed'
+                  % (share * 100))
 
         errs = page.evaluate("() => window.__probe.errors")
         res.check(not errs, 'no page errors', '; '.join(errs[:3]))

@@ -14,6 +14,33 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-11-24"></a>
+## [0.11.24] - 2026-09-01
+- Fixed: **the inside of a tunnel goes past you now.** Owner, 2026-09-01, from the device: "the
+  main offender is that the walls and ceiling of the tunnel are static. They don't move. They
+  should obviously be moving based on your speed" ([RLG-153](../fragments/RLG-153.md), item 1).
+- Note: **they could not move, and the reason is one line.** `borePoints` samples the tube at
+  `z0 + t*t*reach`, and once you are inside, `z0` IS THE CAMERA - so every rib, joint and lamp
+  sat at a fixed distance ahead of you for ever. The shape was right and the picture never
+  changed: a painted backdrop with a road running into it.
+- Added: **a RING, at a world position.** The transverse joints, the wall panels and the lamps
+  are drawn at fixed multiples of `BORE.ring` in world units, so they come at you and pass
+  overhead. 1,050 units is about twelve and a half metres on the anchor the fleet uses, which
+  is a real segment length and about five a second at the speed the interstate is driven. The
+  lamps take every second ring, so they sit ON the joints rather than wandering between them.
+- Note: **the surfaces keep the camera-relative walk, and that is deliberate.** A wall and a
+  vault are continuous, their silhouette is the same however they are sampled, and the squared
+  spacing puts the samples where the shape actually bends. Only the DETAIL needed anchoring,
+  because detail is the only thing that can be seen to move.
+- Changed: **one description of the bore's cross-section, not two.** `borePointAt` was inline
+  in `borePoints`; with a second walk over the same tube it becomes a function. Two
+  descriptions of one shape is what this file has been caught by three times.
+- Note: **measured in the pixels, because the sample list was never wrong.** `tunnel-test` now
+  diffs the CEILING band - below the mirror, above the horizon, so the road's own stripes
+  cannot answer for it - between two frames 180ms apart at seven tenths of top speed. Before:
+  2.2 per cent of the band changed, and that much is the tube swinging on a bend. After: 20.9
+  per cent. The parked control reads 0 both ways, which is what says the figure is motion.
+
 <a id="v0-11-23"></a>
 ## [0.11.23] - 2026-09-01
 - Added: **the crop side alternates corn with pasture, and a pasture holds horses OR cows.**

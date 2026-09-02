@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.11.23';
+window.ROAD_BUILD = '0.11.24';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -15724,6 +15724,20 @@ let BORE = {
                    offset from the road's own projected height                */
   far:  33000,  /* how far down the bore is built                               */
   segs: 16,
+  /* ---- HOW FAR APART THE RINGS ARE, IN WORLD UNITS (RLG-153) ---------
+     A bore is cast in rings, and the joint between two of them is what the eye
+     counts as it goes past. A car is 380 units and four and a half metres on
+     the anchor the fleet uses, so 1,050 is about twelve and a half metres -
+     which is a real segment length and, at the speed the interstate is driven,
+     about five a second. That is the strobe.
+
+     THE LAMPS TAKE EVERY SECOND RING, so they sit ON the joints rather than
+     wandering between them, and they arrive at about half that rate. A
+     continuous strip was tried first and the owner asked for the discrete pair
+     back; this is what makes the pair countable.
+     ---------------------------------------------------------------- */
+  ring: 1050,
+  lampEvery: 2,
   /* the hill it is cut into: broad and low, so it reads as a hillside rather
      than as a dome sitting on the road */
   mass: 5.2,
@@ -15764,6 +15778,64 @@ function boreMouth(){
   if(!eventLen || !eventProfile) return own;
   return Math.max(own, eventZ0);
 }
+/* ---- ONE CROSS-SECTION, ASKED FOR AT A DISTANCE (RLG-153) ---------------
+   The tube's shape at a given z. It was inline in `borePoints` and there is a
+   second walk now - the rings, which are anchored to the WORLD rather than to
+   the camera - so it becomes a function rather than a second copy of the same
+   arithmetic. Two descriptions of a bore's cross-section is exactly the shape
+   this file has been caught by three times.
+   ------------------------------------------------------------------------ */
+function borePointAt(z){
+  const p = proj(0, z);
+  if(!p || !p.ok) return null;
+  /* ---- THE SAME UNIT THE ROADSIDE USES (RLG-105) ------------------
+     `BORE.out` is in `SCENE_UNIT`, the same unit every roadside object is
+     placed with, so the wall stands where the cornfield's first rank does.
+     Multiplying the road's half-width instead put it a hundred feet out. */
+  const half = roadsideAt(p, BORE.out);
+  /* ---- A CEILING IS A PLANE ABOVE THE CAMERA (RLG-105) ------------
+     The road is a plane `CAM_H` below the eye and projects to
+     `horizon + scale*CAM_H*H/2`. A ceiling is a plane ABOVE it, so its height
+     enters the same expression with the sign that follows from where it is,
+     and it converges DOWN onto the horizon as the road converges up onto it.
+     Placing it as an offset from the road's own projected y is what was wrong
+     with every build before RLG-105, and it is the mistake RLG-143 must not
+     repeat with the water. */
+  return { xl: p.x - half, xr: p.x + half, y: p.y,
+           top: horizon + p.scale * (CAM_H - BORE.h) * H / 2,
+           s: p.scale, mid: p.x, z: z };
+}
+/* ---- AND THE INSIDE OF IT IS ANCHORED TO THE WORLD (RLG-153) ------------
+   Owner, 2026-09-01, from the device: "the main offender is that the walls and
+   ceiling of the tunnel are static. They don't move. They should obviously be
+   moving based on your speed."
+
+   THEY COULD NOT MOVE, AND THE REASON IS ONE LINE. `borePoints` samples at
+   `z0 + t*t*reach`, and once you are inside, `z0` IS THE CAMERA - so every
+   sample sits at a fixed distance ahead of you for ever. The shape was right
+   and the picture never changed: a painted backdrop with a road running into
+   it. Measured before this was written, the whole ceiling band differed by 2.2
+   per cent between two frames 180ms apart at seven tenths of top speed, and
+   that much is the tube swinging on a bend rather than anything going past.
+
+   A RING IS AT A WORLD POSITION. The joints, the wall panels and the lamps are
+   drawn at fixed multiples of `BORE.ring` in world units, so they slide toward
+   you at exactly the speed everything else does and leave the frame under the
+   car. THE SURFACES KEEP THE OTHER WALK: a wall and a vault are continuous and
+   their silhouette is the same however it is sampled, while the squared spacing
+   puts the samples where the shape actually bends.
+   ------------------------------------------------------------------------ */
+function boreRings(z0, reach, step){
+  const out = [];
+  const sp = step || BORE.ring;
+  /* the first ring at or beyond the mouth, so the run is a property of the
+     ROAD and not of where the camera happens to be standing */
+  for(let z = Math.ceil(z0 / sp) * sp; z < z0 + reach; z += sp){
+    const q = borePointAt(z);
+    if(q) out.push(q);
+  }
+  return out;
+}
 function borePoints(far){
   const pts = [];
   const z0 = boreMouth();
@@ -15775,40 +15847,11 @@ function borePoints(far){
     /* SQUARED, so the near mouth gets most of the samples. Evenly in distance
        puts them all at the vanishing point, where they are worth nothing. */
     const z = z0 + t * t * reach;
-    const p = proj(0, z);
-    if(!p.ok) continue;
-    /* ---- A CEILING IS A PLANE ABOVE THE CAMERA (RLG-105) ------------
-       THIS IS WHAT WAS WRONG WITH EVERY BUILD BEFORE IT. The roof was placed as
-       an offset from the ROAD's projected y at each distance, which is how a
-       roadside object is placed - and a roof is not a roadside object. Sized
-       that way the whole near section falls below the frame, so nothing
-       converges anywhere the player is looking and the picture is a flat field
-       with a small shape at the vanishing point. Three captures showed that and
-       I read it as a palette problem twice.
-
-       The road is a plane `CAM_H` below the eye and projects to
-       `horizon + scale*CAM_H*H/2`. A ceiling is a plane ABOVE the eye, so its
-       height enters the same expression with the sign that follows from where
-       it is - and it converges DOWN onto the horizon exactly as the road
-       converges up onto it. Directly overhead it is off the top of the frame,
-       which is correct: you cannot see the roof above your own head.
-       ------------------------------------------------------------ */
-    /* ---- THE SAME UNIT THE ROADSIDE USES (RLG-105) ------------------
-       THIS WAS THE FAULT AND IT WAS A UNIT ERROR, not a taste one. `BORE.wide`
-       multiplied `p.w`, the road's HALF-WIDTH - so 1.12 stood the wall a
-       twelfth of a carriageway outside the tarmac, which on a road this wide is
-       a hundred feet of nothing. Every roadside object in the game is placed
-       with `roadsideAt`, whose unit is `SCENE_UNIT` and is an order of
-       magnitude smaller: the cornfield's `out` is 0.12 of THAT and sits hard
-       against the kerb.
-
-       The owner named it exactly - "tight to the road edge would be where the
-       corn is in the farmland biome" - and the bore now uses the same call the
-       corn does, so the two are directly comparable numbers.
-       ------------------------------------------------------------ */
-    const half = roadsideAt(p, BORE.out);
-    const top  = horizon + p.scale * (CAM_H - BORE.h) * H / 2;
-    pts.push({ xl: p.x - half, xr: p.x + half, y: p.y, top: top, s: p.scale, mid: p.x });
+    /* the cross-section is `borePointAt` now - one description of it, shared
+       with the world-anchored ring walk above (RLG-153) */
+    const q = borePointAt(z);
+    if(!q) continue;
+    pts.push(q);
   }
   return pts;
 }
@@ -15826,14 +15869,19 @@ const crownOf = (q) => q.top - (q.xr - q.xl) * BORE.arch;
    the far end over both. The fade and the lamps keep the order they had with
    respect to each other, because that order is what the owner has seen.
    ------------------------------------------------------------------------ */
-let borePts = null;
+let borePts = null, boreRing = null;
 function drawBore(){
-  borePts = null;
+  borePts = null; boreRing = null;
   const d = placeDark();
   if(d <= 0.01) return;
   const pts = borePoints();
   if(pts.length < 3) return;
   borePts = pts;
+  /* the rings, at world positions, which are what actually go past (RLG-153) */
+  const z0 = boreMouth();
+  const reach = Math.min(BORE.far,
+                         eventLen ? Math.max(600, eventZ0 + eventLen - z0) : BORE.far);
+  boreRing = boreRings(z0, reach);
   ctx.save();
   /* SOLID. The walls are not a matter of degree - see `borePoints` (RLG-144). */
 
@@ -15869,10 +15917,14 @@ function drawBore(){
   /* and up over the frame, so the roof closes above the camera */
   ctx.fillRect(0, 0, W, Math.max(0, crownOf(pts[0])));
 
-  /* the transverse joints, which are what give a roof its distance */
+  /* ---- THE TRANSVERSE JOINTS, AND THEY ARE WHAT MOVES (RLG-153) -----
+     These give a roof its distance, and anchored to the camera they gave it
+     none: the same arch at the same place on the glass, frame after frame.
+     They walk the RINGS now, so each one is a fixed point on the road that
+     comes at you and passes overhead. */
   ctx.strokeStyle = 'rgba(60,55,46,.45)';
-  for(let i2 = 1; i2 < pts.length; i2++){
-    const q = pts[i2];
+  for(let i2 = 0; i2 < boreRing.length; i2++){
+    const q = boreRing[i2];
     if(q.xr - q.xl < 8) continue;
     ctx.lineWidth = Math.max(0.6, (q.xr - q.xl) * 0.008);
     ctx.beginPath();
@@ -15916,10 +15968,12 @@ function drawBore(){
     }
     ctx.closePath();
     ctx.fill();
-    /* the panel joints, receding */
+    /* the panel joints, receding - on the RINGS, so a wall panel is a place on
+       the road rather than a mark on the glass (RLG-153). They land on the same
+       joints the ceiling does, which is how a cast bore is actually built. */
     ctx.strokeStyle = 'rgba(80,74,62,.40)';
-    for(let i2 = 1; i2 < pts.length; i2++){
-      const q = pts[i2];
+    for(let i2 = 0; i2 < boreRing.length; i2++){
+      const q = boreRing[i2];
       if(Math.abs(q.xr - q.xl) < 8) continue;
       ctx.lineWidth = Math.max(0.5, (q.xr - q.xl) * 0.005);
       ctx.beginPath(); ctx.moveTo(get(q), q.y); ctx.lineTo(get(q), wallTop(q)); ctx.stroke();
@@ -16007,8 +16061,16 @@ function drawBoreDepth(){
        They hang from the CEILING either side of the crown, so they follow the
        bore's own curve and bend with the road. */
     ctx.globalAlpha = Math.min(1, d) * (0.60 + lit * 0.40);
-    for(let i2 = 0; i2 < pts.length; i2++){
-      const q = pts[i2];
+    /* ---- AND THEY HANG ON THE RINGS, SO THEY FLICK PAST (RLG-153) ---
+       The note above says a row of lamps flicking past is the oldest speed cue
+       there is. It was not one: the lamps were placed at fixed distances ahead
+       of the camera, so they sat still on the glass and the cue was never
+       delivered. Every second ring, at a world position, is what makes them
+       count. */
+    const rings = boreRing || [];
+    for(let i2 = 0; i2 < rings.length; i2++){
+      if(i2 % Math.max(1, BORE.lampEvery|0)) continue;
+      const q = rings[i2];
       const wide = q.xr - q.xl;
       if(wide < 5) continue;
       const mid = (q.xl + q.xr) / 2;
