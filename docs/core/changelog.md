@@ -14,6 +14,70 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-0"></a>
+## [0.12.0] - 2026-09-05
+
+**Slice checkpoint. The world slice closes.** Thirty of the thirty-one patches in 0.11 changed what
+is OUTSIDE the car - the places on the board, the weather over them, and the structures the road runs
+through. The queue now turns to the vehicles, so the minor moves and the patch count resets. The rule
+is that a minor bump marks a slice completing, and [0.11.0](#v0-11-0) was cut for the same reason
+after 0.10 ran to forty-six patches with several slices closing unmarked inside it.
+
+The one patch that was not world work is named below rather than left out, because a checkpoint that
+quietly drops what does not fit the theme is a summary and not a record.
+
+WHAT THE SLICE CONTAINED, grouped by what it built rather than in patch order:
+
+**Four new places on the board.** FARMLAND, a cornfield down one side and houses and barns down the
+other ([0.11.1](#v0-11-1)); TUNNEL, the only place that is dark by day ([0.11.2](#v0-11-2)); CANYON,
+whose distance is a wall ([0.11.5](#v0-11-5)); and JUNGLE ([0.11.29](#v0-11-29)), whose canopy cost
+almost nothing because the tunnel had already built the mechanism it needed. The crop side also
+learned to alternate corn with pasture, and a pasture holds horses or cows ([0.11.23](#v0-11-23)).
+
+**A place can now be an EVENT rather than a place** ([0.11.7](#v0-11-7)) - a stated length and an
+authored profile, instead of a rolled stretch of terrain. That is the structural change of the
+slice, and both the bridge and the tunnel are built on it.
+
+**The bridge became a bridge.** Water on both sides all the way to the skyline
+([0.11.8](#v0-11-8)), its red truss ([0.11.10](#v0-11-10)), suspended above the water rather than
+floating on it ([0.11.11](#v0-11-11)), no longer ending in mid-water ([0.11.12](#v0-11-12)), and
+finally a deck under the car with expansion joints across it ([0.11.28](#v0-11-28)).
+
+**The tunnel took nine patches and three of them were one defect wearing three faces.** Walls tight
+to the roadway ([0.11.3](#v0-11-3)), a run can never open inside one ([0.11.6](#v0-11-6)), it does
+the opposite of the bridge ([0.11.14](#v0-11-14)), it is not transparent ([0.11.15](#v0-11-15)), and
+it is not painted over the traffic ([0.11.16](#v0-11-16)). Then the three the owner reported from
+the device together: the inside goes past you now ([0.11.24](#v0-11-24)), it climbs back out of
+itself ([0.11.25](#v0-11-25)), and the bore exists where the tunnel is rather than where the light is
+([0.11.26](#v0-11-26)).
+
+**The coast and the sky.** A fleet rather than one boat ([0.11.13](#v0-11-13)), open water on the
+horizon with no headlands standing on it ([0.11.17](#v0-11-17)), less relief ([0.11.18](#v0-11-18)),
+a canyon skyline no higher than the canyon walls ([0.11.9](#v0-11-9)), and far more lit windows on
+the city ([0.11.21](#v0-11-21)).
+
+**The climate model, and the defect under it.** A place's own bend and hill are in force from its
+first unit ([0.11.20](#v0-11-20)) - a generation-order fault that had been quietly making every
+biome transition read wrong. A tundra's ground is white before anything falls
+([0.11.22](#v0-11-22)); the farmland yards are sparse ([0.11.19](#v0-11-19)); and the drops on the
+glass stop when the fall does, with a temperature step over the board
+([0.11.27](#v0-11-27)).
+
+**And one patch that belongs to none of the above.** Traffic engines are heard at six car lengths
+and rivals at twelve ([0.11.4](#v0-11-4)) - a change to the audio mix, written as a ROLE carried on
+the vehicle rather than a branch naming a class, and measured in car lengths so that it survives the
+road ever being widened.
+
+**One fleet change, which is the hinge into the next slice.** The pickup is a production vehicle
+([0.11.30](#v0-11-30)), and the traffic pickup with it ([0.11.31](#v0-11-31)) - because a class
+describes the vehicle, not who is holding the wheel.
+
+WHAT IS STILL THE OWNER'S EYE AND NOT A MEASUREMENT. The tunnel's portal fills the frame from five
+thousand units out and reads as a cliff rather than a portal, and near the exit the next place floods
+in around the tube. Both are geometrically honest and neither is obviously right. 0.11.20 also
+changes how EVERY biome transition feels, because the tables were tuned by feel while the fault was
+present, and 0.11.22 takes the mountain's ground cover from a flat 0.10 to a median 0.39.
+
 <a id="v0-11-31"></a>
 ## [0.11.31] - 2026-09-02
 - Fixed: **the traffic pickup is production too.** [0.11.30](#v0-11-30) moved the driveable
