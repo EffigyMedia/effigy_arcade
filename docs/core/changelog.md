@@ -14,6 +14,31 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-4"></a>
+## [0.12.4] - 2026-09-05
+- Added: **the ambulance wears a red cross, in three places.** Owner, 2026-09-05: one on the front,
+  one on the back "split down the middle as if it's printed at the seam of the double doors that
+  swing out", and "that same Red Cross to be the badge that goes on the steering wheel"
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **the back one is one piece of paint, not two halves.** The cross is drawn as a single shape
+  centred on the door seam, and the seam is then stroked back over it - which is how a real one
+  behaves, because the paint went on a closed van and the doors were cut through it afterwards.
+  Drawing two half-crosses either side of the line would have been the same picture built from the
+  wrong idea, and it would have drifted the moment either half moved
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **the body cross and the wheel badge are deliberately different drawings.** On the bodywork
+  it is livery - a bare cross, large, no disc. On the wheel boss it is a BADGE and takes the white
+  disc and thin rim every other marque has, because a bare red cross on a black boss reads as a
+  smear at twenty pixels across. One `drawCross` serves the nose and the doors so those two cannot
+  drift ([RLG-114](../fragments/RLG-114.md)).
+- Fixed: **giving the ambulance its own marque would have changed its steering wheel.** The rim
+  shape is chosen from the MARQUE, so `MEDICAL` had to join the round-rim list or a van would have
+  quietly acquired a flat-bottomed wheel ([RLG-114](../fragments/RLG-114.md)).
+- Changed: **`tools/bar-row.py` now checks the cross in all three places, against a plain van.**
+  Counting red pixels on the ambulance alone would pass on any vehicle with a tail light in frame;
+  the van is the same vehicle without the livery, which is what makes the count mean "cross". Watched
+  failing with the door cross removed ([RLG-114](../fragments/RLG-114.md)).
+
 <a id="v0-12-3"></a>
 ## [0.12.3] - 2026-09-05
 - Added: **the AMBULANCE.** Owner, 2026-08-31: "in utility we add an ambulance and a bus. The

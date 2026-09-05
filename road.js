@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.12.3';
+window.ROAD_BUILD = '0.12.4';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2568,7 +2568,7 @@ const BODY = {
      -------------------------------------------------------------------- */
   'AMBULANCE': { rig:'ambulance', big:true, bar:'medical', barY:0.074, gears:4,
                wide:0.060, arch:1.00, horn:0.78,
-               redline:6500, pitch:0.56, rear:'GENERIC', mass:2600, hp:170, grip:0.50, launch:1.20, mech:1.06, vmax:0.43,
+               redline:6500, pitch:0.56, rear:'MEDICAL', mass:2600, hp:170, grip:0.50, launch:1.20, mech:1.06, vmax:0.43,
                note:'AMBULANCE \u00B7 EVERYTHING MOVES, AND NOT FOR YOU' },
   'VAN': { rig:'van', big:true, gears:4, wide:0.060, arch:1.00, horn:0.78,
                redline:6500, pitch:0.58, rear:'GENERIC', mass:2400, hp:140, grip:0.48, launch:1.17, mech:1.06, vmax:0.43,
@@ -2864,8 +2864,12 @@ function paintRigFront(kind, o){
         gg.fillStyle = on ? AMBER_ON : AMBER_OFF;
         rr(gg, w*0.855, bot-h*0.150, w*0.075, h*0.042, 2); gg.fill();
       });
-      /* the van wears it on the NOSE only */
-      drawMarque(g, 'GENERIC', w*0.5, bot-h*0.285, h*0.030);
+      /* the van wears it on the NOSE only - and an ambulance wears a red cross
+         there instead of the badge, as PAINT rather than as a marque. It is
+         drawn bigger than the badge it replaces because it is livery: a
+         badge is read as an emblem and this is read as what the vehicle IS. */
+      if(o.bar === 'medical') drawCross(g, w*0.5, bot-h*0.285, w*0.30, 0.34);
+      else                    drawMarque(g, 'GENERIC', w*0.5, bot-h*0.285, h*0.030);
       g.fillStyle='#1b1f26'; g.fillRect(w*0.055, bot-h*0.055, w*0.89, h*0.055);
       /* the front half of the van's bar - this branch returns too, so the
          shared block at the foot of the painter never sees it either. Same
@@ -3444,6 +3448,22 @@ function paintRig(kind, o){
       g.fillStyle='rgba(120,160,200,.20)';
       rr(g, w*0.14, top+h*0.062, w*0.31, h*0.035, 2); g.fill();
       rr(g, w*0.55, top+h*0.062, w*0.31, h*0.035, 2); g.fill();
+      /* ---- THE CROSS ACROSS BOTH DOORS ----------------------------------
+         Owner, 2026-09-05: on the back, "split down the middle as if it's
+         printed at the seam of the double doors that swing out".
+
+         SO THE ORDER IS THE WHOLE TRICK. The cross is painted as ONE shape,
+         centred on the seam, and the seam is then stroked back over it - which
+         is exactly how a real one behaves, because the paint was applied to a
+         closed van and the doors were cut through it afterwards. Drawing two
+         half-crosses either side of the line would have been the same picture
+         built from a wrong idea, and it would have drifted the moment either
+         half moved.
+
+         It sits above the handles at 0.55 and below the glass, on the widest
+         clear panel the doors have. */
+      if(o.bar === 'medical')
+        drawCross(g, w*0.5, top + (bot-top)*0.36, w*0.36, 0.32);
       /* door seam and handles */
       g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=Math.max(1,w*0.008);
       g.beginPath(); g.moveTo(w*0.5, top+h*0.03); g.lineTo(w*0.5, bot-h*0.03); g.stroke();
@@ -12561,6 +12581,27 @@ function stepWheel(dt){
 
    Ours, not anybody's: a rearing horse, a charging bull, a crest with a bird.
    =========================================================================== */
+/* ---- THE CROSS AS PAINT, NOT AS A BADGE -----------------------------------
+   Owner, 2026-09-05: a red cross on the ambulance's nose, and one across the
+   back "split down the middle as if it's printed at the seam of the double
+   doors that swing out".
+
+   So this draws the bare cross and nothing else - no disc, no rim. It is
+   livery, the same way the cruiser's band is livery, and it is one function
+   because the nose and the doors must not drift into two different crosses.
+   `arm` is the bar thickness as a fraction of the cross's full span.
+
+   THE SPLIT IS NOT DRAWN HERE. The rear painter draws this centred on the door
+   seam and then strokes the seam back over it, so the cross is one piece of
+   paint that the doors happen to divide - which is what a real one is.
+   ------------------------------------------------------------------------- */
+function drawCross(g, cx, cy, span, arm){
+  const a = span * arm * 0.5, e = span * 0.5;
+  g.fillStyle = '#d1121f';
+  g.fillRect(cx - a, cy - e, a*2, e*2);
+  g.fillRect(cx - e, cy - a, e*2, a*2);
+}
+
 function drawMarque(g, kind, cx, cy, r, tint){
   g.save();
   g.translate(cx, cy);
@@ -12573,7 +12614,25 @@ function drawMarque(g, kind, cx, cy, r, tint){
      each is now a distinct outline in a distinct metal with one heavy device
      inside it.
      ---------------------------------------------------------------------- */
-  if(kind === 'STALLION'){
+  if(kind === 'MEDICAL'){
+    /* ---- A RED CROSS, AND IT IS A BADGE HERE ---------------------------
+       The ambulance wears this in three places and they are not the same
+       drawing. On the BODY it is paint - a bare cross, large, no disc. Here
+       on the wheel boss it is a BADGE, so it takes the white disc and the
+       thin rim every other marque has, because a bare red cross on a black
+       boss reads as a smear at twenty pixels across.
+
+       Square arms of equal length: the arm is 3.1 of the 10-unit radius wide
+       and reaches 7.4 out, which keeps it inside the disc with air around it.
+       ------------------------------------------------------------------ */
+    g.fillStyle = '#f4f6f8';
+    g.beginPath(); g.arc(0, 0, 9.2, 0, 6.2832); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.9;
+    g.beginPath(); g.arc(0, 0, 9.2, 0, 6.2832); g.stroke();
+    g.fillStyle = '#d1121f';
+    g.fillRect(-1.55, -7.4, 3.1, 14.8);
+    g.fillRect(-7.4, -1.55, 14.8, 3.1);
+  } else if(kind === 'STALLION'){
     /* WIDE YELLOW OVAL, black bar, three red stripes — racing colours */
     g.fillStyle = '#0e1014';
     g.beginPath(); g.ellipse(0,0,10,6.6,0,0,6.2832); g.fill();
@@ -12871,8 +12930,12 @@ function drawWheel(){
      keep the flat bottom and only the formula car has a yoke. */
   /* SUPERCRUISER is a MATADOR underneath — it keeps the supercar's
      flat-bottomed rim, not the patrol car's round one */
+  /* MEDICAL is here for one reason: this list is keyed on the MARQUE, and
+     giving the ambulance its own marque for the boss badge would otherwise
+     have changed its steering wheel from round to flat-bottomed as a side
+     effect. A van's wheel is round and stays round. */
   const roundRim = (MK === 'TUNER' || MK === 'MUSCLE' || MK === 'CRUISER'
-                 || MK === 'GENERIC' || MK === 'ROADSTER')
+                 || MK === 'GENERIC' || MK === 'ROADSTER' || MK === 'MEDICAL')
                  /* MK is the MARQUE, and the super cruiser wears the CRUISER's
                     — so testing MK could never exclude it. The BODY key is the
                     thing that identifies the car. My probe tested a REWRITE of

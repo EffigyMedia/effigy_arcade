@@ -109,10 +109,61 @@ with sync_playwright() as p:
             if k not in res:
                 print(f'  FAIL  {k:<20} not measured at all - control missing')
                 okc = False
+    # ---- THE RED CROSS, IN THE THREE PLACES THE OWNER ASKED FOR IT ----------
+    # Owner, 2026-09-05: on the nose, across the back doors "split down the middle
+    # as if it's printed at the seam", and as the badge on the steering wheel.
+    #
+    # EACH CHECK COMPARES AGAINST THE PLAIN VAN, which is the same vehicle without
+    # the livery. A check that only counted red pixels on the ambulance would pass
+    # on any vehicle with a tail light in frame - the van is what makes the count
+    # mean "cross" rather than "red".
+    CROSS = """(k) => {
+      const R = window.__road, out = {};
+      const red = (c, x0f, x1f, y0f, y1f) => {
+        if (!c) return -1;
+        const g = c.getContext('2d');
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        const x0 = (c.width*x0f)|0, x1 = (c.width*x1f)|0;
+        const y0 = (c.height*y0f)|0, y1 = (c.height*y1f)|0;
+        let n = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const i = (y*c.width + x)*4;
+          if (d[i+3] < 40) continue;
+          if (d[i] > 150 && d[i+1] < 90 && d[i+2] < 90) n++;
+        }
+        return n;
+      };
+      const w = R.wheelOf(k);
+      out.boss = red(w, 0.40, 0.60, 0.40, 0.60);
+      for (const v of R.fleet()) {
+        if ((v.key || v.name) !== k) continue;
+        /* the middle band of the body, away from every lamp */
+        if (v.spr)   out.rear  = red(v.spr,   0.30, 0.70, 0.20, 0.55);
+        if (v.front) out.front = red(v.front, 0.30, 0.70, 0.20, 0.60);
+      }
+      return out;
+    }"""
+    amb = pg.evaluate(CROSS, 'AMBULANCE')
+    van = pg.evaluate(CROSS, 'VAN')
+
+    def cross(label, key):
+        a, v = amb.get(key, -1), van.get(key, -1)
+        good = a > 20 and v == 0
+        print(f'  {"ok  " if good else "FAIL"}  {label:<20} '
+              f'ambulance {a} red px, plain van {v}')
+        return good
+
+    print()
+    okx = cross('a cross on the nose', 'front')
+    okx = cross('and across the doors', 'rear') and okx
+    okx = cross('and on the wheel boss', 'boss') and okx
+
     print()
     print('  ' + ('the controls agree, so the measured numbers can be trusted'
                   if okc else 'A CONTROL IS WRONG - do not trust the numbers above'))
+    if not okx:
+        print('  the red cross is not where the owner asked for it')
     pg.close()
     b.close()
 srv.shutdown()
-sys.exit(0 if okc else 1)
+sys.exit(0 if (okc and okx) else 1)
