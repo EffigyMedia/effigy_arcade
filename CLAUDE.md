@@ -296,8 +296,15 @@ a picker. A fifth machine, or a real second shelf, is one entry away.
   project that way, and they survived a green build. If it ever happens again, **read the diff
   against the last known-good commit before doing anything else.**
 - **Commits are authored as the project owner** — no AI identity, no co-author trailer. One unit of
-  work is one commit. The remote is `origin`, `github.com/EffigyMedia/effigy_arcade`, **public**, and
+  work is one commit. The remote is `origin`, `github.com/EffigyMedia/effigy-arcade`, **public**, and
   it is also the deployed GitHub Pages site.
+- **THE REPOSITORY NAME IS NOT THE PROJECT NAME, and the two follow different rules.** The project
+  folder is `Effigy_Arcade` in `Pascal_Snake_Case` with underscores, which `Project_Identity.md` §5
+  sets and which is unchanged. The REMOTE is lowercase with **hyphens**, and a development
+  repository carries a `-dev` suffix while a production one drops it. This repository is public and
+  Pages serves `main`, so it is the production repository and correctly has no suffix. It was
+  `effigy_arcade` until 2026-09-05 and the underscore was simply wrong. Renamed on the owner's
+  standard; see `docs/fragments/RLG-155.md`.
 - **Never commit** (see `.gitignore`): the packaged zip, anything matching the scratch pattern `_*`
   (four instrumented debug builds once reached a public release that way), the generated dashboard
   and fragment index, and **any licensed or copyrighted reference material** — no sprite rips, no

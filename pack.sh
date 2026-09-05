@@ -64,12 +64,15 @@ say(){ printf '  %s\n' "$1"; }
 command -v node >/dev/null || fail "node is required (parse gate, catalogue read)"
 
 # ---- the whitelist -------------------------------------------------------
-# If a file is added here it must ALSO be added to sw.js CORE_FILES and to
-# sync.sh. Three lists, one truth; they are cross-checked below.
+# If a file is added here it must ALSO be added to sw.js CORE_FILES. Two lists,
+# one truth; they are cross-checked below. It was three until sync.sh was
+# deleted on 2026-09-05 - that script cloned the remote into a temporary folder
+# and copied files over the top, from when this working folder was not itself
+# the repository (RLG-155).
 ROOT_FILES=(
   index.html arcade.js audio.js road.js assets.js games.js sw.js
   manifest.webmanifest icon.png icon-512.png effigy.png
-  pack.sh sync.sh
+  pack.sh
   LICENSE 404.html
 )
 # No document ships. Tiny Arcade packed six of them at the root; this project

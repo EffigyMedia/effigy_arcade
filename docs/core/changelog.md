@@ -14,6 +14,41 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-2"></a>
+## [0.12.2] - 2026-09-05
+- Changed: **the repository is `effigy-arcade`.** Owner, 2026-09-05: "we are supposed to use the
+  standard GitHub nomenclature of - instead of _ and development repos -dev while production repos
+  drop the -dev." The account bore the standard out - ten private repositories carry a `-dev` suffix
+  and the one other public one does not, so the correlation with visibility is exact. This
+  repository is public and Pages serves `main`, which makes it the production repository, so
+  dropping `-dev` was already right and only the underscore was wrong. **The Pages URL is now
+  `effigymedia.github.io/effigy-arcade/`** ([RLG-155](../fragments/RLG-155.md)).
+- Note: **the project folder is unchanged and the two rules are different.** `Effigy_Arcade` keeps
+  `Pascal_Snake_Case` with underscores and never takes a `-dev` suffix. A repository name is derived
+  from the project name rather than equal to it: lowercase it, turn the underscores into hyphens,
+  then add `-dev` if it is a development repository ([RLG-155](../fragments/RLG-155.md)).
+- Note: **nothing in the product had to change for the rename.** The manifest uses
+  `start_url: "./index.html"` and `scope: "./"` and every asset path is relative, so no shipped file
+  carries the repository name. Saves survive because `localStorage` is scoped to the origin
+  `effigymedia.github.io`, which a rename does not touch. **The installed web app on a phone points
+  at the old path and needs adding to the home screen once more**
+  ([RLG-155](../fragments/RLG-155.md)).
+- Removed: **`sync.sh`.** It cloned the remote into a temporary folder and copied files over the
+  top, which is from when this working folder was not itself the repository. It has been carried as
+  obsolete for some time and the rename was the occasion to finish it. `pack.sh` cross-checked three
+  lists against each other and now cross-checks two ([RLG-155](../fragments/RLG-155.md)).
+- Fixed: **three stale references to the old repository name** - `CLAUDE.md`, a path comment in
+  `404.html`, and the site link in `docs/README.md` ([RLG-155](../fragments/RLG-155.md)).
+- Fixed: **the process corpus now carries the standard, which is why this drifted in the first
+  place.** `Development_Process.md` said only that the repository name matches the project name - and
+  a project folder uses underscores, so a session following the written rule correctly produced
+  `effigy_arcade`. It now reads that the repository name is DERIVED from the project name, with
+  visibility as the discriminator so that a repository which is both developed in and shipped from
+  counts as the production one. **Project folder naming is untouched.** The owner granted explicit
+  authority for a project session to make that edit, which it normally may not, and a note carrying
+  a plan for its own removal was left at the environment root
+  ([RLG-155](../fragments/RLG-155.md)).
+
 <a id="v0-12-1"></a>
 ## [0.12.1] - 2026-09-05
 - Added: **the events are for the cars built to enter them.** Owner, 2026-08-31: "if you have a

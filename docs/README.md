@@ -4,7 +4,7 @@ Four games on one floor. No server, no build step, and no network call at launch
 
 ## Play it
 
-**https://effigymedia.github.io/effigy_arcade/**
+**https://effigymedia.github.io/effigy-arcade/**
 
 On a phone, open it and use **Share → Add to Home Screen**. It installs as EFFIGY ARCADE, launches
 full screen, and works with no signal after the first visit.
