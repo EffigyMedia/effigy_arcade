@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.12.4';
+window.ROAD_BUILD = '0.12.5';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2865,10 +2865,18 @@ function paintRigFront(kind, o){
         rr(gg, w*0.855, bot-h*0.150, w*0.075, h*0.042, 2); gg.fill();
       });
       /* the van wears it on the NOSE only - and an ambulance wears a red cross
-         there instead of the badge, as PAINT rather than as a marque. It is
-         drawn bigger than the badge it replaces because it is livery: a
-         badge is read as an emblem and this is read as what the vehicle IS. */
-      if(o.bar === 'medical') drawCross(g, w*0.5, bot-h*0.285, w*0.30, 0.34);
+         there instead of the badge, as PAINT rather than as a marque.
+
+         OWNER, 2026-09-05: half the size it was, and centred in the panel
+         between the windscreen and the grille. So it is placed from those two
+         LANDMARKS rather than from a fraction of the body - the screen ends at
+         `top+0.200` and the grille begins at `bot-0.215`, and the cross sits
+         in the middle of what is left. Written this way it stays centred if
+         either ever moves, which a tuned constant would not. */
+      if(o.bar === 'medical'){
+        const winB = top + h*0.200, grillT = bot - h*0.215;
+        drawCross(g, w*0.5, (winB + grillT) * 0.5, w*0.15, 0.34);
+      }
       else                    drawMarque(g, 'GENERIC', w*0.5, bot-h*0.285, h*0.030);
       g.fillStyle='#1b1f26'; g.fillRect(w*0.055, bot-h*0.055, w*0.89, h*0.055);
       /* the front half of the van's bar - this branch returns too, so the
@@ -3462,8 +3470,16 @@ function paintRig(kind, o){
 
          It sits above the handles at 0.55 and below the glass, on the widest
          clear panel the doors have. */
-      if(o.bar === 'medical')
-        drawCross(g, w*0.5, top + (bot-top)*0.36, w*0.36, 0.32);
+      /* OWNER, 2026-09-05: the size is right and it sat too high. Centred on
+         the doors BELOW THE WINDOWS now, and placed from those landmarks for
+         the same reason as the nose - the door glass ends at `top+0.165` and
+         the lamps begin at `bot-0.150`, so the cross takes the middle of the
+         clear panel between them. The handles are drawn after this and land on
+         top of it, which is right: handles are hardware bolted over paint. */
+      if(o.bar === 'medical'){
+        const winB = top + h*0.165, lampT = bot - h*0.150;
+        drawCross(g, w*0.5, (winB + lampT) * 0.5, w*0.36, 0.32);
+      }
       /* door seam and handles */
       g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=Math.max(1,w*0.008);
       g.beginPath(); g.moveTo(w*0.5, top+h*0.03); g.lineTo(w*0.5, bot-h*0.03); g.stroke();

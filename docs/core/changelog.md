@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-5"></a>
+## [0.12.5] - 2026-09-05
+- Fixed: **the cross on the back doors sat too high.** Owner, 2026-09-05: "it's way too high. He
+  needs to be centered on the doors below the windows." The size was right and is unchanged; it is
+  centred on the clear door panel now ([RLG-114](../fragments/RLG-114.md)).
+- Changed: **the cross on the nose is half the size and centred under the windscreen.** Owner: "half
+  its size and centered in the front under the windows between the windows and the grill." Span
+  0.30 of the body width down to 0.15 ([RLG-114](../fragments/RLG-114.md)).
+- Note: **both are placed from LANDMARKS rather than from a fraction of the body.** The rear takes
+  the middle of what lies between the door glass ending at `top+0.165` and the lamps beginning at
+  `bot-0.150`; the nose takes the middle between the screen ending at `top+0.200` and the grille
+  beginning at `bot-0.215`. Written that way they stay centred if any of those ever move, which a
+  tuned constant would not - and the first placement was exactly such a constant
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **the door handles are drawn over the rear cross, and that is right.** Handles are hardware
+  bolted over paint ([RLG-114](../fragments/RLG-114.md)).
+
 <a id="v0-12-4"></a>
 ## [0.12.4] - 2026-09-05
 - Added: **the ambulance wears a red cross, in three places.** Owner, 2026-09-05: one on the front,
