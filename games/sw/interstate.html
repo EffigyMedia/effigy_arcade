@@ -813,6 +813,14 @@ h1 u{text-decoration:none;display:block;font-size:.34em;letter-spacing:.26em;col
 .gstack{display:flex;flex-direction:column;margin-top:0}
 .gstack .go{border-radius:0;margin:0;border-top-width:0}
 .gstack .go:last-child{border-radius:0 0 3px 3px}
+/* ---- A CONTROL THAT IS SHUT RATHER THAN MISSING (RLG-115) -----------------
+   A production or utility car can only go on TEST DRIVE, and the owner's
+   answer was that the race modes GREY OUT WITH THE REASON GIVEN rather than
+   disappearing. So this has to read as switched off and still legible - a
+   control the player can see the shape of, with the `.gnote` under it saying
+   which class shut it. `cursor:default` because there is nothing to press.
+   ------------------------------------------------------------------------- */
+.gstack .go.shut{opacity:.42;filter:grayscale(.65);cursor:default}
 
 /* ---------------------------------------------------------------------------
    PORTRAIT ON A PHONE, WIDE ON A DESKTOP

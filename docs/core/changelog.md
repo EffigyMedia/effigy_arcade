@@ -14,6 +14,48 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-1"></a>
+## [0.12.1] - 2026-09-05
+- Added: **the events are for the cars built to enter them.** Owner, 2026-08-31: "if you have a
+  production or utility vehicle selected, the only mode available is test drive." The garage classes
+  stop being only a schedule of when a car unlocks and start describing what a car is FOR - the
+  ordinary cars are for driving around in, and a saloon on a starting grid against three supercars
+  is a race nobody wrote ([RLG-115](../fragments/RLG-115.md)).
+- Changed: **the race modes grey out and say why, rather than vanishing.** Owner, 2026-09-05, given
+  three shapes to choose between. MODE keeps its place, dims, carries `disabled`, and a line under it
+  reads the car's own class followed by TEST DRIVE ONLY. A control that disappears teaches nothing,
+  and a player who never picks a race car would never learn the classes mean anything
+  ([RLG-115](../fragments/RLG-115.md)).
+- Changed: **a circuit garage does not list a van at all.** Owner, 2026-09-05, choosing the strongest
+  of four options for Motorsport. Interstate lists production and utility cars and greys the race
+  modes out, because it HAS a mode they are legal in; a circuit does not, so a greyed-out control
+  there would explain a rule about a screen the player cannot reach. It is a `CFG.raceOnlyGarage`
+  flag set by the cabinet - this is the first thing that makes the two games' garages hold different
+  cars, and the engine must never ask which game it is ([RLG-115](../fragments/RLG-115.md)).
+- Changed: **a save can no longer hold a car and a mode that disagree.** The owner rejected both
+  resolve-it-at-launch answers in favour of never letting the disagreement exist, so the rule is
+  applied as the garage opens and again whenever a car is chosen. **The tournament is switched off,
+  not erased** - the round, the points and the standings are untouched, and picking a race car back
+  up resumes it. Taking a van out for a drive must not cost somebody their ladder
+  ([RLG-115](../fragments/RLG-115.md)).
+- Changed: **the class table answers one question in one place.** It was a local `const LOCK` inside
+  `cycleBody`, where only the arrows could ask it; it is `BODY_CLASS` at module scope now, with the
+  unlock gate and `raceLegal()` both reading it. The list of cars the garage shows became
+  `garageBodies()` for the same reason ([RLG-115](../fragments/RLG-115.md)).
+- Added: **`tools/class-test.py`**, which drives the real controls rather than asking `raceLegal` and
+  agreeing with itself, and which was watched failing with each lock removed and with both. **One of
+  its checks was vacuous in draft and the fragment records it**: "pressing it anyway does nothing"
+  read the button's LABEL, which is hardcoded to TEST DRIVE on the banned branch and cannot move
+  whatever happens underneath - so it passed with both locks gone. It reads the engine's `mode` now
+  ([RLG-115](../fragments/RLG-115.md)).
+- Note: **RLG-115's own premise was stale and the fragment now says so.** It describes the mode
+  buttons as being on the title screen and the car as chosen in the garage, "two separate screens".
+  MODE and HOT PURSUIT were moved into the garage; the title holds only PLAY, OPTIONS and QUIT. The
+  car and the mode are adjacent controls on one screen, which is what makes greying out read clearly
+  ([RLG-115](../fragments/RLG-115.md)).
+- Note: **whether a dimmed control reads as switched-off rather than broken is the owner's eye.**
+  0.42 opacity on a phone in daylight, and a 9px reason under it, are not things a harness can judge.
+
 <a id="v0-12-0"></a>
 ## [0.12.0] - 2026-09-05
 

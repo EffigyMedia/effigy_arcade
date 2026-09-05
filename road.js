@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.12.0';
+window.ROAD_BUILD = '0.12.1';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -20880,6 +20880,10 @@ function drawGarageCar(){
   put(front, boxes[1], 225);
 }
 function showGarage(){
+  /* before a single control is drawn: a save can hold a car and a mode that
+     disagree, and RLG-115's answer is that the disagreement never gets to
+     exist. See `enforceCarRules`. */
+  enforceCarRules();
   document.body.classList.remove('titling');
   /* the garage is reachable from the end card, so it has to tear down too —
      but it keeps the menu music rather than restarting it */
@@ -20905,9 +20909,26 @@ function showGarage(){
         ? '<button class="go ghost" data-act="stripes">STRIPES \u00B7 <b>' +
             (optStripes ? 'ON' : 'OFF') + '</b></button>'
         : '') +
-      '<button class="go ghost" data-act="mode">MODE \u00B7 <b>' +
-        (mode === 'race' ? (tourOn ? 'TOURNAMENT' : 'SINGLE RACE') : 'TEST DRIVE') +
+      /* ---- THE MODE CONTROL, AND WHY IT MAY BE SHUT (RLG-115) ------------
+         Owner, 2026-09-05, choosing between three shapes for what the player
+         sees: the modes GREY OUT WITH THE REASON GIVEN. Not hidden - a control
+         that vanishes teaches nothing, and a player who never picks a race car
+         would never learn the classes mean anything at all.
+
+         It reads as a statement rather than a refusal, which is why the label
+         changes too: the button stops offering a choice and starts saying what
+         this car is for. `disabled` is what stops the press, so the rule holds
+         even if the note is ever restyled away.
+         ---------------------------------------------------------------- */
+      '<button class="go ghost' + (raceLegal(optBody) ? '' : ' shut') + '"' +
+        (raceLegal(optBody) ? '' : ' disabled') + ' data-act="mode">MODE \u00B7 <b>' +
+        (raceLegal(optBody)
+          ? (mode === 'race' ? (tourOn ? 'TOURNAMENT' : 'SINGLE RACE') : 'TEST DRIVE')
+          : 'TEST DRIVE') +
         '</b></button>' +
+      (raceLegal(optBody) ? '' :
+        '<div class="gnote">' + bodyClass(optBody).toUpperCase() +
+        ' \u00B7 TEST DRIVE ONLY</div>') +
       /* what time you set off. The cycle still runs from there - this picks the
          start, not a fixed light (RLG-051). */
       '<button class="go ghost" data-act="time">TIME \u00B7 <b>' +
@@ -20940,6 +20961,10 @@ function showGarage(){
                        if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { stripes:optStripes });
                        showGarage(); },
       mode:  () => {
+        /* the button is `disabled` as well, so this is the second lock rather
+           than the only one - a hardware back-press or a stale veil must not be
+           able to walk a bus into a tournament */
+        if(!raceLegal(optBody)) return;
         if(mode !== 'race'){ mode = 'race'; tourOn = false; }
         else if(!tourOn){ tourOn = true; tourReset(); }
         else { mode = 'endless'; tourOn = false; }
@@ -20959,6 +20984,135 @@ function showGarage(){
     }));
   drawGarageCar();
 }
+/* ---- WHAT CLASS A CAR IS, ASKED IN ONE PLACE ------------------------------
+   This table used to live inside `cycleBody`, where its only job was deciding
+   which cars the garage would let you cycle onto. RLG-115 gives the classes a
+   SECOND job - a production or utility vehicle may only go on TEST DRIVE - and
+   a second reader is exactly when a local const has to become the one answer
+   to one question. Both readers ask this now: the unlock gate below, and
+   `raceLegal()`.
+
+   A body with no entry here is unlocked from the start and is race-legal. That
+   is the sports class, and saying so by absence rather than by three more rows
+   is deliberate - a new sports car should need no edit here at all.
+   ------------------------------------------------------------------------- */
+const BODY_CLASS = { 'STALLION':'super', 'MATADOR':'super', 'CREST':'super',
+               'VECTOR':'formula', 'APEX':'formula', 'COMET':'formula',
+               'CRUISER':'cruiser',
+               /* ---- THE PICKUP IS PRODUCTION (RLG-114) ------------------
+                  Owner, 2026-08-31: "we move pickup to production."
+
+                  IT IS ONE LINE AND IT IS ALSO A BALANCE CHANGE, which is
+                  the part worth a moment. Production unlocks at 50 miles and
+                  utility at 25, so this makes the pickup unlock LATER rather
+                  than sooner - and it leaves utility with two entries where
+                  it had three, so both classes change size at once. A player
+                  who has just earned utility now finds two vehicles in it.
+
+                  AND IT IS THE CLASSIFICATION CATCHING UP WITH THE DRAWING.
+                  The wheel work already splits the fleet into a sporty group
+                  and the ones the owner named production and utility, and the
+                  pickup already sits with a four-speed gearbox and a
+                  production-shaped wheel. Nothing about the vehicle changes.
+                  -------------------------------------------------------- */
+               'COUPE':'production','SALOON':'production','CAB':'production',
+               'PICKUP':'production',
+               'VAN':'utility','LORRY':'utility' };
+
+/* ---- THE CARS THE EVENTS ARE FOR (RLG-115) --------------------------------
+   Owner, 2026-08-31: "if you have a production or utility vehicle selected, the
+   only mode available is test drive." The classes stop being only a schedule of
+   when a car unlocks and start describing what a car is FOR: the ordinary cars
+   are for driving around in, and the events are for the cars built to enter
+   them. A saloon on a starting grid against three supercars is a race nobody
+   wrote.
+
+   IT IS ASKED OF THE VEHICLE, NEVER OF THE PLAYER. Three standing rulings
+   forbid a branch that names a vehicle class to get a behaviour, and this does
+   not break them: the question is what the car IS, which is the one thing a
+   class is allowed to answer.
+   ------------------------------------------------------------------------- */
+const RACE_BANNED = { production:1, utility:1 };
+function bodyClass(k){ return BODY_CLASS[k] || 'sport'; }
+function raceLegal(k){ return !RACE_BANNED[bodyClass(k)]; }
+
+/* ---- WHICH CARS THE GARAGE LISTS -----------------------------------------
+   One answer, asked by the arrows and by the rule below that has to know
+   whether the car you are standing in front of is still on the list at all.
+   It used to be three lines inside `cycleBody`, which meant only the arrows
+   could ask.
+   ------------------------------------------------------------------------- */
+function garageBodies(){
+  /* ---- DEBUG OVERRIDES ---------------------------------------------------
+     These open a car in the garage WITHOUT writing the unlock flag, so the
+     reward screens can still be earned properly afterwards. That is the whole
+     point of them: testing the cars must not consume the moment of winning
+     them. `unlocked()` is untouched - only this gate is widened.
+     ---------------------------------------------------------------------- */
+  const openBy = k => {
+    const need = BODY_CLASS[k];
+    if(!need) return true;
+    if(unlocked(need)) return true;
+    /* honoured for anyone who earned it under the hundred-mile rule */
+    if((need === 'production' || need === 'utility') && unlocked('traffic')) return true;
+    if(need === 'production' || need === 'utility') return !!dbgTraffic;
+    /* the police car has its own switch: a patrol car is not a racer, and
+       testing pursuit should not require opening the whole ladder */
+    if(need === 'cruiser' || need === 'supercruiser') return !!dbgPolice;
+    return !!dbgRacers;
+  };
+  /* an NPC body has stats and a sprite but is not a car you can pick */
+  let ks = Object.keys(BODY).filter(k => !BODY[k].npc).filter(openBy);
+  /* ---- A CIRCUIT GARAGE LISTS ONLY WHAT CAN RACE (RLG-115) --------------
+     Owner, 2026-09-05, choosing between four shapes: production and utility
+     vehicles are "not offered at all in Motorsport". Interstate keeps them and
+     greys the modes out; a circuit has no mode they would be legal in, so a
+     greyed-out control there would explain a rule about a screen the player
+     cannot reach.
+
+     IT IS A `CFG` SEAM AND MUST STAY ONE. This is the first thing that makes
+     the two games' garages hold different cars, which cuts across the marque -
+     one engine, one fleet. So the fork asks for it by configuration and the
+     engine never asks which game it is.
+     ------------------------------------------------------------------- */
+  if(CFG.raceOnlyGarage) ks = ks.filter(raceLegal);
+  /* never hand back an empty list: the arrows would divide by zero and the
+     garage would have no car to draw */
+  return ks.length ? ks : ['ROADSTER'];
+}
+
+/* ---- THE RULE, APPLIED WHERE IT CANNOT BE GOT ROUND (RLG-115) ------------
+   Owner, 2026-09-05, on what happens to a save that disagrees with itself:
+   never let the disagreement exist. So this runs the moment a car is chosen
+   and again as the garage opens, rather than resolving a conflict later.
+
+   TWO THINGS, IN THIS ORDER. A car the garage will not list is swapped for one
+   it will - that is a circuit refusing a bus, and it has to happen first
+   because the mode question is meaningless about a car you cannot have. Then a
+   car that cannot race drops the mode to TEST DRIVE.
+
+   THE TOURNAMENT IS NOT TOUCHED. `tourOn` goes off so that no race mode is
+   live, and `tourRound`, `tourPts` and the standings are left exactly where
+   they were: a part-run tournament waits, and picking a race car up again
+   resumes it. Erasing somebody's ladder because they took a van out for a
+   drive would be the worst kind of change.
+
+   AND IT IS NOT A CHECK INSIDE A MODE'S START, which RLG-115 names as the
+   wrong build. Nothing here refuses anything at the moment of driving; the
+   menu simply stops offering what the car cannot do.
+   ------------------------------------------------------------------------- */
+function enforceCarRules(){
+  const ks = garageBodies();
+  if(ks.indexOf(optBody) < 0){
+    optBody = ks[0];
+    syncPaintForBody();
+    buildPlayer();
+    syncBoxClass();
+    if(AR && AR.save) AR.save.merge((GAME_ID + '-opts'), { body:optBody });
+  }
+  if(!raceLegal(optBody) && mode !== 'endless'){ mode = 'endless'; tourOn = false; }
+}
+
 function cycleBody(d){
   /* FORMULA is not in the list until it has been won */
   /* ---- SIX CARS FROM THE START -----------------------------------------
@@ -20990,48 +21144,13 @@ function cycleBody(d){
      consolation prize for a tournament run in cars that were already better
      than it. The ladder runs the other way now, and every rung is a class.
      ------------------------------------------------------------------- */
-  const LOCK = { 'STALLION':'super', 'MATADOR':'super', 'CREST':'super',
-                 'VECTOR':'formula', 'APEX':'formula', 'COMET':'formula',
-                 'CRUISER':'cruiser',
-                 /* ---- THE PICKUP IS PRODUCTION (RLG-114) ------------------
-                    Owner, 2026-08-31: "we move pickup to production."
-
-                    IT IS ONE LINE AND IT IS ALSO A BALANCE CHANGE, which is
-                    the part worth a moment. Production unlocks at 50 miles and
-                    utility at 25, so this makes the pickup unlock LATER rather
-                    than sooner - and it leaves utility with two entries where
-                    it had three, so both classes change size at once. A player
-                    who has just earned utility now finds two vehicles in it.
-
-                    AND IT IS THE CLASSIFICATION CATCHING UP WITH THE DRAWING.
-                    The wheel work already splits the fleet into a sporty group
-                    and the ones the owner named production and utility, and the
-                    pickup already sits with a four-speed gearbox and a
-                    production-shaped wheel. Nothing about the vehicle changes.
-                    -------------------------------------------------------- */
-                 'COUPE':'production','SALOON':'production','CAB':'production',
-                 'PICKUP':'production',
-                 'VAN':'utility','LORRY':'utility' };
   /* ---- DEBUG OVERRIDES ---------------------------------------------------
      These open a car in the garage WITHOUT writing the unlock flag, so the
      reward screens can still be earned properly afterwards. That is the whole
      point of them: testing the cars must not consume the moment of winning
      them. `unlocked()` is untouched — only this gate is widened.
      ---------------------------------------------------------------------- */
-  const openBy = k => {
-    const need = LOCK[k];
-    if(!need) return true;
-    if(unlocked(need)) return true;
-    /* honoured for anyone who earned it under the hundred-mile rule */
-    if((need === 'production' || need === 'utility') && unlocked('traffic')) return true;
-    if(need === 'production' || need === 'utility') return !!dbgTraffic;
-    /* the police car has its own switch: a patrol car is not a racer, and
-       testing pursuit should not require opening the whole ladder */
-    if(need === 'cruiser' || need === 'supercruiser') return !!dbgPolice;
-    return !!dbgRacers;
-  };
-  /* an NPC body has stats and a sprite but is not a car you can pick */
-  const ks = Object.keys(BODY).filter(k => !BODY[k].npc).filter(openBy);
+  const ks = garageBodies();
   const i = (ks.indexOf(optBody) + d + ks.length) % ks.length;
   optBody = ks[i];
   syncPaintForBody();
@@ -22876,6 +22995,29 @@ requestAnimationFrame(frameLoop);
   API.accelOf = function(k){ return +accelOf(k).toFixed(3); };
   API.brakeOf = function(k){ return +brakeOf(k).toFixed(3); };
   API.setBody = function(k){ optBody = k; buildSprites(); syncBoxClass(); };
+  /* ---- WHAT THE CLASS GATE LOOKS LIKE FROM OUTSIDE (RLG-115) -------------
+     Read-only, except the two that a harness needs in order to reach a car it
+     would otherwise have to earn. `class-test.py` drives the real buttons and
+     uses these only to know WHICH car it is standing in front of - a harness
+     that asked `raceLegal` and then asserted `raceLegal` would agree with
+     itself and prove nothing.
+     -------------------------------------------------------------------- */
+  API.body      = function(){ return optBody; };
+  API.bodyClass = function(k){ return bodyClass(k || optBody); };
+  API.raceLegal = function(k){ return raceLegal(k || optBody); };
+  API.garageBodies = function(){ return garageBodies().slice(); };
+  /* the round and the points are kept when a mode is dropped - this is how a
+     check proves the tournament was switched OFF rather than erased */
+  API.tourState = function(){ return { on:!!tourOn, round:tourRound, pts:tourPts }; };
+  /* THE MODE ITSELF, not the label. The MODE button reads 'TEST DRIVE' for a
+     car that cannot race whatever `mode` holds, so the label cannot tell a
+     check whether a press got through - it is hardcoded on that branch. A
+     harness watching the label alone passed with BOTH locks removed. */
+  API.mode = function(){ return mode; };
+  /* opens the traffic classes in the garage WITHOUT writing an unlock flag,
+     which is what the DEBUG menu's own switch does */
+  API.dbgTraffic = function(v){ dbgTraffic = !!v; return dbgTraffic; };
+  API.showGarage = function(){ showGarage(); };
   /* ---- THE GATE, AND A WAY TO MOVE THROUGH IT (RLG-069) ---------------
      `shift` calls the SAME `shiftStep` the thumb calls, rather than a second
      copy of the rules - a harness that reimplements the gate proves that the

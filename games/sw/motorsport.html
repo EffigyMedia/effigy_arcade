@@ -669,6 +669,14 @@ h1 u{text-decoration:none;display:block;font-size:.34em;letter-spacing:.26em;col
 .gstack{display:flex;flex-direction:column;margin-top:0}
 .gstack .go{border-radius:0;margin:0;border-top-width:0}
 .gstack .go:last-child{border-radius:0 0 3px 3px}
+/* ---- A CONTROL THAT IS SHUT RATHER THAN MISSING (RLG-115) -----------------
+   A production or utility car can only go on TEST DRIVE, and the owner's
+   answer was that the race modes GREY OUT WITH THE REASON GIVEN rather than
+   disappearing. So this has to read as switched off and still legible - a
+   control the player can see the shape of, with the `.gnote` under it saying
+   which class shut it. `cursor:default` because there is nothing to press.
+   ------------------------------------------------------------------------- */
+.gstack .go.shut{opacity:.42;filter:grayscale(.65);cursor:default}
 
 /* ---------------------------------------------------------------------------
    PORTRAIT ON A PHONE, WIDE ON A DESKTOP
@@ -797,7 +805,19 @@ let circuit = null, lap = 0, lapsTotal = 5, lapStart = 0,
    moment the first seam runs. */
 /* no civilian traffic, no police, no roadblocks, no crates — a circuit is
    not a highway */
-const CFG = { id:'motorsport', title:'Redline Motorsport', circuitOnly:true };
+const CFG = { id:'motorsport', title:'Redline Motorsport', circuitOnly:true,
+  /* ---- A CIRCUIT GARAGE HOLDS ONLY WHAT CAN RACE (RLG-115) ---------------
+     Owner, 2026-09-05: production and utility vehicles are "not offered at
+     all in Motorsport". Interstate lists them and greys the race modes out,
+     because it HAS a mode they are legal in - TEST DRIVE. A circuit does not,
+     so listing a van here would offer a car with nothing it could do.
+
+     THIS IS THE FIRST TIME THE TWO GAMES' GARAGES DIFFER, and that is worth
+     saying out loud: REDLINE is one engine and one fleet, and this cuts
+     across it. It is a `CFG` flag for exactly that reason - the engine reads
+     a setting and never asks which game it is.
+     -------------------------------------------------------------------- */
+  raceOnlyGarage:true };
 const R = new Proxy({}, { get: (_, k) => CFG.api && CFG.api[k] });
 
 /* ===========================================================================
