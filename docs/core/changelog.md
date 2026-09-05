@@ -14,6 +14,23 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-6"></a>
+## [0.12.6] - 2026-09-05
+- Removed: **the bus, before it was built.** Owner, 2026-09-05: "I don't think we should make the
+  bus. It's just extra work for not much payoff so we can just retire that idea." No code changes;
+  [RLG-114](../fragments/RLG-114.md) asked for the pickup reclassified, an ambulance and a bus, and
+  it closes as **built** with the third withdrawn rather than left open forever.
+- Note: **why the bus was not cheap the way the ambulance was.** The ambulance already had a body
+  the painters knew how to draw - `rig:'van'`, front and rear - so the only new drawing was a light
+  bar. A bus shares none of that: a new branch in both rig painters, its own `rigBox` entry, sprite
+  registration, stat row and traffic decision. And every rig branch in those painters returns early,
+  so nothing already written at the foot of them would have applied to it
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **RLG-115 is part of why the payoff was small.** A bus is a utility vehicle, so the rule the
+  owner set the same day would have confined it to TEST DRIVE in Interstate and kept it out of
+  Motorsport's garage entirely. What made a driveable bus sensible rather than a novelty also caps
+  how much of the game it could appear in ([RLG-115](../fragments/RLG-115.md)).
+
 <a id="v0-12-5"></a>
 ## [0.12.5] - 2026-09-05
 - Fixed: **the cross on the back doors sat too high.** Owner, 2026-09-05: "it's way too high. He
