@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.12.2';
+window.ROAD_BUILD = '0.12.3';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -2321,6 +2321,35 @@ function lampsLit(box, spr, ids, alpha, lvl){
    a gearing factor, see `accelOf`. The two pull in opposite directions on
    purpose so no car is simply better: a car geared for the top end leaves the
    line worse, which is what `launch` says about it. */
+/* ---- WHAT COLOUR A LIGHT BAR IS ------------------------------------------
+   `force` used to mean two things at once - "this is a police car" AND "this
+   has a bar, a siren and the authority to move traffic". They are not the same
+   claim: an ambulance has every part of the second and none of the first. That
+   is the one-field-two-jobs shape that `bore`/`dark` was split for, and this is
+   the same split.
+
+   SO `force` NOW MEANS POLICE ONLY, and `bar` means there is a light bar on the
+   roof - carrying the SCHEME it is painted in. A body with `bar` gets the
+   latch, the siren, the wash and the scatter; a body with `force` gets the
+   livery and counts as police.
+
+   Each lens is [lit, unlit]. A police bar alternates blue and red, so the two
+   lenses differ and the front mirrors the rear. A medical bar is red at both
+   ends, which makes that mirroring a no-op - correctly, because there is
+   nothing to mirror.
+   ------------------------------------------------------------------------- */
+const BAR_SCHEME = {
+  /* `a` and `b` are the two lenses as [lit, unlit]; `wash` is the same pair as
+     rgb triples, because the light the bar throws is drawn with alpha over the
+     road rather than as a fill. Two forms of one colour, and they must agree -
+     they were one hardcoded pair each before this. */
+  police:  { a:['#8fb6ff','#2f6bff'], b:['#ff8fa4','#ff2b4a'],
+             wash:['90,140,255','255,70,80'] },
+  medical: { a:['#ff8fa4','#ff2b4a'], b:['#ff8fa4','#ff2b4a'],
+             wash:['255,70,80','255,70,80'] }
+};
+function barScheme(k){ return BAR_SCHEME[(BODY[k] && BODY[k].bar) || ''] || null; }
+
 const BODY = {
   /* Pushed genuinely apart. They shared a greenhouse, an arch size and a deck
      height, so only the tail treatment told them apart — which is not enough at
@@ -2478,7 +2507,7 @@ const BODY = {
 
      `npc:true` keeps it out of the garage — it is not yours.
      ---------------------------------------------------------------------- */
-  'SUPERCRUISER': { npc:true, force:true, barY:0.304,
+  'SUPERCRUISER': { npc:true, force:true, bar:'police', barY:0.304,
               bodyTop:0.52, cabinTop:0.24, cabW:0.52, cabOff:0, roofR:0.10,
               wide:0.030, arch:1.00, gears:6, redline:12000, pitch:1.02,
               horn:1.02, rear:'CRUISER', spoiler:'low',
@@ -2494,7 +2523,7 @@ const BODY = {
                  car of the class it polices and the best-braked. */
               note:'INTERCEPTOR \u00B7 A MATADOR WITH A CAGE IN IT' },
 
-  'CRUISER': { force:true, barY:0.122, rig:'cop', gears:5, wide:0.045, arch:1.00,
+  'CRUISER': { force:true, bar:'police', barY:0.122, rig:'cop', gears:5, wide:0.045, arch:1.00,
               horn:0.80, redline:11000, pitch:0.72, rear:'CRUISER',
               mass:1810, hp:370, grip:0.96, launch:1.16, mech:1.15, vmax:0.71, note:'INTERCEPTOR \u00B7 HEAVY, AND FAST' },
   /* ---- THE TRAFFIC, DRIVEABLE ---------------------------------------------
@@ -2519,6 +2548,28 @@ const BODY = {
                note:'PICKUP \u00B7 CARRIES THINGS, SLOWLY' },
   /* `big` is the garage's word, not the road's: it says this vehicle does not
      fit the card the other cars share, so it gets the taller one (RLG-087) */
+  /* ---- THE AMBULANCE ----------------------------------------------------
+     Queue item 7. It is a VAN that carries a bar, and it is NOT police - which
+     is the whole reason `force` had to be split into `force` and `bar` before
+     this body could exist. It gets the latch, the siren, the wash and the
+     scatter from `bar`; it gets no livery and does not count as police,
+     because it has no `force`.
+
+     ONE RIG, NOT A NEW ONE. `rig:'van'` means the painters already know how to
+     draw it front and rear, and the bar is added by the same declaration the
+     cruiser uses. That is what made this cheap where the bus is not.
+
+     IT IS A UTILITY VEHICLE, so under RLG-115 it can only go on TEST DRIVE in
+     Interstate, and Motorsport does not list it at all. That follows from the
+     owner's own answers rather than being a decision made here.
+
+     Slightly stronger than the plain van and no faster: an ambulance is built
+     to get moving, not to have a higher top end. `vmax` is unchanged at 0.43.
+     -------------------------------------------------------------------- */
+  'AMBULANCE': { rig:'ambulance', big:true, bar:'medical', barY:0.074, gears:4,
+               wide:0.060, arch:1.00, horn:0.78,
+               redline:6500, pitch:0.56, rear:'GENERIC', mass:2600, hp:170, grip:0.50, launch:1.20, mech:1.06, vmax:0.43,
+               note:'AMBULANCE \u00B7 EVERYTHING MOVES, AND NOT FOR YOU' },
   'VAN': { rig:'van', big:true, gears:4, wide:0.060, arch:1.00, horn:0.78,
                redline:6500, pitch:0.58, rear:'GENERIC', mass:2400, hp:140, grip:0.48, launch:1.17, mech:1.06, vmax:0.43,
                note:'VAN \u00B7 A BOX WITH A STEERING WHEEL' },
@@ -2648,6 +2699,14 @@ let optBody = 'ROADSTER';
    grille, a coupe sits low.
    =========================================================================== */
 function paintRigFront(kind, o){
+  /* ---- AN AMBULANCE IS DRAWN AS A VAN -----------------------------------
+     It carries its own RIG so that it can have its own sprite: `SP` is keyed by
+     rig, and `SP.van` is the one every traffic van shares, so a bar bolted to
+     that would put one on the traffic. But there is no second body shape to
+     draw - it is the same box - so the kind is remapped here, once, and the
+     `bar` option is what makes it an ambulance.
+     -------------------------------------------------------------------- */
+  if(kind === 'ambulance'){ kind = 'van'; o = Object.assign({ bar:'medical' }, o); }
   return (g, w, h, lamps, parts) => {
     const P = o;
     const cy = h;
@@ -2808,6 +2867,24 @@ function paintRigFront(kind, o){
       /* the van wears it on the NOSE only */
       drawMarque(g, 'GENERIC', w*0.5, bot-h*0.285, h*0.030);
       g.fillStyle='#1b1f26'; g.fillRect(w*0.055, bot-h*0.055, w*0.89, h*0.055);
+      /* the front half of the van's bar - this branch returns too, so the
+         shared block at the foot of the painter never sees it either. Same
+         roof line and same span as the rear, and the lenses MIRROR: this end's
+         left is the rear's right. A medical scheme is red at both ends, which
+         makes the swap invisible - correctly. */
+      if(o.bar){
+        const SC = BAR_SCHEME[o.bar] || BAR_SCHEME.police;
+        g.fillStyle = '#1b1e24';
+        rr(g, w*0.24, top-h*0.045, w*0.52, h*0.045, 2); g.fill();
+        decl(g, lamps, 'bar.fl', (gg, on) => {
+          gg.fillStyle = SC.b[on ? 0 : 1];
+          rr(gg, w*0.255, top-h*0.040, w*0.235, h*0.034, 2); gg.fill();
+        });
+        decl(g, lamps, 'bar.fr', (gg, on) => {
+          gg.fillStyle = SC.a[on ? 0 : 1];
+          rr(gg, w*0.51, top-h*0.040, w*0.235, h*0.034, 2); gg.fill();
+        });
+      }
       return;
     }
 
@@ -3255,17 +3332,30 @@ function paintRigFront(kind, o){
          fitting, 0.36 wide from the front and 0.52 from behind. These are the
          rear's values, and the housing tone with them, so the two ends cannot
          disagree about a part that is bolted to the roof. */
+    }
+    /* the front half of the same split - see the rear painter */
+    if(kind === 'cop' || o.bar){
+      const SC = BAR_SCHEME[o.bar] || BAR_SCHEME.police;
       g.fillStyle = '#1b1e24';
       rr(g, w*0.24, pRoof-h*0.055, w*0.52, h*0.045, 2); g.fill();
-      g.fillStyle = '#2f6bff';
+      /* the front mirrors the rear: this end's left lens is the rear's right */
+      g.fillStyle = SC.b[1];
       rr(g, w*0.255, pRoof-h*0.050, w*0.235, h*0.034, 2); g.fill();
-      g.fillStyle = '#ff2b4a';
+      g.fillStyle = SC.a[1];
       rr(g, w*0.51, pRoof-h*0.050, w*0.235, h*0.034, 2); g.fill();
     }
   };
 }
 
 function paintRig(kind, o){
+  /* ---- AN AMBULANCE IS DRAWN AS A VAN -----------------------------------
+     It carries its own RIG so that it can have its own sprite: `SP` is keyed by
+     rig, and `SP.van` is the one every traffic van shares, so a bar bolted to
+     that would put one on the traffic. But there is no second body shape to
+     draw - it is the same box - so the kind is remapped here, once, and the
+     `bar` option is what makes it an ambulance.
+     -------------------------------------------------------------------- */
+  if(kind === 'ambulance'){ kind = 'van'; o = Object.assign({ bar:'medical' }, o); }
   return (g,w,h,lamps)=>{
     const cy = h;
     const P = o;
@@ -3387,6 +3477,32 @@ function paintRig(kind, o){
       /* bumper */
       g.fillStyle='#2b2e34';
       rr(g, w*0.05, cy-h*0.105, w*0.90, h*0.045, 3); g.fill();
+      /* ---- A BAR ON A VAN'S ROOF (RLG-114) -------------------------------
+         THE VAN BRANCH RETURNS, which is why the shared bar block at the foot
+         of this painter never ran for an ambulance and the sprite came back
+         carrying a plain van's three lamps. It was not a throw and not a
+         scoping fault - the code simply never got there.
+
+         So the bar is drawn here, on the van's OWN roof line. `top` is that
+         roof, and the housing sits on it rather than at `roofY`, which is a
+         car-shaped rig's variable and does not exist in this branch.
+
+         The span is the cruiser's - 0.24 to 0.76, lenses 0.235 wide inset
+         0.005 - because it is the same fitting bolted to a different vehicle.
+         -------------------------------------------------------------------- */
+      if(o.bar){
+        const SC = BAR_SCHEME[o.bar] || BAR_SCHEME.police;
+        g.fillStyle = '#1b1e24';
+        rr(g, w*0.24, top-h*0.045, w*0.52, h*0.045, 2); g.fill();
+        decl(g, lamps, 'bar.rl', (gg, on) => {
+          gg.fillStyle = SC.a[on ? 0 : 1];
+          rr(gg, w*0.255, top-h*0.040, w*0.235, h*0.034, 2); gg.fill();
+        });
+        decl(g, lamps, 'bar.rr', (gg, on) => {
+          gg.fillStyle = SC.b[on ? 0 : 1];
+          rr(gg, w*0.51, top-h*0.040, w*0.235, h*0.034, 2); gg.fill();
+        });
+      }
       return;
     }
 
@@ -3704,14 +3820,27 @@ function paintRig(kind, o){
          Two descriptions again, and this one did not even agree - the lit bar
          sat at 0.19 of the car's width against the sprite's 0.235.
          ---------------------------------------------------------------- */
+    }
+    /* ---- THE BAR IS NOT THE LIVERY (RLG-114) ------------------------------
+       This used to sit inside the `cop` branch above, which made a light bar
+       something only a police car could have. An ambulance has the bar and
+       none of the livery, so the two parted company: the block above is what
+       a POLICE car wears, and this is what ANY car with a bar carries.
+
+       The geometry is not duplicated, deliberately. The comment above insists
+       the two ends must not disagree about a part bolted to the roof, and a
+       second copy of these numbers is exactly how they would.
+       -------------------------------------------------------------------- */
+    if(kind === 'cop' || o.bar){
+      const SC = BAR_SCHEME[o.bar] || BAR_SCHEME.police;
       g.fillStyle='#1b1e24';
       rr(g, w*0.24, roofY-h*0.055, w*0.52, h*0.045, 2); g.fill();
       decl(g, lamps, 'bar.rl', (gg, on) => {
-        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        gg.fillStyle = SC.a[on ? 0 : 1];
         rr(gg, w*0.255, roofY-h*0.050, w*0.235, h*0.034, 2); gg.fill();
       });
       decl(g, lamps, 'bar.rr', (gg, on) => {
-        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        gg.fillStyle = SC.b[on ? 0 : 1];
         rr(gg, w*0.51, roofY-h*0.050, w*0.235, h*0.034, 2); gg.fill();
       });
     }
@@ -4081,20 +4210,28 @@ function paintFront(o){
        red and its right the blue, which is the reverse of the view from
        behind.
        ------------------------------------------------------------------- */
-    if(B.force){
+    if(B.bar || B.force){
       /* THE FRONT PAIR of the four the owner ruled into scope. Seen from the
          front the car's own left carries the red and its right the blue, which
          is the reverse of the view from behind - and the names say which corner
-         rather than which colour, so a pattern can address all four. */
+         rather than which colour, so a pattern can address all four.
+
+         THE MIRRORING IS WHY THE SCHEME HAS TWO LENSES RATHER THAN A COLOUR.
+         The rear takes `a` then `b` and the front takes `b` then `a`, so a
+         police bar swaps blue and red between the ends exactly as it did when
+         the colours were written in by hand. A medical bar is red at both ends,
+         which makes the swap a no-op - and that is correct rather than a
+         special case, because there is nothing to mirror. */
+      const SC = BAR_SCHEME[B.bar] || BAR_SCHEME.police;
       const bY = roofT - h*0.030;
       g.fillStyle = '#1b1e24';
       rr(g, w*0.24, bY, w*0.52, h*0.045, 2); g.fill();
       decl(g, lamps, 'bar.fl', (gg, on) => {
-        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        gg.fillStyle = SC.b[on ? 0 : 1];
         rr(gg, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
       });
       decl(g, lamps, 'bar.fr', (gg, on) => {
-        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        gg.fillStyle = SC.a[on ? 0 : 1];
         rr(gg, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
       });
       g.fillStyle = '#2b3038';
@@ -4406,7 +4543,7 @@ function paintCar(o){
        `paintRig('cop')` draws one; `paintCar` never did, so the SUPER CRUISER
        had lights and a wash floating above a bare roof. Same span, height and
        housing as the cruiser's, so the two read as one force. */
-    if(o.force){
+    if(o.bar || o.force){
       /* the cabin BOX starts at `cabinTop` but the drawn roof is a curve inset
          from it — the same trap the stripes fell into. A third of the way down
          the cabin span is where the metal actually is, so the bar SITS on it. */
@@ -4418,12 +4555,13 @@ function paintCar(o){
          at - RLG-053's test of the seam is exactly that */
       g.fillStyle = '#1b1e24';
       rr(g, w*0.24, bY, w*0.52, h*0.045, 2); g.fill();
+      const SC = BAR_SCHEME[o.bar] || BAR_SCHEME.police;
       decl(g, lamps, 'bar.rl', (gg, on) => {
-        gg.fillStyle = on ? '#8fb6ff' : '#2f6bff';
+        gg.fillStyle = SC.a[on ? 0 : 1];
         rr(gg, w*0.255, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
       });
       decl(g, lamps, 'bar.rr', (gg, on) => {
-        gg.fillStyle = on ? '#ff8fa4' : '#ff2b4a';
+        gg.fillStyle = SC.b[on ? 0 : 1];
         rr(gg, w*0.51, bY + h*0.005, w*0.235, h*0.034, 2); gg.fill();
       });
       /* the two stanchions it sits on */
@@ -5159,7 +5297,11 @@ function rigBox(rig){
        /* the van was within a hand's breadth of the LORRY on the sheets - 196
           tall against 250, at nearly the same road width. A panel van is a tall
           box and it is not an artic. Owner, 2026-08-29. */
-       : rig === 'van'    ? [200,176]
+       /* an ambulance is a van with a bar on it, so it is a van's box.
+          It needs its OWN rig because `SP` is keyed by rig and `SP.van`
+          is the sprite every traffic van shares - bolting a bar to that
+          would put one on the traffic. */
+       : rig === 'van' || rig === 'ambulance' ? [200,176]
        : rig === 'pickup' ? [206,176]
        : rig === 'truck'  ? [230,250]
        : rig === 'sedan' || rig === 'taxi' ? [200,164]
@@ -5230,6 +5372,7 @@ function buildPlayer(){
   } else {
     SP.player = sprite(220,168, paintCar(Object.assign({
       cabin:true, spoiler:true, shape, bodyKey:optBody, force:!!shape.force,
+      bar:shape.bar,
       bodyTop:shape.bodyTop, cabinTop:shape.cabinTop,
       stripes:optStripes && stripesAllowed(),
       lamp:'#d61b3c', lamp2:'#ff7a86'
@@ -5314,6 +5457,11 @@ function buildFleet(){
   SP.pickup = sprite(206,176, paintRig('pickup', { body:'#6b5540', hi:'#8d735a', lo:'#3e3125', lamp:'#c8102e' }));
   /* A van: one tall slab, glass right at the top. */
   SP.van = sprite(200,196, paintRig('van', { body:'#c9cdd4', hi:'#e8ecf2', lo:'#8b9099', lamp:'#c8102e' }));
+  /* the same van, painted white, carrying a medical bar. `paintRig('van')`
+     draws the body and the `bar` option adds the roof - so the ambulance is
+     the van it plainly is, rather than a second drawing of one. */
+  SP.ambulance = sprite(200,196, paintRig('ambulance', { body:'#f2f4f7', hi:'#ffffff', lo:'#aeb4bd',
+                                                         lamp:'#c8102e' }));
   SP.sedan = sprite(200,164, paintRig('sedan', { body:'#3c4a63', hi:'#5b6d8c', lo:'#212a3b', lamp:'#c8102e' }));
   SP.sedan2 = sprite(200,164, paintRig('sedan', { body:'#6b3346', hi:'#8f4a5f', lo:'#3d1c28', lamp:'#d2313f' }));
   SP.coupe = sprite(206,150, paintRig('coupe', { body:'#2f6b5e', hi:'#469084', lo:'#193b34', lamp:'#c8102e' }));
@@ -5336,7 +5484,7 @@ function buildFleet(){
       body:'#eceff4', hi:'#ffffff', lo:'#9aa3b0',
       lamp:'#d61b3c', lamp2:'#ff7a86',
       cabin:true, spoiler:true, shape:SC,
-      bodyKey:'SUPERCRUISER', marque:'CRUISER', stripes:false, force:true
+      bodyKey:'SUPERCRUISER', marque:'CRUISER', stripes:false, force:true, bar:'police'
     })));
     /* and its face, for the mirror. `paintFront` reads the body from
        `bodyType`, not from `shape` - the same field that once put one nose on
@@ -5344,7 +5492,7 @@ function buildFleet(){
     SP.superCopFront = sprite(230,215, paintFront(Object.assign({}, SC, {
       body:'#eceff4', hi:'#ffffff', lo:'#9aa3b0',
       lamp:'#d61b3c', lamp2:'#ff7a86',
-      bodyType:'SUPERCRUISER', marque:'CRUISER', player:true, stripes:false, force:true
+      bodyType:'SUPERCRUISER', marque:'CRUISER', player:true, stripes:false, force:true, bar:'police'
     })));
   }
   /* ---- one sprite per body type PER COLOUR -----------------------------
@@ -12190,10 +12338,22 @@ let wonTraffic = false;
    a flag on the BODY record, so a new police car gets the whole machinery by
    declaring itself one.
    ---------------------------------------------------------------------- */
-function inCruiser(){
+function hasBar(){
+  const B = BODY[optBody];
+  return !!(B && (B.bar || B.force || optBody === 'CRUISER'));
+}
+/* IS IT POLICE, which is a different question and has different answers now.
+   Nothing reads this yet - the livery and the pursuit logic ask `force` on the
+   body directly - but the pair exists so that the next thing to ask cannot
+   accidentally ask the wrong one. */
+function inForce(){
   const B = BODY[optBody];
   return !!(B && (B.force || optBody === 'CRUISER'));
 }
+/* the old name, kept because a harness and the shell both call it. It asked
+   "have you got a bar", never "are you police", so it points at the new
+   function that answers that. */
+function inCruiser(){ return hasBar(); }
 
 function setHorn(on){
   if(CFG.circuitOnly) return;          /* see the note at the button binding */
@@ -18289,7 +18449,12 @@ function drawPlayer(){
       const bx = p.x + (side < 0 ? -0.130 : 0.125) * w;
       const by = p.y - h*(1 - barY) - h*0.015;
       const lit = (side < 0) === blue;
-      const col = side < 0 ? '90,140,255' : '255,70,80';
+      /* the wash used one hardcoded pair, which painted an ambulance's bar
+         police blue down one side. It asks the scheme now, and a medical bar
+         names the same red twice so that both heads wash red while still
+         ALTERNATING - the flash is the rhythm, not the colour. */
+      const SCW = (BAR_SCHEME[(BODY[optBody] || {}).bar] || BAR_SCHEME.police).wash;
+      const col = side < 0 ? SCW[0] : SCW[1];
       /* the unlit head still reads as a LAMP: 0.22 was indistinguishable from
          nothing being there */
       ctx.fillStyle = 'rgba(' + col + ',' + (lit ? 0.95 : 0.45) + ')';
@@ -21017,7 +21182,7 @@ const BODY_CLASS = { 'STALLION':'super', 'MATADOR':'super', 'CREST':'super',
                   -------------------------------------------------------- */
                'COUPE':'production','SALOON':'production','CAB':'production',
                'PICKUP':'production',
-               'VAN':'utility','LORRY':'utility' };
+               'VAN':'utility','LORRY':'utility','AMBULANCE':'utility' };
 
 /* ---- THE CARS THE EVENTS ARE FOR (RLG-115) --------------------------------
    Owner, 2026-08-31: "if you have a production or utility vehicle selected, the
@@ -23513,6 +23678,11 @@ requestAnimationFrame(frameLoop);
                      -------------------------------------------------------- */
                   PICKUP:'production', pickup:'production',
                   VAN:'utility', LORRY:'utility',
+                  /* an AMBULANCE is a utility vehicle, and this copy of the class
+                     map has to say so too. RLG-114's lesson: the sheet keeps its
+                     own copy and a class that moves in one and not the other makes
+                     the sheet print something the garage disagrees with. */
+                  AMBULANCE:'utility',
                   van:'utility', truck:'utility' };
     /* `key` is the body this row was built from, and `name` is what a reader
        prints. They part company where one body has two liveries: the name says

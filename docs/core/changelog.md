@@ -14,6 +14,50 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-3"></a>
+## [0.12.3] - 2026-09-05
+- Added: **the AMBULANCE.** Owner, 2026-08-31: "in utility we add an ambulance and a bus. The
+  ambulance is essentially going to be the van with a red only light bar. Its light bar and siren
+  would function the same as with police in terms of getting cars to move out of the way." It is a
+  white van with a red bar, it latches and wails from the horn button like a cruiser, and traffic
+  gets out of its way ([RLG-114](../fragments/RLG-114.md)).
+- Changed: **`force` means police, and a new `bar` means there is a light bar.** One field was
+  answering two questions - "is this police" and "has this a bar, a siren and the right to move
+  traffic" - and an ambulance is the second without the first. `bar` carries the colour scheme with
+  it, so a bar is declared rather than assumed blue and red. `inCruiser()` was really asking the
+  second question, so it is `hasBar()` now, with `inForce()` beside it for the first
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **the siren and the scatter cost nothing; the drawing cost everything.** `barOn` already
+  drove `scatter(0.90)` and the wail already rode on it, so both followed the new gate untouched.
+  But a light bar was drawn in FOUR painters, and in the two rig painters it sat inside a branch
+  gated on the car being a cop - so a bar was something only police could have, twice over
+  ([RLG-114](../fragments/RLG-114.md)).
+- Fixed: **the van branch returns early, which is why the first fix did not work.** Moving the bar
+  to the foot of the rig painter was not enough: `if(kind === 'van')` draws its slab and returns, so
+  the shared block was never reached and the ambulance came back carrying a plain van's three lamps.
+  No error, no warning - the code simply never got there. The bar is drawn inside that branch now,
+  on its own roof line ([RLG-114](../fragments/RLG-114.md)).
+- Changed: **an ambulance has its own rig, and only so that it can own a sprite.** `SP` is keyed by
+  rig and `SP.van` is the one sprite every traffic van shares, so a bar bolted to it would have put
+  one on the traffic. Both rig painters remap `ambulance` to `van` on entry with the medical bar
+  implied ([RLG-114](../fragments/RLG-114.md)).
+- Added: **`tools/bar-row.py`**, which measures where a bar actually sits on a sprite, because the
+  note beside `barY` says the existing values were sampled and that any new one must be too. The
+  guess was 0.070 and the measurement is 0.074. **It carries the two known cars as a control and
+  refuses to report numbers unless they come back right** - and that control caught two faults in
+  its own first draft, since the sprite table is empty on the title screen and a check that hunts
+  for blue and red pixels cannot find a bar that is neither ([RLG-114](../fragments/RLG-114.md)).
+- Fixed: **the fleet sheet's own copy of the class map gained the ambulance.** RLG-114's note warns
+  that a class moving in one copy and not the other makes the sheet print something the garage
+  disagrees with ([RLG-114](../fragments/RLG-114.md)).
+- Note: **an ambulance is a utility vehicle, so RLG-115 applies to it without a new decision** -
+  Test Drive only in Interstate, and not listed at all in Motorsport. That follows from the owner's
+  own rule, and it is worth their eye: an emergency vehicle missing from a circuit garage may read
+  as a bug rather than as the rule working ([RLG-115](../fragments/RLG-115.md)).
+- Note: **what a harness cannot judge.** Whether a white van with a red bar reads as an ambulance at
+  speed, whether red at both ends still reads as a flash rather than a steady lamp, and whether the
+  scatter feels like traffic yielding rather than traffic behaving oddly.
+
 <a id="v0-12-2"></a>
 ## [0.12.2] - 2026-09-05
 - Changed: **the repository is `effigy-arcade`.** Owner, 2026-09-05: "we are supposed to use the
