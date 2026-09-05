@@ -219,7 +219,7 @@ const PLAYER_Z = CAM_H*CAM_D;
    worker serves scripts network-first with a cache fallback, so a device can end
    up with a fresh shell beside a cached engine, and the tag says MIXED when it
    does. Bumped with `Arcade.version`, in the same commit, every time. */
-window.ROAD_BUILD = '0.12.6';
+window.ROAD_BUILD = '0.12.7';
 
 const LANE_X = [-0.75,-0.25,0.25,0.75];
 /* ---- ONE LANE, and the unit every lateral move is written in ---------------
@@ -3470,16 +3470,25 @@ function paintRig(kind, o){
 
          It sits above the handles at 0.55 and below the glass, on the widest
          clear panel the doors have. */
-      /* OWNER, 2026-09-05: the size is right and it sat too high. Centred on
-         the doors BELOW THE WINDOWS now, and placed from those landmarks for
-         the same reason as the nose - the door glass ends at `top+0.165` and
-         the lamps begin at `bot-0.150`, so the cross takes the middle of the
-         clear panel between them. The handles are drawn after this and land on
-         top of it, which is right: handles are hardware bolted over paint. */
-      if(o.bar === 'medical'){
-        const winB = top + h*0.165, lampT = bot - h*0.150;
-        drawCross(g, w*0.5, (winB + lampT) * 0.5, w*0.36, 0.32);
-      }
+      /* ---- CENTRED ON THE HANDLES --------------------------------------
+         OWNER, 2026-09-05, twice: first that it sat too high, then "the
+         handles of the doors should sit centered in the cross". The second
+         note gives a better landmark than the first fix used. Splitting the
+         clear panel between the glass and the lamps put it at 0.508 of the
+         sprite; the handle line is at 0.548, which is the slight drop asked
+         for AND a thing the eye can actually check - the handles either sit in
+         the middle of the cross or they do not.
+
+         So the cross takes the handles' own centre line. They are drawn just
+         below at the same `0.55` and land ON TOP of the paint, which is right:
+         handles are hardware bolted over livery.
+
+         The lamps do not collide with it despite the overlap in Y. They sit at
+         x 0.07 and 0.855 and the cross spans 0.32 to 0.68, so the two never
+         meet - checked rather than assumed, because the cross's lower arm does
+         reach the lamp row. */
+      if(o.bar === 'medical')
+        drawCross(g, w*0.5, top + (bot-top)*0.55 + h*0.008, w*0.36, 0.32);
       /* door seam and handles */
       g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=Math.max(1,w*0.008);
       g.beginPath(); g.moveTo(w*0.5, top+h*0.03); g.lineTo(w*0.5, bot-h*0.03); g.stroke();

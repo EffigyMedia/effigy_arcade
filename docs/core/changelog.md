@@ -14,6 +14,27 @@ barely started, and 0.9.x would have claimed otherwise.
 
 ---
 
+<a id="v0-12-7"></a>
+## [0.12.7] - 2026-09-05
+- Changed: **the cross on the rear doors is centred on the handles.** Owner, 2026-09-05: "lower the
+  cross on the rear doors slightly more, the handles of the doors should sit centered in the cross."
+  It takes the handles' own centre line now, which drops it from 0.508 of the sprite to 0.548
+  ([RLG-114](../fragments/RLG-114.md)).
+- Note: **that is a better landmark than the one it replaces, not just a lower number.** Splitting
+  the clear panel between the glass and the lamps was a reasonable rule that happened to look wrong.
+  "The handles sit in the middle of the cross" is a thing the eye can check directly - it is either
+  true or it is not ([RLG-114](../fragments/RLG-114.md)).
+- Note: **the lamps do not collide with it, and that was checked rather than assumed.** The cross's
+  lower arm does reach the lamp row in Y, but the lamps sit at x 0.07 and 0.855 while the cross
+  spans 0.32 to 0.68, so the two never meet ([RLG-114](../fragments/RLG-114.md)).
+- Fixed: **`bar-row.py` was under-counting the cross it was checking.** Its sample window stopped at
+  0.55 of the sprite, so lowering the cross put a third of it outside and the count fell from 1808 to
+  1302 while the paint was unchanged. The window is the PANEL now, bounded in X to exclude the lamps
+  outright so that Y can cover the whole body - it reads 2658, and a plain van still reads zero,
+  which is what proves the X bound is doing the excluding. **A check whose window must be re-tuned
+  every time the thing it measures moves is a check that will one day be re-tuned wrongly**
+  ([RLG-114](../fragments/RLG-114.md)).
+
 <a id="v0-12-6"></a>
 ## [0.12.6] - 2026-09-05
 - Removed: **the bus, before it was built.** Owner, 2026-09-05: "I don't think we should make the

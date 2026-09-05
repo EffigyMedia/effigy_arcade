@@ -137,9 +137,16 @@ with sync_playwright() as p:
       out.boss = red(w, 0.40, 0.60, 0.40, 0.60);
       for (const v of R.fleet()) {
         if ((v.key || v.name) !== k) continue;
-        /* the middle band of the body, away from every lamp */
-        if (v.spr)   out.rear  = red(v.spr,   0.30, 0.70, 0.20, 0.55);
-        if (v.front) out.front = red(v.front, 0.30, 0.70, 0.20, 0.60);
+        /* THE WINDOW IS THE PANEL, NOT THE CROSS. It is bounded in X to 0.30-0.70,
+           which excludes the lamps at 0.07 and 0.855 outright - so Y can cover the
+           whole body without letting a tail light count as livery. An earlier and
+           tighter Y window (0.20-0.55) under-counted the rear cross by a third the
+           moment it was lowered onto the handles, and would eventually have read
+           zero for a cross that was drawn perfectly well. A check whose window has
+           to be re-tuned every time the thing it measures moves is a check that
+           will one day be re-tuned wrongly. */
+        if (v.spr)   out.rear  = red(v.spr,   0.30, 0.70, 0.15, 0.85);
+        if (v.front) out.front = red(v.front, 0.30, 0.70, 0.15, 0.85);
       }
       return out;
     }"""
